@@ -2,6 +2,8 @@ extends Control
 
 signal command_pressed(command_id: String)
 signal multi_role_cell_pressed(role_kind: String)
+signal subgroup_entry_pressed(kind: String)
+signal multi_page_navigate(step: int)
 
 const COMMAND_SLOTS: int = 15
 const MULTI_SLOTS: int = 24
@@ -43,10 +45,13 @@ const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_i
 @onready var _multi_matrix_root: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot
 @onready var _matrix_grid: GridContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixGrid
 @onready var _matrix_page_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter/MatrixPageText
+@onready var _matrix_prev_button: Button = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter/PrevPageButton
+@onready var _matrix_next_button: Button = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter/NextPageButton
 
 @onready var _portrait_glyph: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter/PortraitGlyph
 @onready var _portrait_name_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitNameText
 @onready var _portrait_role_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitRoleText
+@onready var _command_content: VBoxContainer = $BottomHUD/BottomRow/CommandPanel/CommandContent
 @onready var _subgroup_text: Label = $BottomHUD/BottomRow/CommandPanel/CommandContent/SubgroupText
 @onready var _command_grid: GridContainer = $BottomHUD/BottomRow/CommandPanel/CommandContent/CommandGrid
 @onready var _command_hint_text: Label = $BottomHUD/BottomRow/CommandPanel/CommandContent/CommandHintText
@@ -59,11 +64,15 @@ var _matrix_labels: Array[Label] = []
 var _queue_slot_labels: Array[Label] = []
 var _notification_labels: Array[Label] = []
 var _current_multi_role_kinds: Array[String] = []
+var _subgroup_bar: HBoxContainer
+var _subgroup_buttons: Array[Button] = []
 
 func _ready() -> void:
+	_setup_matrix_footer_buttons()
 	_setup_static_styles()
 	_apply_bottom_helper_transparency()
 	_apply_bottom_helper_mouse_filters()
+	_build_subgroup_bar()
 	_collect_notification_labels()
 	_build_queue_slot_labels()
 	_build_command_items()
@@ -114,6 +123,18 @@ func update_hud(snapshot: Dictionary) -> void:
 		str(snapshot.get("active_subgroup_kind", ""))
 	)
 	_matrix_page_text.text = str(snapshot.get("matrix_page_text", "Page 1/1"))
+	var matrix_page_index: int = int(snapshot.get("matrix_page_index", 0))
+	var matrix_page_count: int = maxi(1, int(snapshot.get("matrix_page_count", 1)))
+	_matrix_prev_button.disabled = matrix_page_count <= 1
+	_matrix_next_button.disabled = matrix_page_count <= 1
+	if matrix_page_count > 1:
+		_matrix_prev_button.disabled = matrix_page_index <= 0
+		_matrix_next_button.disabled = matrix_page_index >= matrix_page_count - 1
+	_apply_subgroup_entries(
+		snapshot.get("subgroup_entries", []),
+		str(snapshot.get("active_subgroup_kind", "")),
+		mode
+	)
 
 	_portrait_glyph.text = str(snapshot.get("portrait_glyph", "?"))
 	_portrait_name_text.text = str(snapshot.get("portrait_title", "No Selection"))
@@ -212,6 +233,107 @@ func _build_command_items() -> void:
 			item.connect("pressed", Callable(self, "_on_command_item_pressed"))
 		_command_grid.add_child(item)
 		_command_items.append(item)
+
+func _setup_matrix_footer_buttons() -> void:
+	if _matrix_prev_button != null:
+		_matrix_prev_button.focus_mode = Control.FOCUS_NONE
+		var prev_callback: Callable = Callable(self, "_on_prev_matrix_page_pressed")
+		if not _matrix_prev_button.pressed.is_connected(prev_callback):
+			_matrix_prev_button.pressed.connect(prev_callback)
+	if _matrix_next_button != null:
+		_matrix_next_button.focus_mode = Control.FOCUS_NONE
+		var next_callback: Callable = Callable(self, "_on_next_matrix_page_pressed")
+		if not _matrix_next_button.pressed.is_connected(next_callback):
+			_matrix_next_button.pressed.connect(next_callback)
+
+func _on_prev_matrix_page_pressed() -> void:
+	emit_signal("multi_page_navigate", -1)
+
+func _on_next_matrix_page_pressed() -> void:
+	emit_signal("multi_page_navigate", 1)
+
+func _build_subgroup_bar() -> void:
+	if _command_content == null:
+		return
+	_subgroup_bar = HBoxContainer.new()
+	_subgroup_bar.name = "SubgroupBar"
+	_subgroup_bar.add_theme_constant_override("separation", 4)
+	_subgroup_bar.visible = false
+	_command_content.add_child(_subgroup_bar)
+	var desired_index: int = _subgroup_text.get_index() + 1 if _subgroup_text != null else 0
+	_command_content.move_child(_subgroup_bar, desired_index)
+
+func _apply_subgroup_entries(entries_variant: Variant, active_kind: String, mode: String) -> void:
+	if _subgroup_bar == null:
+		return
+	for button in _subgroup_buttons:
+		if button != null and is_instance_valid(button):
+			button.queue_free()
+	_subgroup_buttons.clear()
+
+	if mode != "multi":
+		_subgroup_bar.visible = false
+		return
+	if not (entries_variant is Array):
+		_subgroup_bar.visible = false
+		return
+	var entries: Array = entries_variant as Array
+	if entries.size() <= 1:
+		_subgroup_bar.visible = false
+		return
+	_subgroup_bar.visible = true
+
+	for entry_value in entries:
+		if not (entry_value is Dictionary):
+			continue
+		var entry: Dictionary = entry_value as Dictionary
+		var kind: String = str(entry.get("kind", ""))
+		var label: String = str(entry.get("label", ""))
+		var count: int = int(entry.get("count", 0))
+		var button: Button = Button.new()
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size = Vector2(0.0, 24.0)
+		button.text = _subgroup_button_text(label, count)
+		button.tooltip_text = "Subgroup: %s (%d)" % [label, count]
+		button.focus_mode = Control.FOCUS_NONE
+		button.pressed.connect(Callable(self, "_on_subgroup_button_pressed").bind(kind))
+		_apply_subgroup_button_style(button, kind == active_kind, kind)
+		_subgroup_bar.add_child(button)
+		_subgroup_buttons.append(button)
+
+func _subgroup_button_text(label: String, count: int) -> String:
+	if count <= 0:
+		return label
+	return "%s %d" % [label, count]
+
+func _subgroup_kind_color(kind: String) -> Color:
+	match kind:
+		"worker":
+			return Color(0.34, 0.78, 0.48, 0.95)
+		"soldier":
+			return Color(0.92, 0.42, 0.34, 0.95)
+		"":
+			return Color(0.72, 0.88, 1.0, 0.95)
+		_:
+			return Color(0.64, 0.72, 0.9, 0.95)
+
+func _apply_subgroup_button_style(button: Button, active: bool, kind: String) -> void:
+	if button == null:
+		return
+	var border: Color = _subgroup_kind_color(kind)
+	var background: Color = Color(0.06, 0.13, 0.2, 0.92)
+	if active:
+		background = Color(0.12, 0.21, 0.3, 0.98)
+		border = Color(1.0, 0.95, 0.55, 0.98)
+	button.add_theme_stylebox_override("normal", _build_stylebox(background, border, 1 if not active else 2, 6))
+	button.add_theme_stylebox_override("hover", _build_stylebox(background.lightened(0.08), border.lightened(0.1), 1 if not active else 2, 6))
+	button.add_theme_stylebox_override("pressed", _build_stylebox(background.darkened(0.08), border, 1 if not active else 2, 6))
+	button.add_theme_color_override("font_color", Color(0.92, 0.97, 1.0))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
+	button.add_theme_color_override("font_pressed_color", Color(0.95, 1.0, 1.0))
+
+func _on_subgroup_button_pressed(kind: String) -> void:
+	emit_signal("subgroup_entry_pressed", kind)
 
 func _build_matrix_cells() -> void:
 	_matrix_panels.clear()
