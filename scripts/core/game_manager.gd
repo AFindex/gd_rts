@@ -25,6 +25,8 @@ const RALLY_MAX_HOPS: int = 3
 const RALLY_VISUAL_HEIGHT: float = 0.08
 const RALLY_ALERT_BLINK_INTERVAL_SEC: float = 0.16
 const FEEDBACK_TONE_SAMPLE_RATE: int = 22050
+const CONTROL_GROUP_COUNT: int = 10
+const CONTROL_GROUP_DOUBLE_TAP_WINDOW: float = 0.3
 
 enum InputState {
 	IDLE,
@@ -94,6 +96,12 @@ var _last_rally_visual_signature: String = ""
 var _rally_reject_feedback_timer: float = 0.0
 var _feedback_audio_player: AudioStreamPlayer
 var _feedback_tone_streams: Dictionary = {}
+var _control_groups: Dictionary = {}
+var _last_selected_group_id: int = -1
+var _last_selected_group_time: float = -100.0
+var _active_subgroup_index: int = -1
+var _ui_notice_text: String = ""
+var _ui_notice_timer: float = 0.0
 var _pending_build_orders: Array[Dictionary] = []
 
 func _ready() -> void:
@@ -302,6 +310,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	var key_event: InputEventKey = event as InputEventKey
 	if key_event != null and key_event.pressed and not key_event.echo:
+		if _try_handle_control_group_hotkey(key_event):
+			_refresh_hint_label()
+			return
+		if key_event.keycode == KEY_TAB and key_event.ctrl_pressed:
+			_cycle_unit_subgroup()
+			_refresh_hint_label()
+			return
+
 		match key_event.keycode:
 			KEY_B:
 				_execute_command("build_menu")
@@ -378,6 +394,206 @@ func _try_execute_build_hotkey(keycode: int) -> bool:
 			return true
 	return false
 
+func _try_handle_control_group_hotkey(key_event: InputEventKey) -> bool:
+	var group_id: int = _keycode_to_control_group_id(key_event.keycode)
+	if group_id < 0:
+		return false
+	if key_event.ctrl_pressed:
+		_assign_control_group_from_selection(group_id, false)
+		return true
+	if key_event.shift_pressed:
+		_assign_control_group_from_selection(group_id, true)
+		return true
+	_select_control_group(group_id)
+	return true
+
+func _keycode_to_control_group_id(keycode: int) -> int:
+	match keycode:
+		KEY_0, KEY_KP_0:
+			return 0
+		KEY_1, KEY_KP_1:
+			return 1
+		KEY_2, KEY_KP_2:
+			return 2
+		KEY_3, KEY_KP_3:
+			return 3
+		KEY_4, KEY_KP_4:
+			return 4
+		KEY_5, KEY_KP_5:
+			return 5
+		KEY_6, KEY_KP_6:
+			return 6
+		KEY_7, KEY_KP_7:
+			return 7
+		KEY_8, KEY_KP_8:
+			return 8
+		KEY_9, KEY_KP_9:
+			return 9
+		_:
+			return -1
+
+func _assign_control_group_from_selection(group_id: int, append: bool) -> void:
+	_prune_invalid_selection()
+	if group_id < 0 or group_id >= CONTROL_GROUP_COUNT:
+		return
+	if _selected_units.is_empty() and _selected_buildings.is_empty():
+		_set_ui_notice("Control Group %d: no selection." % group_id)
+		_play_feedback_tone("error")
+		return
+
+	var next_entry: Dictionary = {
+		"unit_paths": [],
+		"building_paths": []
+	}
+	if append and _control_groups.has(group_id):
+		var existing_value: Variant = _control_groups.get(group_id, {})
+		if existing_value is Dictionary:
+			var existing_entry: Dictionary = existing_value as Dictionary
+			var existing_units: Variant = existing_entry.get("unit_paths", [])
+			if existing_units is Array:
+				next_entry["unit_paths"] = (existing_units as Array).duplicate()
+			var existing_buildings: Variant = existing_entry.get("building_paths", [])
+			if existing_buildings is Array:
+				next_entry["building_paths"] = (existing_buildings as Array).duplicate()
+
+	var unit_paths: Array = next_entry["unit_paths"] as Array
+	var building_paths: Array = next_entry["building_paths"] as Array
+	var unit_seen: Dictionary = {}
+	var building_seen: Dictionary = {}
+
+	for unit_path_value in unit_paths:
+		var unit_path_str: String = str(unit_path_value)
+		if unit_path_str != "":
+			unit_seen[unit_path_str] = true
+	for building_path_value in building_paths:
+		var building_path_str: String = str(building_path_value)
+		if building_path_str != "":
+			building_seen[building_path_str] = true
+
+	var added_count: int = 0
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			continue
+		var path: NodePath = selected_unit.get_path()
+		var key: String = str(path)
+		if key == "" or unit_seen.has(key):
+			continue
+		unit_seen[key] = true
+		unit_paths.append(path)
+		added_count += 1
+
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		var path: NodePath = selected_building.get_path()
+		var key: String = str(path)
+		if key == "" or building_seen.has(key):
+			continue
+		building_seen[key] = true
+		building_paths.append(path)
+		added_count += 1
+
+	next_entry["unit_paths"] = unit_paths
+	next_entry["building_paths"] = building_paths
+	_control_groups[group_id] = next_entry
+
+	var total_count: int = unit_paths.size() + building_paths.size()
+	if append:
+		_set_ui_notice("Control Group %d appended (+%d, total %d)." % [group_id, added_count, total_count])
+	else:
+		_set_ui_notice("Control Group %d set (%d)." % [group_id, total_count])
+	_play_feedback_tone("ground")
+
+func _select_control_group(group_id: int) -> void:
+	if group_id < 0 or group_id >= CONTROL_GROUP_COUNT:
+		return
+	var entry_value: Variant = _control_groups.get(group_id, null)
+	if not (entry_value is Dictionary):
+		_set_ui_notice("Control Group %d is empty." % group_id)
+		_play_feedback_tone("error")
+		return
+	var entry: Dictionary = entry_value as Dictionary
+	var unit_paths: Array = entry.get("unit_paths", []) as Array
+	var building_paths: Array = entry.get("building_paths", []) as Array
+
+	_clear_selection()
+	var selected_count: int = 0
+	for path_value in unit_paths:
+		var path: NodePath = NodePath(str(path_value))
+		if str(path) == "":
+			continue
+		var unit_node: Node = get_node_or_null(path)
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if not unit_node.is_in_group("selectable_unit"):
+			continue
+		_add_selected_unit(unit_node)
+		selected_count += 1
+
+	for path_value in building_paths:
+		var path: NodePath = NodePath(str(path_value))
+		if str(path) == "":
+			continue
+		var building_node: Node = get_node_or_null(path)
+		if building_node == null or not is_instance_valid(building_node):
+			continue
+		if not building_node.is_in_group("selectable_building"):
+			continue
+		_add_selected_building(building_node)
+		selected_count += 1
+
+	_refresh_subgroup_state(true)
+	if selected_count <= 0:
+		_set_ui_notice("Control Group %d has no valid units." % group_id)
+		_play_feedback_tone("error")
+		return
+
+	var now_sec: float = float(Time.get_ticks_msec()) / 1000.0
+	var is_double_tap: bool = _last_selected_group_id == group_id and (now_sec - _last_selected_group_time) <= CONTROL_GROUP_DOUBLE_TAP_WINDOW
+	_last_selected_group_id = group_id
+	_last_selected_group_time = now_sec
+
+	if is_double_tap:
+		_focus_camera_on_current_selection()
+		_set_ui_notice("Control Group %d selected (%d), camera centered." % [group_id, selected_count])
+	else:
+		_set_ui_notice("Control Group %d selected (%d)." % [group_id, selected_count])
+	_play_feedback_tone("ground")
+
+func _focus_camera_on_current_selection() -> void:
+	if _camera == null:
+		return
+	var center: Vector3 = Vector3.ZERO
+	var count: int = 0
+	for selected_unit in _selected_units:
+		var unit_3d: Node3D = selected_unit as Node3D
+		if unit_3d == null or not is_instance_valid(unit_3d):
+			continue
+		center += unit_3d.global_position
+		count += 1
+	for selected_building in _selected_buildings:
+		var building_3d: Node3D = selected_building as Node3D
+		if building_3d == null or not is_instance_valid(building_3d):
+			continue
+		center += building_3d.global_position
+		count += 1
+	if count <= 0:
+		return
+	center /= float(count)
+	var cam_pos: Vector3 = _camera.global_position
+	cam_pos.x = center.x
+	cam_pos.z = center.z
+	var half_size_value: Variant = _camera.get("map_half_size")
+	if half_size_value is Vector2:
+		var half_size: Vector2 = half_size_value as Vector2
+		cam_pos.x = clampf(cam_pos.x, -half_size.x, half_size.x)
+		cam_pos.z = clampf(cam_pos.z, -half_size.y, half_size.y)
+	_camera.global_position = cam_pos
+
 func _is_queue_input_active() -> bool:
 	return Input.is_key_pressed(KEY_SHIFT)
 
@@ -392,6 +608,7 @@ func _refresh_input_state() -> void:
 	elif not _selected_units.is_empty() or not _selected_buildings.is_empty():
 		next_state = InputState.UNIT_SELECTED
 	_input_state = next_state
+	_refresh_subgroup_state()
 
 func _setup_queue_visual_root() -> void:
 	_queue_visual_root = Node3D.new()
@@ -451,11 +668,19 @@ func _play_feedback_tone(mode: String) -> void:
 	_feedback_audio_player.stream = stream
 	_feedback_audio_player.play()
 
+func _set_ui_notice(text: String, duration: float = 1.4) -> void:
+	_ui_notice_text = text
+	_ui_notice_timer = maxf(0.0, duration)
+
 func _process_queue_feedback(delta: float) -> void:
 	if _queue_reject_feedback_timer > 0.0:
 		_queue_reject_feedback_timer = maxf(0.0, _queue_reject_feedback_timer - delta)
 	if _rally_reject_feedback_timer > 0.0:
 		_rally_reject_feedback_timer = maxf(0.0, _rally_reject_feedback_timer - delta)
+	if _ui_notice_timer > 0.0:
+		_ui_notice_timer = maxf(0.0, _ui_notice_timer - delta)
+		if _ui_notice_timer <= 0.0:
+			_ui_notice_text = ""
 
 func _update_queue_visuals() -> void:
 	if _queue_visual_root == null:
@@ -1174,12 +1399,101 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 
 func _build_subgroup_text(mode: String, selection_total: int) -> String:
 	if mode == "multi":
+		var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
+		if subgroup_keys.size() > 1:
+			var active_kind: String = _active_subgroup_kind()
+			if active_kind != "":
+				return "Subgroup: %s (%d/%d) | Ctrl+Tab cycle" % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size()]
+			return "Subgroup: All (%d types) | Ctrl+Tab cycle" % subgroup_keys.size()
 		return "Subgroup: %d Units" % selection_total
 	if mode == "single":
 		return "Subgroup: Single"
 	return "Subgroup: None"
 
+func _refresh_subgroup_state(reset_to_all: bool = false) -> void:
+	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
+	if subgroup_keys.size() <= 1:
+		_active_subgroup_index = -1
+		return
+	if reset_to_all:
+		_active_subgroup_index = -1
+		return
+	if _active_subgroup_index >= subgroup_keys.size():
+		_active_subgroup_index = -1
+
+func _cycle_unit_subgroup() -> bool:
+	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
+	if subgroup_keys.size() <= 1:
+		_active_subgroup_index = -1
+		_set_ui_notice("No mixed unit subgroup to cycle.")
+		_play_feedback_tone("error")
+		return false
+	if _active_subgroup_index < 0:
+		_active_subgroup_index = 0
+	else:
+		_active_subgroup_index = (_active_subgroup_index + 1) % subgroup_keys.size()
+	var active_kind: String = _active_subgroup_kind()
+	_set_ui_notice("Subgroup active: %s (%d/%d)." % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size()])
+	_play_feedback_tone("follow")
+	return true
+
+func _active_subgroup_kind() -> String:
+	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
+	if subgroup_keys.size() <= 1:
+		return ""
+	if _active_subgroup_index < 0 or _active_subgroup_index >= subgroup_keys.size():
+		return ""
+	return subgroup_keys[_active_subgroup_index]
+
+func _subgroup_kind_label(kind: String) -> String:
+	if kind == "":
+		return "All"
+	if kind == "worker":
+		return "Worker"
+	if kind == "soldier":
+		return "Soldier"
+	return kind.capitalize()
+
+func _selected_unit_subgroup_keys() -> Array[String]:
+	var keys: Array[String] = []
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			continue
+		var kind: String = _unit_kind_id(selected_unit)
+		if kind == "":
+			continue
+		if keys.has(kind):
+			continue
+		keys.append(kind)
+	return keys
+
+func _unit_kind_id(unit_node: Node) -> String:
+	if unit_node == null or not is_instance_valid(unit_node):
+		return ""
+	if unit_node.has_method("get_unit_kind"):
+		return str(unit_node.call("get_unit_kind"))
+	if unit_node.has_method("is_worker_unit"):
+		return "worker" if bool(unit_node.call("is_worker_unit")) else "soldier"
+	return "unit"
+
+func _command_units() -> Array[Node]:
+	var units: Array[Node] = []
+	var active_kind: String = _active_subgroup_kind()
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			continue
+		if active_kind != "" and _unit_kind_id(selected_unit) != active_kind:
+			continue
+		units.append(selected_unit)
+	return units
+
 func _build_command_hint() -> String:
+	if _ui_notice_timer > 0.0 and _ui_notice_text != "":
+		return _ui_notice_text
 	if _queue_reject_feedback_timer > 0.0:
 		return "Queue is full (max 32). Command rejected."
 	if _rally_reject_feedback_timer > 0.0:
@@ -1203,6 +1517,9 @@ func _build_command_hint() -> String:
 			return "Click command cards / hotkeys for production. RMB sets rally point (M/G/A/F/R flag + tone)."
 		return "Click command cards or use hotkeys for production/build commands."
 	if not _selected_units.is_empty():
+		var active_kind: String = _active_subgroup_kind()
+		if active_kind != "":
+			return "Subgroup active: %s | Ctrl+Tab cycle | Commands apply to active subgroup only." % _subgroup_kind_label(active_kind)
 		return "RMB context command or click move/gather/stop in command card."
 	return "Select something to open context commands."
 
@@ -1341,11 +1658,7 @@ func _sanitize_build_skill_ids(skill_ids: Array[String]) -> Array[String]:
 func _selection_skill_ids() -> Array[String]:
 	var skill_ids: Array[String] = []
 	if not _selected_units.is_empty():
-		for selected_unit in _selected_units:
-			if selected_unit == null or not is_instance_valid(selected_unit):
-				continue
-			if not _is_player_owned(selected_unit):
-				continue
+		for selected_unit in _command_units():
 			var raw_skills: Variant = []
 			if selected_unit.has_method("get_skill_ids"):
 				raw_skills = selected_unit.call("get_skill_ids")
@@ -1426,13 +1739,15 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
-		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop" % [_worker_cost, _soldier_cost],
-		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Shift+RMB(Building) Append Relay | Rally Flag M/G/A/F/R + tone | Alt+LMB Trim Queue"
+		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Ctrl+Tab: Cycle Subgroup" % [_worker_cost, _soldier_cost],
+		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus"
 	]
 	if _queue_reject_feedback_timer > 0.0:
 		lines[0] = "Queue full: max 32 commands per unit."
 	if _rally_reject_feedback_timer > 0.0:
 		lines[0] = "Rally relay full: max %d hops per building." % RALLY_MAX_HOPS
+	if _ui_notice_timer > 0.0 and _ui_notice_text != "":
+		lines[0] = _ui_notice_text
 	if _match_notice != "":
 		lines[0] = _match_notice
 		lines[1] = "Match Rule: %s" % _match_outcome_rule_id
@@ -1508,21 +1823,13 @@ func _has_supply_for(extra_units: int = 1) -> bool:
 	return _count_total_units() + _count_total_queued_units() + extra_units <= SUPPLY_CAP
 
 func _selection_has_worker() -> bool:
-	for selected_unit in _selected_units:
-		if selected_unit == null or not is_instance_valid(selected_unit):
-			continue
-		if not _is_player_owned(selected_unit):
-			continue
+	for selected_unit in _command_units():
 		if selected_unit.has_method("is_worker_unit") and bool(selected_unit.call("is_worker_unit")):
 			return true
 	return false
 
 func _selection_has_worker_cargo() -> bool:
-	for selected_unit in _selected_units:
-		if selected_unit == null or not is_instance_valid(selected_unit):
-			continue
-		if not _is_player_owned(selected_unit):
-			continue
+	for selected_unit in _command_units():
 		if not selected_unit.has_method("is_worker_unit"):
 			continue
 		if not bool(selected_unit.call("is_worker_unit")):
@@ -1532,12 +1839,9 @@ func _selection_has_worker_cargo() -> bool:
 	return false
 
 func _selection_has_combat_unit() -> bool:
-	for selected_unit in _selected_units:
-		if selected_unit == null or not is_instance_valid(selected_unit):
-			continue
+	for selected_unit in _command_units():
 		if selected_unit.has_method("is_worker_unit") and not bool(selected_unit.call("is_worker_unit")):
-			if _is_player_owned(selected_unit):
-				return true
+			return true
 	return false
 
 func _selection_has_rally_building() -> bool:
@@ -2188,11 +2492,16 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 	if collider.is_in_group("selectable_unit"):
 		if _is_player_owned(collider):
 			_add_selected_unit(collider)
+		_refresh_subgroup_state(true)
 		return
 
 	if collider.is_in_group("selectable_building"):
 		if _is_player_owned(collider):
 			_add_selected_building(collider)
+		_refresh_subgroup_state(true)
+		return
+
+	_refresh_subgroup_state(true)
 
 func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> void:
 	_build_menu_open = false
@@ -2222,6 +2531,7 @@ func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> vo
 		var projected_pos: Vector2 = _camera.unproject_position(unit.global_position)
 		if rect.has_point(projected_pos):
 			_add_selected_unit(unit)
+	_refresh_subgroup_state(true)
 
 func _queue_worker_from_selection() -> void:
 	if _train_worker_block_reason() != "":
@@ -2290,12 +2600,9 @@ func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2, 
 		_issue_move_command(fallback_screen_pos, queue_command)
 		return
 
+	var command_units: Array[Node] = _command_units()
 	var issued_count: int = 0
-	for unit_node in _selected_units:
-		if unit_node == null or not is_instance_valid(unit_node):
-			continue
-		if not _is_player_owned(unit_node):
-			continue
+	for unit_node in command_units:
 		var is_worker: bool = false
 		if unit_node.has_method("is_worker_unit"):
 			var worker_value: Variant = unit_node.call("is_worker_unit")
@@ -2311,12 +2618,9 @@ func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2, 
 func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2, queue_command: bool = false) -> void:
 	if target_node == null or not is_instance_valid(target_node):
 		return
+	var command_units: Array[Node] = _command_units()
 	var issued_count: int = 0
-	for unit_node in _selected_units:
-		if unit_node == null or not is_instance_valid(unit_node):
-			continue
-		if not _is_player_owned(unit_node):
-			continue
+	for unit_node in command_units:
 		if not unit_node.has_method("is_worker_unit"):
 			continue
 		if bool(unit_node.call("is_worker_unit")):
@@ -2328,25 +2632,22 @@ func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2, qu
 		_issue_move_command(fallback_screen_pos, queue_command)
 
 func _issue_attack_move_command(screen_pos: Vector2, queue_command: bool = false) -> bool:
-	if _selected_units.is_empty():
+	var command_units: Array[Node] = _command_units()
+	if command_units.is_empty():
 		return false
 	var target: Variant = _ground_point_from_screen(screen_pos)
 	if target == null:
 		return false
 	var target_point: Vector3 = target as Vector3
 	var issued_count: int = 0
-	var count: int = _selected_units.size()
+	var count: int = command_units.size()
 	var cols: int = int(ceil(sqrt(float(count))))
 	var spacing: float = 1.6
 	for i in count:
 		var row: int = i / cols
 		var col: int = i % cols
 		var offset: Vector3 = Vector3((float(col) - float(cols - 1) * 0.5) * spacing, 0.0, (float(row) - float(cols - 1) * 0.5) * spacing)
-		var unit_node: Node = _selected_units[i] as Node
-		if unit_node == null or not is_instance_valid(unit_node):
-			continue
-		if not _is_player_owned(unit_node):
-			continue
+		var unit_node: Node = command_units[i] as Node
 		var destination: Vector3 = target_point + offset
 		var attack_move_command: RTSCommand = RTS_COMMAND.make_attack_move(destination, queue_command)
 		_schedule_unit_command(unit_node, attack_move_command)
@@ -2354,7 +2655,8 @@ func _issue_attack_move_command(screen_pos: Vector2, queue_command: bool = false
 	return issued_count > 0
 
 func _issue_move_command(screen_pos: Vector2, queue_command: bool = false) -> void:
-	if _selected_units.is_empty():
+	var command_units: Array[Node] = _command_units()
+	if command_units.is_empty():
 		return
 
 	var target: Variant = _ground_point_from_screen(screen_pos)
@@ -2362,7 +2664,7 @@ func _issue_move_command(screen_pos: Vector2, queue_command: bool = false) -> vo
 		return
 
 	var target_point: Vector3 = target as Vector3
-	var count: int = _selected_units.size()
+	var count: int = command_units.size()
 	var cols: int = int(ceil(sqrt(float(count))))
 	var spacing: float = 1.6
 
@@ -2370,36 +2672,25 @@ func _issue_move_command(screen_pos: Vector2, queue_command: bool = false) -> vo
 		var row: int = i / cols
 		var col: int = i % cols
 		var offset: Vector3 = Vector3((float(col) - float(cols - 1) * 0.5) * spacing, 0.0, (float(row) - float(cols - 1) * 0.5) * spacing)
-		var unit: Node = _selected_units[i] as Node
-		if unit == null or not is_instance_valid(unit):
-			continue
-		if not _is_player_owned(unit):
-			continue
+		var unit: Node = command_units[i] as Node
 		var move_command: RTSCommand = RTS_COMMAND.make_move(target_point + offset, queue_command)
 		_schedule_unit_command(unit, move_command)
 
 func _issue_stop_command(queue_command: bool = false) -> void:
-	for unit_node in _selected_units:
-		if unit_node == null or not is_instance_valid(unit_node):
-			continue
-		if not _is_player_owned(unit_node):
-			continue
+	for unit_node in _command_units():
 		var stop_command: RTSCommand = RTS_COMMAND.make_stop(queue_command)
 		_schedule_unit_command(unit_node, stop_command)
 
 func _issue_follow_command(target_node: Node3D, queue_command: bool = false) -> void:
 	if target_node == null or not is_instance_valid(target_node):
 		return
-	var unit_count: int = _selected_units.size()
+	var command_units: Array[Node] = _command_units()
+	var unit_count: int = command_units.size()
 	if unit_count <= 0:
 		return
 	var desired_distance: float = 3.8
 	for i in unit_count:
-		var unit_node: Node = _selected_units[i] as Node
-		if unit_node == null or not is_instance_valid(unit_node):
-			continue
-		if not _is_player_owned(unit_node):
-			continue
+		var unit_node: Node = command_units[i] as Node
 		if unit_node == target_node:
 			continue
 		var angle: float = TAU * float(i) / float(maxi(1, unit_count))
@@ -2410,11 +2701,7 @@ func _issue_follow_command(target_node: Node3D, queue_command: bool = false) -> 
 func _issue_return_command_to_dropoff(dropoff_node: Node3D, queue_command: bool = false) -> void:
 	if dropoff_node == null or not is_instance_valid(dropoff_node):
 		return
-	for unit_node in _selected_units:
-		if unit_node == null or not is_instance_valid(unit_node):
-			continue
-		if not _is_player_owned(unit_node):
-			continue
+	for unit_node in _command_units():
 		if not unit_node.has_method("is_worker_unit"):
 			continue
 		if not bool(unit_node.call("is_worker_unit")):
@@ -2423,11 +2710,7 @@ func _issue_return_command_to_dropoff(dropoff_node: Node3D, queue_command: bool 
 		_schedule_unit_command(unit_node, return_command)
 
 func _issue_return_command(queue_command: bool = false) -> void:
-	for unit_node in _selected_units:
-		if unit_node == null or not is_instance_valid(unit_node):
-			continue
-		if not _is_player_owned(unit_node):
-			continue
+	for unit_node in _command_units():
 		if not unit_node.has_method("is_worker_unit"):
 			continue
 		if not bool(unit_node.call("is_worker_unit")):
@@ -2976,5 +3259,6 @@ func _clear_selection() -> void:
 			node.call("set_selected", false)
 	_selected_units.clear()
 	_selected_buildings.clear()
+	_active_subgroup_index = -1
 	_build_menu_open = false
 	_pending_target_skill = ""
