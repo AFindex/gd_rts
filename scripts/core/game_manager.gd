@@ -16,7 +16,14 @@ const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
 const QUEUE_MARKER_GROUP: StringName = &"command_queue_marker"
 const QUEUE_MARKER_LAYER: int = 1 << 5
 const QUEUE_MARKER_MAX_VISIBLE: int = 32
+const QUEUE_LINK_HEIGHT: float = 0.2
 const SMART_COMMAND_PRIORITY_RANGE: float = 0.5
+const DEFAULT_WORKER_BUILD_TIME: float = 2.5
+const BUILD_ORDER_START_DISTANCE: float = 1.4
+const BUILD_ORDER_MOVE_REFRESH: float = 0.45
+const RALLY_MAX_HOPS: int = 3
+const RALLY_VISUAL_HEIGHT: float = 0.08
+const RALLY_ALERT_BLINK_INTERVAL_SEC: float = 0.16
 
 enum InputState {
 	IDLE,
@@ -58,6 +65,7 @@ var _placement_current_position: Vector3 = Vector3.ZERO
 var _placement_can_place: bool = false
 var _placement_preview: MeshInstance3D
 var _placement_preview_material: StandardMaterial3D
+var _placement_rotation_y: float = 0.0
 
 var _pending_target_skill: String = ""
 var _build_menu_open: bool = false
@@ -79,6 +87,11 @@ var _queue_visual_root: Node3D
 var _queue_visible_marker_nodes: Array[Node] = []
 var _queue_reject_feedback_timer: float = 0.0
 var _last_queue_visual_signature: String = ""
+var _rally_visual_root: Node3D
+var _rally_visible_nodes: Array[Node] = []
+var _last_rally_visual_signature: String = ""
+var _rally_reject_feedback_timer: float = 0.0
+var _pending_build_orders: Array[Dictionary] = []
 
 func _ready() -> void:
 	add_to_group("game_manager")
@@ -92,6 +105,7 @@ func _ready() -> void:
 	_connect_hud_signals()
 	_create_placement_preview()
 	_setup_queue_visual_root()
+	_setup_rally_visual_root()
 	_setup_runtime_navigation_baking()
 	_register_existing_buildings()
 	_register_existing_resources()
@@ -127,6 +141,7 @@ func _connect_hud_signals() -> void:
 func _process(delta: float) -> void:
 	_drain_execution_queue()
 	_process_queue_feedback(delta)
+	_process_pending_build_orders(delta)
 	if _placing_building:
 		_update_placement_preview()
 
@@ -134,6 +149,7 @@ func _process(delta: float) -> void:
 	_process_active_research(delta)
 	_refresh_input_state()
 	_update_queue_visuals()
+	_update_rally_visuals()
 
 	_hint_refresh_accum += delta
 	if _hint_refresh_accum >= 0.2:
@@ -301,7 +317,10 @@ func _unhandled_input(event: InputEvent) -> void:
 					_refresh_hint_label()
 					return
 			KEY_R:
-				_execute_command("train_worker")
+				if _placing_building:
+					_execute_command("placement_rotate")
+				else:
+					_execute_command("train_worker")
 				return
 			KEY_T:
 				_execute_command("train_soldier")
@@ -319,7 +338,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_execute_command("placement_cancel")
 			return
 		if mouse_button.button_index == MOUSE_BUTTON_LEFT and mouse_button.pressed:
-			_try_place_building(mouse_button.position)
+			_try_place_building(mouse_button.position, _is_queue_input_active())
 			return
 
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_RIGHT and mouse_button.pressed:
@@ -375,10 +394,16 @@ func _setup_queue_visual_root() -> void:
 	_queue_visual_root.name = "CommandQueueVisuals"
 	add_child(_queue_visual_root)
 
+func _setup_rally_visual_root() -> void:
+	_rally_visual_root = Node3D.new()
+	_rally_visual_root.name = "RallyPointVisuals"
+	add_child(_rally_visual_root)
+
 func _process_queue_feedback(delta: float) -> void:
-	if _queue_reject_feedback_timer <= 0.0:
-		return
-	_queue_reject_feedback_timer = maxf(0.0, _queue_reject_feedback_timer - delta)
+	if _queue_reject_feedback_timer > 0.0:
+		_queue_reject_feedback_timer = maxf(0.0, _queue_reject_feedback_timer - delta)
+	if _rally_reject_feedback_timer > 0.0:
+		_rally_reject_feedback_timer = maxf(0.0, _rally_reject_feedback_timer - delta)
 
 func _update_queue_visuals() -> void:
 	if _queue_visual_root == null:
@@ -439,7 +464,7 @@ func _rebuild_queue_visual_markers(unit_node: Node, queue_points: Array) -> void
 	var unit_node_3d: Node3D = unit_node as Node3D
 	if unit_node_3d == null:
 		return
-	var prev_position: Vector3 = unit_node_3d.global_position + Vector3(0.0, 0.06, 0.0)
+	var prev_position: Vector3 = unit_node_3d.global_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0)
 	var index: int = 0
 	for point_value in queue_points:
 		if not (point_value is Dictionary):
@@ -452,11 +477,11 @@ func _rebuild_queue_visual_markers(unit_node: Node, queue_points: Array) -> void
 		var marker: StaticBody3D = _create_queue_marker(unit_node, index, target_position)
 		_queue_visual_root.add_child(marker)
 		_queue_visible_marker_nodes.append(marker)
-		var link: MeshInstance3D = _create_queue_link(prev_position, target_position + Vector3(0.0, 0.06, 0.0))
+		var link: MeshInstance3D = _create_queue_link(prev_position, target_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0))
 		if link != null:
 			_queue_visual_root.add_child(link)
 			_queue_visible_marker_nodes.append(link)
-		prev_position = target_position + Vector3(0.0, 0.06, 0.0)
+		prev_position = target_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0)
 		index += 1
 		if index >= QUEUE_MARKER_MAX_VISIBLE:
 			break
@@ -515,10 +540,260 @@ func _create_queue_link(from_position: Vector3, to_position: Vector3) -> MeshIns
 	link_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	link_material.albedo_color = Color(0.9, 0.9, 0.2, 0.4)
 	link.material_override = link_material
-	link.global_position = from_position + delta * 0.5
-	link.look_at(to_position, Vector3.UP)
-	link.rotate_object_local(Vector3.RIGHT, deg_to_rad(90.0))
+	link.global_transform = Transform3D(_cylinder_basis_from_to(from_position, to_position), from_position + delta * 0.5)
 	return link
+
+func _cylinder_basis_from_to(from_position: Vector3, to_position: Vector3) -> Basis:
+	var delta: Vector3 = to_position - from_position
+	if delta.length_squared() <= 0.000001:
+		return Basis.IDENTITY
+	var direction: Vector3 = delta.normalized()
+	var up: Vector3 = Vector3.UP
+	var dot: float = clampf(up.dot(direction), -1.0, 1.0)
+	if dot > 0.9999:
+		return Basis.IDENTITY
+	if dot < -0.9999:
+		return Basis(Vector3.RIGHT, PI)
+	var axis: Vector3 = up.cross(direction).normalized()
+	var angle: float = acos(dot)
+	return Basis(axis, angle)
+
+func _update_rally_visuals() -> void:
+	if _rally_visual_root == null:
+		return
+	if not _selected_units.is_empty() or _selected_buildings.is_empty():
+		_last_rally_visual_signature = ""
+		_clear_rally_visual_markers()
+		return
+
+	var signature_parts: Array[String] = []
+	var entries: Array[Dictionary] = []
+	var blink_phase: int = int(Time.get_ticks_msec() / int(RALLY_ALERT_BLINK_INTERVAL_SEC * 1000.0)) % 2
+	for selected_building in _selected_buildings:
+		var building_node: Node3D = selected_building as Node3D
+		if building_node == null or not is_instance_valid(building_node):
+			continue
+		if not _is_player_owned(building_node):
+			continue
+		if not building_node.has_method("supports_rally_point"):
+			continue
+		if not bool(building_node.call("supports_rally_point")):
+			continue
+		if not building_node.has_method("get_rally_point_data"):
+			continue
+		var rally_data_value: Variant = building_node.call("get_rally_point_data")
+		if not (rally_data_value is Dictionary):
+			continue
+		var rally_data: Dictionary = rally_data_value as Dictionary
+		var hops: Array[Dictionary] = _extract_rally_hops(rally_data)
+		if hops.is_empty():
+			continue
+		var alerting: bool = building_node.has_method("is_rally_alerting") and bool(building_node.call("is_rally_alerting"))
+		var alert_phase: bool = alerting and blink_phase == 0
+		entries.append({
+			"building": building_node,
+			"hops": hops,
+			"alerting": alerting,
+			"alert_phase": alert_phase
+		})
+		var hop_parts: Array[String] = []
+		for hop in hops:
+			var position_value: Variant = hop.get("position", Vector3.ZERO)
+			if not (position_value is Vector3):
+				continue
+			var position: Vector3 = position_value as Vector3
+			var mode: String = str(hop.get("mode", "ground"))
+			hop_parts.append("%s:%.2f,%.2f,%.2f" % [mode, position.x, position.y, position.z])
+		signature_parts.append(
+			"%d|%s|%d|%d" % [building_node.get_instance_id(), ",".join(hop_parts), 1 if alerting else 0, 1 if alert_phase else 0]
+		)
+
+	var signature: String = ";".join(signature_parts)
+	if signature == _last_rally_visual_signature:
+		return
+	_last_rally_visual_signature = signature
+	_rebuild_rally_visual_markers(entries)
+
+func _clear_rally_visual_markers() -> void:
+	for rally_node in _rally_visible_nodes:
+		var node: Node = rally_node as Node
+		if node != null and is_instance_valid(node):
+			node.queue_free()
+	_rally_visible_nodes.clear()
+
+func _extract_rally_hops(rally_data: Dictionary) -> Array[Dictionary]:
+	var hops: Array[Dictionary] = []
+	var raw_hops: Variant = rally_data.get("hops", [])
+	if raw_hops is Array:
+		var raw_hops_array: Array = raw_hops as Array
+		for hop_value in raw_hops_array:
+			if not (hop_value is Dictionary):
+				continue
+			var raw_hop: Dictionary = hop_value as Dictionary
+			var mode: String = str(raw_hop.get("mode", "ground"))
+			var target_node: Node3D = raw_hop.get("target_node") as Node3D
+			var hop_position: Vector3 = Vector3.ZERO
+			var position_value: Variant = raw_hop.get("position", Vector3.ZERO)
+			if position_value is Vector3:
+				hop_position = position_value as Vector3
+			var valid_target: bool = target_node != null and is_instance_valid(target_node)
+			if valid_target and target_node.has_method("is_alive") and not bool(target_node.call("is_alive")):
+				valid_target = false
+			if valid_target and mode == "resource" and not target_node.is_in_group("resource_node"):
+				valid_target = false
+			if valid_target and mode == "relay" and not target_node.is_in_group("selectable_building"):
+				valid_target = false
+			if valid_target:
+				hop_position = target_node.global_position
+			else:
+				target_node = null
+				mode = "ground"
+			hops.append({
+				"position": Vector3(hop_position.x, 0.0, hop_position.z),
+				"target_node": target_node,
+				"mode": mode
+			})
+
+	if hops.is_empty():
+		var fallback_mode: String = str(rally_data.get("mode", "ground"))
+		var fallback_target: Node3D = rally_data.get("target_node") as Node3D
+		var fallback_position: Vector3 = Vector3.ZERO
+		var fallback_position_value: Variant = rally_data.get("position", Vector3.ZERO)
+		if fallback_position_value is Vector3:
+			fallback_position = fallback_position_value as Vector3
+		if fallback_target != null and is_instance_valid(fallback_target):
+			if fallback_target.has_method("is_alive") and not bool(fallback_target.call("is_alive")):
+				fallback_target = null
+				fallback_mode = "ground"
+			else:
+				fallback_position = fallback_target.global_position
+		else:
+			fallback_target = null
+			fallback_mode = "ground"
+		hops.append({
+			"position": Vector3(fallback_position.x, 0.0, fallback_position.z),
+			"target_node": fallback_target,
+			"mode": fallback_mode
+		})
+
+	while hops.size() > RALLY_MAX_HOPS:
+		hops.pop_back()
+	return hops
+
+func _rebuild_rally_visual_markers(entries: Array[Dictionary]) -> void:
+	_clear_rally_visual_markers()
+	for entry in entries:
+		var building_node: Node3D = entry.get("building") as Node3D
+		if building_node == null or not is_instance_valid(building_node):
+			continue
+		var alerting: bool = bool(entry.get("alerting", false))
+		var alert_phase: bool = bool(entry.get("alert_phase", false))
+		var hops_value: Variant = entry.get("hops", [])
+		if not (hops_value is Array):
+			continue
+		var hops: Array = hops_value as Array
+		var previous_position: Vector3 = building_node.global_position + Vector3(0.0, RALLY_VISUAL_HEIGHT, 0.0)
+		var hop_index: int = 0
+		for hop_value in hops:
+			if not (hop_value is Dictionary):
+				continue
+			var hop: Dictionary = hop_value as Dictionary
+			var position_value: Variant = hop.get("position", Vector3.ZERO)
+			if not (position_value is Vector3):
+				continue
+			var hop_position: Vector3 = position_value as Vector3
+			var mode: String = str(hop.get("mode", "ground"))
+			var link: MeshInstance3D = _create_rally_link(
+				previous_position,
+				hop_position + Vector3(0.0, RALLY_VISUAL_HEIGHT, 0.0),
+				mode,
+				alerting,
+				alert_phase
+			)
+			if link != null:
+				_rally_visual_root.add_child(link)
+				_rally_visible_nodes.append(link)
+			var flag: Node3D = _create_rally_flag(hop_position, mode, hop_index + 1, alerting, alert_phase)
+			if flag != null:
+				_rally_visual_root.add_child(flag)
+				_rally_visible_nodes.append(flag)
+			previous_position = hop_position + Vector3(0.0, RALLY_VISUAL_HEIGHT, 0.0)
+			hop_index += 1
+
+func _create_rally_flag(world_position: Vector3, mode: String, hop_index: int, alerting: bool = false, alert_phase: bool = false) -> Node3D:
+	var root: Node3D = Node3D.new()
+	root.name = "RallyFlag%d" % hop_index
+	root.global_position = world_position + Vector3(0.0, RALLY_VISUAL_HEIGHT, 0.0)
+	var color: Color = _rally_mode_color(mode)
+	var alpha_scale: float = 0.28 if alerting and not alert_phase else 1.0
+
+	var pole: MeshInstance3D = MeshInstance3D.new()
+	var pole_mesh: CylinderMesh = CylinderMesh.new()
+	pole_mesh.top_radius = 0.03
+	pole_mesh.bottom_radius = 0.03
+	pole_mesh.height = 0.7
+	pole.mesh = pole_mesh
+	pole.position = Vector3(0.0, 0.35, 0.0)
+	var pole_material: StandardMaterial3D = StandardMaterial3D.new()
+	pole_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pole_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pole_material.albedo_color = Color(color.r, color.g, color.b, 0.9 * alpha_scale)
+	pole.material_override = pole_material
+	root.add_child(pole)
+
+	var banner: MeshInstance3D = MeshInstance3D.new()
+	var banner_mesh: BoxMesh = BoxMesh.new()
+	banner_mesh.size = Vector3(0.42, 0.2, 0.05)
+	banner.mesh = banner_mesh
+	banner.position = Vector3(0.23, 0.62, 0.0)
+	var banner_material: StandardMaterial3D = StandardMaterial3D.new()
+	banner_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	banner_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	banner_material.albedo_color = Color(color.r, color.g, color.b, 0.75 * alpha_scale)
+	banner.material_override = banner_material
+	root.add_child(banner)
+
+	var index_label: Label3D = Label3D.new()
+	index_label.text = str(hop_index)
+	index_label.position = Vector3(-0.1, 0.76, 0.0)
+	index_label.font_size = 28
+	index_label.modulate = Color(1.0, 1.0, 1.0, 0.95 * alpha_scale)
+	root.add_child(index_label)
+	return root
+
+func _create_rally_link(from_position: Vector3, to_position: Vector3, mode: String, alerting: bool = false, alert_phase: bool = false) -> MeshInstance3D:
+	var delta: Vector3 = to_position - from_position
+	var length: float = delta.length()
+	if length < 0.08:
+		return null
+	var link: MeshInstance3D = MeshInstance3D.new()
+	var mesh: CylinderMesh = CylinderMesh.new()
+	mesh.top_radius = 0.025
+	mesh.bottom_radius = 0.025
+	mesh.height = length
+	link.mesh = mesh
+	var color: Color = _rally_mode_color(mode)
+	var alpha_scale: float = 0.24 if alerting and not alert_phase else 1.0
+	var link_material: StandardMaterial3D = StandardMaterial3D.new()
+	link_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	link_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	link_material.albedo_color = Color(color.r, color.g, color.b, 0.45 * alpha_scale)
+	link.material_override = link_material
+	link.global_transform = Transform3D(_cylinder_basis_from_to(from_position, to_position), from_position + delta * 0.5)
+	return link
+
+func _rally_mode_color(mode: String) -> Color:
+	match mode:
+		"attack":
+			return Color(0.94, 0.25, 0.24, 1.0)
+		"resource":
+			return Color(0.3, 0.9, 0.38, 1.0)
+		"follow":
+			return Color(0.26, 0.62, 0.98, 1.0)
+		"relay":
+			return Color(0.78, 0.35, 0.95, 1.0)
+		_:
+			return Color(0.95, 0.86, 0.25, 1.0)
 
 func _try_remove_queue_marker_at(screen_pos: Vector2) -> bool:
 	var ray_result: Dictionary = _raycast_from_screen(screen_pos, true)
@@ -798,7 +1073,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 		var placing_def: Dictionary = RTS_CATALOG.get_building_def(_placing_kind)
 		if not placing_def.is_empty():
 			placing_name = str(placing_def.get("display_name", placing_name))
-		return "Placing %s (%d): %s | LMB Confirm, RMB/ESC Cancel" % [placing_name, _placing_cost, placement_state]
+		return "Placing %s (%d): %s | LMB Confirm | Shift+LMB Chain | R Rotate | RMB/ESC Cancel" % [placing_name, _placing_cost, placement_state]
 	if _build_menu_open:
 		return _build_menu_hint_text()
 	if _pending_target_skill != "":
@@ -816,7 +1091,9 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 		return "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		if _selection_has_rally_building():
-			return "Selected Building: %d queue item(s) | R/T Train | RMB Set Rally" % queue_size
+			if _input_state == InputState.QUEUE_INPUT:
+				return "Selected Building: %d queue item(s) | Shift held: RMB append rally relay hop (max %d)" % [queue_size, RALLY_MAX_HOPS]
+			return "Selected Building: %d queue item(s) | R/T Train | RMB Set Rally | Shift+RMB Append Relay" % queue_size
 		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
 	if _input_state == InputState.QUEUE_INPUT:
 		return "Queue Input: Shift held | Alt+LMB queue marker trims this and later points | W%d S%d B%d" % [selected_worker_count, selected_soldier_count, selected_building_count]
@@ -832,16 +1109,20 @@ func _build_subgroup_text(mode: String, selection_total: int) -> String:
 func _build_command_hint() -> String:
 	if _queue_reject_feedback_timer > 0.0:
 		return "Queue is full (max 32). Command rejected."
+	if _rally_reject_feedback_timer > 0.0:
+		return "Rally relay chain is full (max %d hops)." % RALLY_MAX_HOPS
 	if _match_notice != "":
 		return _match_notice
 	if _placing_building:
-		return "Placement mode active. Use mouse or command card to confirm/cancel."
+		return "Placement mode active. LMB confirm, Shift+LMB chain build, R rotate, RMB/ESC cancel."
 	if _build_menu_open:
 		return "Build menu open. Select a building option or press ESC to close."
 	if _pending_target_skill != "":
 		return "Targeted skill armed. Left click world target, RMB/ESC to cancel."
 	if _input_state == InputState.QUEUE_INPUT:
 		return "Queue input active. Shift-held commands are appended."
+	if not _pending_build_orders.is_empty():
+		return "Constructing: %d active worker build order(s)." % _pending_build_orders.size()
 	if not _active_research.is_empty():
 		return _active_research_hint_text()
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
@@ -898,6 +1179,7 @@ func _build_command_entries() -> Array[Dictionary]:
 			"enabled": _placement_can_place and _minerals >= _placing_cost,
 			"cost_text": str(_placing_cost)
 		}))
+		entries.append(_command_entry("placement_rotate"))
 		entries.append(_command_entry("placement_cancel"))
 		return entries
 
@@ -1072,10 +1354,12 @@ func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop" % [_worker_cost, _soldier_cost],
-		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Alt+LMB Trim Queue"
+		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Shift+RMB(Building) Append Relay | Alt+LMB Trim Queue"
 	]
 	if _queue_reject_feedback_timer > 0.0:
 		lines[0] = "Queue full: max 32 commands per unit."
+	if _rally_reject_feedback_timer > 0.0:
+		lines[0] = "Rally relay full: max %d hops per building." % RALLY_MAX_HOPS
 	if _match_notice != "":
 		lines[0] = _match_notice
 		lines[1] = "Match Rule: %s" % _match_outcome_rule_id
@@ -1083,7 +1367,9 @@ func _build_notifications() -> Array[String]:
 		return lines
 	if _placing_building:
 		var state: String = "valid" if _placement_can_place else "invalid"
-		lines[0] = "Placement %s | Cost: %d Minerals" % [state, _placing_cost]
+		lines[0] = "Placement %s | Cost: %d | R Rotate | Shift+LMB Chain" % [state, _placing_cost]
+	elif not _pending_build_orders.is_empty():
+		lines[0] = "Worker construction active: %d order(s)." % _pending_build_orders.size()
 	elif _build_menu_open:
 		lines[0] = _build_menu_hint_text()
 	elif _pending_target_skill != "":
@@ -1585,9 +1871,11 @@ func _execute_command(command_id: String) -> void:
 			_refresh_hint_label()
 			return
 		"placement_confirm":
-			_confirm_building_placement()
+			_confirm_building_placement(_is_queue_input_active())
 		"placement_cancel":
 			_cancel_building_placement()
+		"placement_rotate":
+			_rotate_building_placement()
 		"train_worker":
 			_queue_worker_from_selection()
 		"train_soldier":
@@ -1671,11 +1959,11 @@ func _issue_context_command(screen_pos: Vector2, queue_command: bool = false) ->
 		"follow":
 			_issue_follow_command(resolved_target, queue_command)
 		"rally":
-			_apply_rally_point_command(resolved, screen_pos)
+			_apply_rally_point_command(resolved, screen_pos, queue_command)
 			_refresh_hint_label()
 		_:
 			if _selected_units.is_empty() and _selection_has_rally_building():
-				_apply_rally_point_command({"rally_mode": "ground"}, screen_pos)
+				_apply_rally_point_command({"rally_mode": "ground"}, screen_pos, queue_command)
 				_refresh_hint_label()
 			else:
 				_issue_move_command(screen_pos, queue_command)
@@ -1728,7 +2016,7 @@ func _resolve_rally_context_command(candidates: Array[Node], hit_position: Vecto
 
 	var building_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "rally_building")
 	if building_target != null:
-		return {"command": "rally", "target": building_target, "rally_mode": "ground"}
+		return {"command": "rally", "target": building_target, "rally_mode": "relay"}
 
 	return {"command": "rally", "rally_mode": "ground"}
 
@@ -2080,7 +2368,7 @@ func _issue_return_command(queue_command: bool = false) -> void:
 		var return_command: RTSCommand = RTS_COMMAND.make_return(dropoff, queue_command)
 		_schedule_unit_command(unit_node, return_command)
 
-func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2) -> void:
+func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2, append_hop: bool = false) -> void:
 	if not _selection_has_rally_building():
 		return
 	var target_node: Node3D = resolved.get("target") as Node3D
@@ -2090,8 +2378,9 @@ func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2) -> vo
 		rally_position = target_node.global_position
 	else:
 		var ground_variant: Variant = _ground_point_from_screen(screen_pos)
-		if ground_variant is Vector3:
-			rally_position = ground_variant as Vector3
+		if not (ground_variant is Vector3):
+			return
+		rally_position = ground_variant as Vector3
 
 	for selected_building in _selected_buildings:
 		if selected_building == null or not is_instance_valid(selected_building):
@@ -2103,7 +2392,9 @@ func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2) -> vo
 		if not bool(selected_building.call("supports_rally_point")):
 			continue
 		if selected_building.has_method("set_rally_point"):
-			selected_building.call("set_rally_point", rally_position, target_node, rally_mode)
+			var ok: bool = bool(selected_building.call("set_rally_point", rally_position, target_node, rally_mode, append_hop))
+			if not ok:
+				_rally_reject_feedback_timer = 1.1
 
 func _nearest_dropoff(from_position: Vector3) -> Node3D:
 	var nearest: Node3D = null
@@ -2128,6 +2419,7 @@ func _start_building_placement(kind: String) -> void:
 	_build_menu_open = false
 	_placing_kind = kind
 	_placing_cost = build_cost
+	_placement_rotation_y = 0.0
 	_placement_preview.visible = true
 	_update_placement_preview()
 	_refresh_hint_label()
@@ -2141,12 +2433,17 @@ func _cancel_building_placement() -> void:
 		_placement_preview.visible = false
 	_refresh_hint_label()
 
+func _rotate_building_placement() -> void:
+	if not _placing_building:
+		return
+	_placement_rotation_y = wrapf(_placement_rotation_y + PI * 0.5, 0.0, TAU)
+	_update_placement_preview()
+	_refresh_hint_label()
+
 func _create_placement_preview() -> void:
 	_placement_preview = MeshInstance3D.new()
-	var mesh: CylinderMesh = CylinderMesh.new()
-	mesh.top_radius = 1.35
-	mesh.bottom_radius = 1.35
-	mesh.height = 0.08
+	var mesh: BoxMesh = BoxMesh.new()
+	mesh.size = Vector3(2.6, 0.08, 1.8)
 	_placement_preview.mesh = mesh
 
 	_placement_preview_material = StandardMaterial3D.new()
@@ -2178,43 +2475,151 @@ func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
 
 	_placement_preview.visible = true
 	_placement_preview.global_position = snapped
+	_placement_preview.rotation.y = _placement_rotation_y
 	if _placement_can_place:
 		_placement_preview_material.albedo_color = Color(0.15, 0.95, 0.3, 0.35)
 	else:
 		_placement_preview_material.albedo_color = Color(0.95, 0.2, 0.2, 0.35)
 
-func _try_place_building(screen_pos: Vector2) -> void:
+func _try_place_building(screen_pos: Vector2, keep_mode: bool = false) -> void:
 	_update_placement_preview_from_screen(screen_pos)
-	_confirm_building_placement()
+	_confirm_building_placement(keep_mode)
 
-func _confirm_building_placement() -> void:
+func _confirm_building_placement(keep_mode: bool = false) -> void:
 	if not _placement_can_place:
 		return
 	if not try_spend_minerals(_placing_cost):
 		return
+	var target_position: Vector3 = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
+	var builder: Node3D = _nearest_selected_worker(target_position)
+	if builder != null:
+		_schedule_worker_build_order(builder, _placing_kind, target_position, _placement_rotation_y)
+	else:
+		var spawned_building: Node3D = _spawn_building_instance(_placing_kind, target_position, _placement_rotation_y)
+		if spawned_building == null:
+			add_minerals(_placing_cost)
+			return
 
+	var continue_placement: bool = keep_mode and _minerals >= _placing_cost
+	if continue_placement:
+		_update_placement_preview()
+		_refresh_hint_label()
+		return
+	_cancel_building_placement()
+
+func _nearest_selected_worker(world_position: Vector3) -> Node3D:
+	var nearest: Node3D = null
+	var best_distance_sq: float = INF
+	for unit_node in _selected_units:
+		var unit_3d: Node3D = unit_node as Node3D
+		if unit_3d == null or not is_instance_valid(unit_3d):
+			continue
+		if not _is_player_owned(unit_3d):
+			continue
+		if not unit_3d.has_method("is_worker_unit"):
+			continue
+		if not bool(unit_3d.call("is_worker_unit")):
+			continue
+		var distance_sq: float = unit_3d.global_position.distance_squared_to(world_position)
+		if nearest == null or distance_sq < best_distance_sq:
+			nearest = unit_3d
+			best_distance_sq = distance_sq
+	return nearest
+
+func _worker_build_time_for(kind: String) -> float:
+	var def: Dictionary = RTS_CATALOG.get_building_def(kind)
+	return maxf(0.25, float(def.get("build_time", DEFAULT_WORKER_BUILD_TIME)))
+
+func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float) -> void:
+	if builder == null or not is_instance_valid(builder):
+		return
+	_pending_build_orders.append({
+		"builder_path": builder.get_path(),
+		"kind": kind,
+		"position": world_position,
+		"rotation_y": rotation_y,
+		"started": false,
+		"progress": 0.0,
+		"build_time": _worker_build_time_for(kind),
+		"move_repath_timer": 0.0
+	})
+	var move_command: RTSCommand = RTS_COMMAND.make_move(world_position, false)
+	_schedule_unit_command(builder, move_command)
+
+func _process_pending_build_orders(delta: float) -> void:
+	if _pending_build_orders.is_empty():
+		return
+	for i in range(_pending_build_orders.size() - 1, -1, -1):
+		var order_value: Variant = _pending_build_orders[i]
+		if not (order_value is Dictionary):
+			_pending_build_orders.remove_at(i)
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var builder_path: NodePath = order.get("builder_path", NodePath("")) as NodePath
+		var builder_node: Node3D = get_node_or_null(builder_path) as Node3D
+		var kind: String = str(order.get("kind", ""))
+		if builder_node == null or not is_instance_valid(builder_node):
+			add_minerals(_building_cost(kind))
+			_pending_build_orders.remove_at(i)
+			continue
+		if not _is_player_owned(builder_node):
+			_pending_build_orders.remove_at(i)
+			continue
+		var target_position_value: Variant = order.get("position", Vector3.ZERO)
+		if not (target_position_value is Vector3):
+			_pending_build_orders.remove_at(i)
+			continue
+		var target_position: Vector3 = target_position_value as Vector3
+		var started: bool = bool(order.get("started", false))
+		if not started:
+			var repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
+			if repath_timer <= 0.0:
+				repath_timer = BUILD_ORDER_MOVE_REFRESH
+				var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+				_schedule_unit_command(builder_node, move_command)
+			order["move_repath_timer"] = repath_timer
+			if builder_node.global_position.distance_to(target_position) <= BUILD_ORDER_START_DISTANCE:
+				order["started"] = true
+				order["progress"] = 0.0
+				order["move_repath_timer"] = 0.0
+				var stop_command: RTSCommand = RTS_COMMAND.make_stop(false)
+				_schedule_unit_command(builder_node, stop_command)
+			_pending_build_orders[i] = order
+			continue
+
+		var progress: float = float(order.get("progress", 0.0)) + delta
+		var build_time: float = maxf(0.25, float(order.get("build_time", DEFAULT_WORKER_BUILD_TIME)))
+		if progress < build_time:
+			order["progress"] = progress
+			_pending_build_orders[i] = order
+			continue
+
+		var rotation_y: float = float(order.get("rotation_y", 0.0))
+		var spawned: Node3D = _spawn_building_instance(kind, target_position, rotation_y)
+		if spawned == null:
+			add_minerals(_building_cost(kind))
+		_pending_build_orders.remove_at(i)
+
+func _spawn_building_instance(kind: String, world_position: Vector3, rotation_y: float) -> Node3D:
 	var instance: Node = BUILDING_SCENE.instantiate()
 	var building: Node3D = instance as Node3D
 	if building == null:
-		add_minerals(_placing_cost)
-		return
-
+		return null
 	if _buildings_root != null:
 		_buildings_root.add_child(building)
 	else:
 		add_child(building)
-
-	building.global_position = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
+	building.global_position = Vector3(world_position.x, 0.0, world_position.z)
+	building.rotation.y = rotation_y
 	if building.has_method("configure_by_kind"):
-		building.call("configure_by_kind", _placing_kind)
-	elif _placing_kind == "barracks" and building.has_method("configure_as_barracks"):
+		building.call("configure_by_kind", kind)
+	elif kind == "barracks" and building.has_method("configure_as_barracks"):
 		building.call("configure_as_barracks")
-	elif _placing_kind == "tower" and building.has_method("configure_as_tower"):
+	elif kind == "tower" and building.has_method("configure_as_tower"):
 		building.call("configure_as_tower")
-
 	_register_building(building)
 	_request_navmesh_rebake("building_placed")
-	_cancel_building_placement()
+	return building
 
 func _is_build_spot_valid(world_pos: Vector3) -> bool:
 	if absf(world_pos.x) > 56.0 or absf(world_pos.z) > 56.0:
@@ -2234,6 +2639,17 @@ func _is_build_spot_valid(world_pos: Vector3) -> bool:
 		if resource == null:
 			continue
 		if world_pos.distance_to(resource.global_position) < RESOURCE_BLOCK_RADIUS:
+			return false
+
+	for order_value in _pending_build_orders:
+		if not (order_value is Dictionary):
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var order_position_value: Variant = order.get("position", Vector3.ZERO)
+		if not (order_position_value is Vector3):
+			continue
+		var order_position: Vector3 = order_position_value as Vector3
+		if world_pos.distance_to(order_position) < BUILDING_BLOCK_RADIUS:
 			return false
 
 	return true
@@ -2342,24 +2758,40 @@ func _apply_rally_to_spawned_unit(unit_node: Node, source_building: Node) -> voi
 	var rally_data: Dictionary = rally_data_value as Dictionary
 	if rally_data.is_empty():
 		return
-	var mode: String = str(rally_data.get("mode", "ground"))
-	var target_node: Node3D = rally_data.get("target_node") as Node3D
+	var hops: Array[Dictionary] = _extract_rally_hops(rally_data)
+	if hops.is_empty():
+		return
+	var issued_count: int = 0
+	for hop in hops:
+		var rally_command_value: Variant = _build_rally_command_from_hop(unit_node, source_building, hop, issued_count > 0)
+		var rally_command: RTSCommand = rally_command_value as RTSCommand
+		if rally_command == null:
+			continue
+		_schedule_unit_command(unit_node, rally_command)
+		issued_count += 1
+
+func _build_rally_command_from_hop(unit_node: Node, source_building: Node, hop: Dictionary, queue_command: bool) -> Variant:
+	var mode: String = str(hop.get("mode", "ground"))
+	var target_node: Node3D = hop.get("target_node") as Node3D
 	var target_position: Vector3 = Vector3.ZERO
-	var has_target_position: bool = rally_data.has("position")
-	var target_position_value: Variant = rally_data.get("position", Vector3.ZERO)
-	if target_position_value is Vector3:
-		target_position = target_position_value as Vector3
+	var has_target_position: bool = false
+	var position_value: Variant = hop.get("position", Vector3.ZERO)
+	if position_value is Vector3:
+		target_position = position_value as Vector3
+		has_target_position = true
+	if target_node != null and is_instance_valid(target_node):
+		target_position = target_node.global_position
+		has_target_position = true
+	var is_worker: bool = unit_node.has_method("is_worker_unit") and bool(unit_node.call("is_worker_unit"))
 
 	match mode:
 		"attack":
 			if target_node != null and is_instance_valid(target_node):
-				if unit_node.has_method("is_worker_unit") and bool(unit_node.call("is_worker_unit")):
-					_schedule_unit_command(unit_node, RTS_COMMAND.make_move(target_node.global_position, false))
-					return
-				_schedule_unit_command(unit_node, RTS_COMMAND.make_attack(target_node, false))
-				return
+				if is_worker:
+					return RTS_COMMAND.make_move(target_position, queue_command)
+				return RTS_COMMAND.make_attack(target_node, queue_command)
 		"resource":
-			if target_node != null and is_instance_valid(target_node) and target_node.is_in_group("resource_node"):
+			if is_worker and target_node != null and is_instance_valid(target_node) and target_node.is_in_group("resource_node"):
 				var dropoff: Node3D = null
 				var source_building_3d: Node3D = source_building as Node3D
 				if source_building_3d != null and source_building_3d.is_in_group("resource_dropoff"):
@@ -2367,16 +2799,15 @@ func _apply_rally_to_spawned_unit(unit_node: Node, source_building: Node) -> voi
 				elif unit_node is Node3D:
 					dropoff = _nearest_dropoff((unit_node as Node3D).global_position)
 				if dropoff != null:
-					_schedule_unit_command(unit_node, RTS_COMMAND.make_gather(target_node, dropoff, false))
-					return
+					return RTS_COMMAND.make_gather(target_node, dropoff, queue_command)
 		"follow":
 			if target_node != null and is_instance_valid(target_node):
 				var follow_offset: Vector3 = Vector3(3.8, 0.0, 0.0)
-				_schedule_unit_command(unit_node, RTS_COMMAND.make_move(target_node.global_position + follow_offset, false))
-				return
+				return RTS_COMMAND.make_move(target_node.global_position + follow_offset, queue_command)
 
-	if has_target_position:
-		_schedule_unit_command(unit_node, RTS_COMMAND.make_move(target_position, false))
+	if not has_target_position:
+		return null
+	return RTS_COMMAND.make_move(target_position, queue_command)
 
 func _find_open_spawn_position(origin: Vector3) -> Vector3:
 	for ring in 4:

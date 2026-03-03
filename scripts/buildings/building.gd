@@ -1,6 +1,8 @@
 extends StaticBody3D
 
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RALLY_MAX_HOPS: int = 3
+const RALLY_ALERT_DURATION: float = 1.2
 
 signal production_finished(unit_kind: String, spawn_position: Vector3)
 
@@ -32,6 +34,8 @@ var _has_rally_point: bool = false
 var _rally_point_position: Vector3 = Vector3.ZERO
 var _rally_target_node: Node = null
 var _rally_mode: String = "ground"
+var _rally_hops: Array[Dictionary] = []
+var _rally_alert_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("selectable_building")
@@ -42,6 +46,9 @@ func _ready() -> void:
 	_selection_ring.visible = false
 
 func _process(delta: float) -> void:
+	if _rally_alert_timer > 0.0:
+		_rally_alert_timer = maxf(0.0, _rally_alert_timer - delta)
+
 	if _queue_unit_kinds.is_empty():
 		_production_timer = 0.0
 	else:
@@ -77,6 +84,7 @@ func get_health_points() -> float:
 func apply_damage(amount: float, _source: Node = null) -> void:
 	if amount <= 0.0 or not is_alive():
 		return
+	_rally_alert_timer = RALLY_ALERT_DURATION
 	_health = maxf(0.0, _health - amount)
 	_play_hit_flash()
 	if _health <= 0.0:
@@ -159,38 +167,102 @@ func get_build_skill_ids() -> Array[String]:
 func supports_rally_point() -> bool:
 	return can_queue_worker or can_queue_soldier
 
-func set_rally_point(target_position: Vector3, target_node: Node = null, mode: String = "ground") -> bool:
+func set_rally_point(target_position: Vector3, target_node: Node = null, mode: String = "ground", append_hop: bool = false) -> bool:
 	if not supports_rally_point():
 		return false
-	_has_rally_point = true
-	_rally_point_position = Vector3(target_position.x, 0.0, target_position.z)
-	_rally_target_node = target_node
-	_rally_mode = mode
+	var normalized_position: Vector3 = Vector3(target_position.x, 0.0, target_position.z)
+	var hop: Dictionary = {
+		"position": normalized_position,
+		"target_node": target_node,
+		"mode": mode
+	}
+	if append_hop:
+		if _rally_hops.size() >= RALLY_MAX_HOPS:
+			return false
+		_rally_hops.append(hop)
+	else:
+		_rally_hops.clear()
+		_rally_hops.append(hop)
+	_sync_rally_legacy_fields()
 	return true
 
 func clear_rally_point() -> void:
+	_rally_hops.clear()
 	_has_rally_point = false
 	_rally_point_position = Vector3.ZERO
 	_rally_target_node = null
 	_rally_mode = "ground"
 
 func get_rally_point_data() -> Dictionary:
-	if not _has_rally_point:
+	if _rally_hops.is_empty() and not _has_rally_point:
 		return {}
-	var valid_target: Node = null
-	if _rally_target_node != null and is_instance_valid(_rally_target_node):
-		valid_target = _rally_target_node
+	var hops: Array[Dictionary] = []
+	for hop_value in _rally_hops:
+		if not (hop_value is Dictionary):
+			continue
+		var hop: Dictionary = hop_value as Dictionary
+		var hop_position_value: Variant = hop.get("position", Vector3.ZERO)
+		if not (hop_position_value is Vector3):
+			continue
+		var hop_position: Vector3 = hop_position_value as Vector3
+		var hop_target_node: Node = hop.get("target_node") as Node
+		var valid_target: Node = null
+		if hop_target_node != null and is_instance_valid(hop_target_node):
+			valid_target = hop_target_node
+		hops.append({
+			"position": Vector3(hop_position.x, 0.0, hop_position.z),
+			"target_node": valid_target,
+			"mode": str(hop.get("mode", "ground"))
+		})
+	if hops.is_empty():
+		var fallback_target: Node = null
+		if _rally_target_node != null and is_instance_valid(_rally_target_node):
+			fallback_target = _rally_target_node
+		hops.append({
+			"position": _rally_point_position,
+			"target_node": fallback_target,
+			"mode": _rally_mode
+		})
+	var first_hop: Dictionary = hops[0]
 	return {
-		"position": _rally_point_position,
-		"target_node": valid_target,
-		"mode": _rally_mode
+		"position": first_hop.get("position", Vector3.ZERO),
+		"target_node": first_hop.get("target_node", null),
+		"mode": str(first_hop.get("mode", "ground")),
+		"hops": hops,
+		"max_hops": RALLY_MAX_HOPS
 	}
+
+func get_rally_hop_count() -> int:
+	if not _rally_hops.is_empty():
+		return _rally_hops.size()
+	return 1 if _has_rally_point else 0
+
+func is_rally_alerting() -> bool:
+	return _rally_alert_timer > 0.0
+
+func _sync_rally_legacy_fields() -> void:
+	if _rally_hops.is_empty():
+		_has_rally_point = false
+		_rally_point_position = Vector3.ZERO
+		_rally_target_node = null
+		_rally_mode = "ground"
+		return
+	var first_hop: Dictionary = _rally_hops[0]
+	var first_position: Variant = first_hop.get("position", Vector3.ZERO)
+	_has_rally_point = true
+	if first_position is Vector3:
+		_rally_point_position = first_position as Vector3
+	else:
+		_rally_point_position = Vector3.ZERO
+	_rally_target_node = first_hop.get("target_node") as Node
+	_rally_mode = str(first_hop.get("mode", "ground"))
 
 func configure_by_kind(kind: String) -> void:
 	_apply_building_config(kind)
 	_queue_unit_kinds.clear()
 	_queue_build_times.clear()
 	_production_timer = 0.0
+	_rally_alert_timer = 0.0
 	_attack_target = null
 	_attack_timer = 0.0
 	clear_rally_point()

@@ -299,6 +299,13 @@ const SKILL_DEFS: Dictionary = {
 		"hotkey": "LMB",
 		"target_mode": "none"
 	},
+	"placement_rotate": {
+		"id": "placement_rotate",
+		"label": "Rotate",
+		"icon_path": ICON_ROOT_UI + "ui_hold.png",
+		"hotkey": "R",
+		"target_mode": "none"
+	},
 	"placement_cancel": {
 		"id": "placement_cancel",
 		"label": "Cancel",
