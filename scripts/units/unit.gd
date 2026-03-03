@@ -20,6 +20,7 @@ const UNIT_COLLISION_LAYER_BIT: int = 1 << 1
 @export var auto_acquire_range: float = 8.0
 @export var attack_move_acquire_range: float = 11.0
 @export var retarget_interval: float = 0.2
+@export var max_command_queue: int = 32
 @export var debug_nav_log: bool = false
 @export var debug_nav_log_interval: float = 0.8
 
@@ -61,6 +62,8 @@ var _default_collision_mask: int = 0
 var _worker_collection_profile_active: bool = false
 var _command_queue: Array[RefCounted] = []
 var _active_command: RefCounted = null
+
+signal command_queue_changed
 
 func _ready() -> void:
 	add_to_group("selectable_unit")
@@ -155,23 +158,68 @@ func submit_command(command: RefCounted) -> bool:
 		return false
 
 	if rts_command.is_queue_command:
+		if not can_enqueue_command():
+			return false
 		_command_queue.append(rts_command)
 		if _active_command == null:
 			_start_next_queued_command()
+		_emit_command_queue_changed()
 		return true
 
 	_command_queue.clear()
 	_active_command = rts_command
 	_execute_rts_command(rts_command)
+	_emit_command_queue_changed()
 	return true
 
 func clear_pending_commands() -> void:
 	_command_queue.clear()
 	_active_command = null
+	_emit_command_queue_changed()
 
 func get_pending_command_count() -> int:
 	var active_count: int = 1 if _active_command != null else 0
 	return active_count + _command_queue.size()
+
+func can_enqueue_command() -> bool:
+	return get_pending_command_count() < maxi(1, max_command_queue)
+
+func get_command_queue_points(include_active: bool = true, max_points: int = 32) -> Array[Dictionary]:
+	var points: Array[Dictionary] = []
+	var cap: int = maxi(1, max_points)
+	if include_active:
+		var active_command: RTSCommand = _active_command as RTSCommand
+		if active_command != null:
+			_append_queue_point(points, active_command, false)
+	if points.size() >= cap:
+		return points
+	for queued_value in _command_queue:
+		var queued_command: RTSCommand = queued_value as RTSCommand
+		if queued_command == null:
+			continue
+		_append_queue_point(points, queued_command, true)
+		if points.size() >= cap:
+			break
+	return points
+
+func remove_queued_commands_from(visible_index: int) -> bool:
+	if visible_index < 0:
+		return false
+	var normalized: int = visible_index
+	if _active_command != null:
+		if normalized == 0:
+			command_stop(true)
+			_active_command = null
+			_command_queue.clear()
+			_emit_command_queue_changed()
+			return true
+		normalized -= 1
+	if normalized < 0 or normalized >= _command_queue.size():
+		return false
+	while _command_queue.size() > normalized:
+		_command_queue.pop_back()
+	_emit_command_queue_changed()
+	return true
 
 func command_move(target: Vector3, preserve_queue: bool = false) -> void:
 	if not preserve_queue:
@@ -293,6 +341,7 @@ func _process_command_queue() -> void:
 		var active_command: RTSCommand = _active_command as RTSCommand
 		if active_command == null or _is_command_complete(active_command):
 			_active_command = null
+			_emit_command_queue_changed()
 	if _active_command != null:
 		return
 	if _command_queue.is_empty():
@@ -310,6 +359,7 @@ func _start_next_queued_command() -> void:
 	_execute_rts_command(queued_command)
 	if queued_command.command_type == RTSCommand.CommandType.STOP:
 		_active_command = null
+	_emit_command_queue_changed()
 
 func _is_command_complete(command: RTSCommand) -> bool:
 	match command.command_type:
@@ -370,6 +420,30 @@ func _execute_rts_command(command: RTSCommand) -> void:
 			command_stop(true)
 		_:
 			command_stop(true)
+
+func _append_queue_point(points: Array[Dictionary], command: RTSCommand, queued: bool) -> void:
+	var position: Vector3 = command.target_position
+	match command.command_type:
+		RTSCommand.CommandType.ATTACK:
+			var attack_target: Node3D = command.target_unit as Node3D
+			if attack_target != null and is_instance_valid(attack_target):
+				position = attack_target.global_position
+		RTSCommand.CommandType.GATHER:
+			var resource_target: Node3D = command.payload.get("resource") as Node3D
+			if resource_target != null and is_instance_valid(resource_target):
+				position = resource_target.global_position
+		RTSCommand.CommandType.RETURN_RESOURCE:
+			var dropoff_target: Node3D = command.payload.get("dropoff") as Node3D
+			if dropoff_target != null and is_instance_valid(dropoff_target):
+				position = dropoff_target.global_position
+	points.append({
+		"position": position,
+		"command_type": command.command_type,
+		"queued": queued
+	})
+
+func _emit_command_queue_changed() -> void:
+	emit_signal("command_queue_changed")
 
 func apply_damage(amount: float, _source: Node = null) -> void:
 	if amount <= 0.0 or not is_alive():

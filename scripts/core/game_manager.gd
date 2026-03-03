@@ -13,6 +13,9 @@ const BUILDING_BLOCK_RADIUS: float = 3.8
 const RESOURCE_BLOCK_RADIUS: float = 3.2
 const PLAYER_TEAM_ID: int = 1
 const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
+const QUEUE_MARKER_GROUP: StringName = &"command_queue_marker"
+const QUEUE_MARKER_LAYER: int = 1 << 5
+const QUEUE_MARKER_MAX_VISIBLE: int = 32
 
 enum InputState {
 	IDLE,
@@ -71,6 +74,10 @@ var _unlocked_techs: Dictionary = {}
 var _active_research: Dictionary = {}
 var _nav_rebake_in_progress: bool = false
 var _nav_rebake_pending: bool = false
+var _queue_visual_root: Node3D
+var _queue_visible_marker_nodes: Array[Node] = []
+var _queue_reject_feedback_timer: float = 0.0
+var _last_queue_visual_signature: String = ""
 
 func _ready() -> void:
 	add_to_group("game_manager")
@@ -83,6 +90,7 @@ func _ready() -> void:
 	_apply_runtime_config()
 	_connect_hud_signals()
 	_create_placement_preview()
+	_setup_queue_visual_root()
 	_setup_runtime_navigation_baking()
 	_register_existing_buildings()
 	_register_existing_resources()
@@ -117,12 +125,14 @@ func _connect_hud_signals() -> void:
 
 func _process(delta: float) -> void:
 	_drain_execution_queue()
+	_process_queue_feedback(delta)
 	if _placing_building:
 		_update_placement_preview()
 
 	_process_match_rules(delta)
 	_process_active_research(delta)
 	_refresh_input_state()
+	_update_queue_visuals()
 
 	_hint_refresh_accum += delta
 	if _hint_refresh_accum >= 0.2:
@@ -225,6 +235,10 @@ func _input(event: InputEvent) -> void:
 	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_LEFT:
 		if mouse_button.pressed:
+			if Input.is_key_pressed(KEY_ALT):
+				if _try_remove_queue_marker_at(mouse_button.position):
+					_refresh_hint_label()
+					return
 			if _pending_target_skill != "":
 				if _pick_ui_control(mouse_button.position) != null:
 					return
@@ -355,11 +369,190 @@ func _refresh_input_state() -> void:
 		next_state = InputState.UNIT_SELECTED
 	_input_state = next_state
 
+func _setup_queue_visual_root() -> void:
+	_queue_visual_root = Node3D.new()
+	_queue_visual_root.name = "CommandQueueVisuals"
+	add_child(_queue_visual_root)
+
+func _process_queue_feedback(delta: float) -> void:
+	if _queue_reject_feedback_timer <= 0.0:
+		return
+	_queue_reject_feedback_timer = maxf(0.0, _queue_reject_feedback_timer - delta)
+
+func _update_queue_visuals() -> void:
+	if _queue_visual_root == null:
+		return
+	if _selected_units.size() != 1:
+		_last_queue_visual_signature = ""
+		_clear_queue_visual_markers()
+		return
+
+	var unit_node: Node = _selected_units[0]
+	if unit_node == null or not is_instance_valid(unit_node):
+		_last_queue_visual_signature = ""
+		_clear_queue_visual_markers()
+		return
+	if not unit_node.has_method("get_command_queue_points"):
+		_last_queue_visual_signature = ""
+		_clear_queue_visual_markers()
+		return
+
+	var queue_points_variant: Variant = unit_node.call("get_command_queue_points", true, QUEUE_MARKER_MAX_VISIBLE)
+	if not (queue_points_variant is Array):
+		_last_queue_visual_signature = ""
+		_clear_queue_visual_markers()
+		return
+	var queue_points: Array = queue_points_variant as Array
+	if queue_points.is_empty():
+		_last_queue_visual_signature = ""
+		_clear_queue_visual_markers()
+		return
+
+	var signature_parts: Array[String] = []
+	for point_value in queue_points:
+		if not (point_value is Dictionary):
+			continue
+		var point: Dictionary = point_value as Dictionary
+		var position_value: Variant = point.get("position", Vector3.ZERO)
+		if not (position_value is Vector3):
+			continue
+		var pos: Vector3 = position_value as Vector3
+		var command_type: int = int(point.get("command_type", 0))
+		var queued: bool = bool(point.get("queued", true))
+		signature_parts.append("%d:%s:%.2f,%.2f,%.2f" % [command_type, "1" if queued else "0", pos.x, pos.y, pos.z])
+	var signature: String = "%d|%s" % [unit_node.get_instance_id(), ";".join(signature_parts)]
+	if signature == _last_queue_visual_signature:
+		return
+	_last_queue_visual_signature = signature
+	_rebuild_queue_visual_markers(unit_node, queue_points)
+
+func _clear_queue_visual_markers() -> void:
+	for marker_node in _queue_visible_marker_nodes:
+		var node: Node = marker_node as Node
+		if node != null and is_instance_valid(node):
+			node.queue_free()
+	_queue_visible_marker_nodes.clear()
+
+func _rebuild_queue_visual_markers(unit_node: Node, queue_points: Array) -> void:
+	_clear_queue_visual_markers()
+	var unit_node_3d: Node3D = unit_node as Node3D
+	if unit_node_3d == null:
+		return
+	var prev_position: Vector3 = unit_node_3d.global_position + Vector3(0.0, 0.06, 0.0)
+	var index: int = 0
+	for point_value in queue_points:
+		if not (point_value is Dictionary):
+			continue
+		var point: Dictionary = point_value as Dictionary
+		var target_position: Vector3 = Vector3.ZERO
+		var position_value: Variant = point.get("position", Vector3.ZERO)
+		if position_value is Vector3:
+			target_position = position_value as Vector3
+		var marker: StaticBody3D = _create_queue_marker(unit_node, index, target_position)
+		_queue_visual_root.add_child(marker)
+		_queue_visible_marker_nodes.append(marker)
+		var link: MeshInstance3D = _create_queue_link(prev_position, target_position + Vector3(0.0, 0.06, 0.0))
+		if link != null:
+			_queue_visual_root.add_child(link)
+			_queue_visible_marker_nodes.append(link)
+		prev_position = target_position + Vector3(0.0, 0.06, 0.0)
+		index += 1
+		if index >= QUEUE_MARKER_MAX_VISIBLE:
+			break
+
+func _create_queue_marker(unit_node: Node, queue_index: int, world_position: Vector3) -> StaticBody3D:
+	var marker: StaticBody3D = StaticBody3D.new()
+	marker.name = "QueueMarker%d" % queue_index
+	marker.add_to_group(str(QUEUE_MARKER_GROUP))
+	marker.collision_layer = QUEUE_MARKER_LAYER
+	marker.collision_mask = 0
+	marker.global_position = world_position + Vector3(0.0, 0.06, 0.0)
+	marker.set_meta("queue_index", queue_index)
+	marker.set_meta("unit_path", unit_node.get_path())
+
+	var collision: CollisionShape3D = CollisionShape3D.new()
+	var shape: SphereShape3D = SphereShape3D.new()
+	shape.radius = 0.32
+	collision.shape = shape
+	collision.position = Vector3(0.0, 0.14, 0.0)
+	marker.add_child(collision)
+
+	var mesh_instance: MeshInstance3D = MeshInstance3D.new()
+	var sphere: SphereMesh = SphereMesh.new()
+	sphere.radius = 0.24
+	sphere.height = 0.48
+	mesh_instance.mesh = sphere
+	mesh_instance.position = Vector3(0.0, 0.14, 0.0)
+	var marker_material: StandardMaterial3D = StandardMaterial3D.new()
+	marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	marker_material.albedo_color = Color(0.95, 0.95, 0.25, 0.78)
+	mesh_instance.material_override = marker_material
+	marker.add_child(mesh_instance)
+
+	var label: Label3D = Label3D.new()
+	label.text = str(queue_index + 1)
+	label.position = Vector3(0.0, 0.56, 0.0)
+	label.font_size = 32
+	label.modulate = Color(1.0, 0.98, 0.55, 1.0)
+	marker.add_child(label)
+	return marker
+
+func _create_queue_link(from_position: Vector3, to_position: Vector3) -> MeshInstance3D:
+	var delta: Vector3 = to_position - from_position
+	var length: float = delta.length()
+	if length < 0.08:
+		return null
+	var link: MeshInstance3D = MeshInstance3D.new()
+	var mesh: CylinderMesh = CylinderMesh.new()
+	mesh.top_radius = 0.03
+	mesh.bottom_radius = 0.03
+	mesh.height = length
+	link.mesh = mesh
+	var link_material: StandardMaterial3D = StandardMaterial3D.new()
+	link_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	link_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	link_material.albedo_color = Color(0.9, 0.9, 0.2, 0.4)
+	link.material_override = link_material
+	link.global_position = from_position + delta * 0.5
+	link.look_at(to_position, Vector3.UP)
+	link.rotate_object_local(Vector3.RIGHT, deg_to_rad(90.0))
+	return link
+
+func _try_remove_queue_marker_at(screen_pos: Vector2) -> bool:
+	var ray_result: Dictionary = _raycast_from_screen(screen_pos, true)
+	if ray_result.is_empty():
+		return false
+	var collider: Node = ray_result.get("collider") as Node
+	if collider == null:
+		return false
+	if not collider.is_in_group(str(QUEUE_MARKER_GROUP)):
+		return false
+	if not collider.has_meta("queue_index") or not collider.has_meta("unit_path"):
+		return false
+	var queue_index: int = int(collider.get_meta("queue_index"))
+	var unit_path: NodePath = collider.get_meta("unit_path") as NodePath
+	if str(unit_path) == "":
+		return false
+	var unit_node: Node = get_node_or_null(unit_path)
+	if unit_node == null or not is_instance_valid(unit_node):
+		return false
+	if not unit_node.has_method("remove_queued_commands_from"):
+		return false
+	var removed: bool = bool(unit_node.call("remove_queued_commands_from", queue_index))
+	if removed:
+		_update_queue_visuals()
+	return removed
+
 func _schedule_unit_command(unit_node: Node, command: RTSCommand) -> void:
 	if unit_node == null or not is_instance_valid(unit_node):
 		return
 	if command == null:
 		return
+	if command.is_queue_command and unit_node.has_method("can_enqueue_command"):
+		if not bool(unit_node.call("can_enqueue_command")):
+			_queue_reject_feedback_timer = 1.1
+			return
 	_execution_queue.append({
 		"unit": unit_node,
 		"command": command
@@ -623,7 +816,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
 	if _input_state == InputState.QUEUE_INPUT:
-		return "Queue Input: Shift held | Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
+		return "Queue Input: Shift held | Alt+LMB queue marker trims this and later points | W%d S%d B%d" % [selected_worker_count, selected_soldier_count, selected_building_count]
 	return "Selected -> Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
 
 func _build_subgroup_text(mode: String, selection_total: int) -> String:
@@ -634,6 +827,8 @@ func _build_subgroup_text(mode: String, selection_total: int) -> String:
 	return "Subgroup: None"
 
 func _build_command_hint() -> String:
+	if _queue_reject_feedback_timer > 0.0:
+		return "Queue is full (max 32). Command rejected."
 	if _match_notice != "":
 		return _match_notice
 	if _placing_building:
@@ -872,8 +1067,10 @@ func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop" % [_worker_cost, _soldier_cost],
-		"Shift + Left Click: Additive Select | Shift + Right Click: Queue Command"
+		"Shift + Left Click: Additive Select | Shift + Right Click: Queue Command | Alt + Left Click: Trim Queue"
 	]
+	if _queue_reject_feedback_timer > 0.0:
+		lines[0] = "Queue full: max 32 commands per unit."
 	if _match_notice != "":
 		lines[0] = _match_notice
 		lines[1] = "Match Rule: %s" % _match_outcome_rule_id
@@ -1960,11 +2157,15 @@ func _ground_point_from_screen(screen_pos: Vector2) -> Variant:
 		return null
 	return intersection
 
-func _raycast_from_screen(screen_pos: Vector2) -> Dictionary:
+func _raycast_from_screen(screen_pos: Vector2, include_queue_markers: bool = false) -> Dictionary:
 	var origin: Vector3 = _camera.project_ray_origin(screen_pos)
 	var normal: Vector3 = _camera.project_ray_normal(screen_pos)
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, origin + normal * 4000.0)
 	query.collide_with_areas = true
+	var collision_mask: int = 0x7fffffff
+	if not include_queue_markers:
+		collision_mask &= ~QUEUE_MARKER_LAYER
+	query.collision_mask = collision_mask
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 func _add_selected_unit(unit: Node) -> void:
