@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/core/game_manager.gd" id="1_game_manager"]
 [ext_resource type="PackedScene" path="res://scenes/world/world.tscn" id="2_world"]
@@ -6,12 +6,16 @@
 [ext_resource type="PackedScene" path="res://scenes/buildings/building.tscn" id="4_building"]
 [ext_resource type="Script" path="res://scripts/core/rts_camera.gd" id="5_camera"]
 [ext_resource type="Script" path="res://scripts/ui/selection_overlay.gd" id="6_overlay"]
+[ext_resource type="PackedScene" path="res://scenes/world/resource_node.tscn" id="7_resource_node"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_game_manager")
 camera_path = NodePath("RTSCamera")
 units_root_path = NodePath("Units")
+buildings_root_path = NodePath("Buildings")
 selection_overlay_path = NodePath("UI/SelectionOverlay")
+resource_label_path = NodePath("UI/ResourceLabel")
+hint_label_path = NodePath("UI/HintLabel")
 
 [node name="World" parent="." instance=ExtResource("2_world")]
 
@@ -19,12 +23,15 @@ selection_overlay_path = NodePath("UI/SelectionOverlay")
 
 [node name="WorkerA" parent="Units" instance=ExtResource("3_unit")]
 position = Vector3(-6, 0, -2)
+is_worker = true
 
 [node name="WorkerB" parent="Units" instance=ExtResource("3_unit")]
 position = Vector3(-4, 0, -1)
+is_worker = true
 
 [node name="WorkerC" parent="Units" instance=ExtResource("3_unit")]
 position = Vector3(-5, 0, 1)
+is_worker = true
 
 [node name="SoldierA" parent="Units" instance=ExtResource("3_unit")]
 position = Vector3(-2, 0, -2)
@@ -33,6 +40,21 @@ position = Vector3(-2, 0, -2)
 
 [node name="MainBase" parent="Buildings" instance=ExtResource("4_building")]
 position = Vector3(8, 0, 0)
+building_kind = "base"
+is_resource_dropoff = true
+can_queue_worker = true
+can_queue_soldier = false
+worker_build_time = 2.8
+
+[node name="Resources" type="Node3D" parent="."]
+
+[node name="MineralFieldA" parent="Resources" instance=ExtResource("7_resource_node")]
+position = Vector3(-8, 0, 7)
+
+[node name="MineralFieldB" parent="Resources" instance=ExtResource("7_resource_node")]
+position = Vector3(-10, 0, 10)
+total_minerals = 1200
+max_visual_minerals = 1200
 
 [node name="RTSCamera" type="Camera3D" parent="."]
 script = ExtResource("5_camera")
@@ -41,6 +63,20 @@ current = true
 far = 2000.0
 
 [node name="UI" type="CanvasLayer" parent="."]
+
+[node name="ResourceLabel" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 320.0
+offset_bottom = 42.0
+text = "Minerals: 0"
+
+[node name="HintLabel" type="Label" parent="UI"]
+offset_left = 16.0
+offset_top = 46.0
+offset_right = 900.0
+offset_bottom = 120.0
+text = ""
 
 [node name="SelectionOverlay" type="Control" parent="UI"]
 script = ExtResource("6_overlay")
