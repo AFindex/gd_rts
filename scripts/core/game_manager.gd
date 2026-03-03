@@ -24,6 +24,7 @@ const BUILD_ORDER_MOVE_REFRESH: float = 0.45
 const RALLY_MAX_HOPS: int = 3
 const RALLY_VISUAL_HEIGHT: float = 0.08
 const RALLY_ALERT_BLINK_INTERVAL_SEC: float = 0.16
+const FEEDBACK_TONE_SAMPLE_RATE: int = 22050
 
 enum InputState {
 	IDLE,
@@ -91,6 +92,8 @@ var _rally_visual_root: Node3D
 var _rally_visible_nodes: Array[Node] = []
 var _last_rally_visual_signature: String = ""
 var _rally_reject_feedback_timer: float = 0.0
+var _feedback_audio_player: AudioStreamPlayer
+var _feedback_tone_streams: Dictionary = {}
 var _pending_build_orders: Array[Dictionary] = []
 
 func _ready() -> void:
@@ -106,6 +109,7 @@ func _ready() -> void:
 	_create_placement_preview()
 	_setup_queue_visual_root()
 	_setup_rally_visual_root()
+	_setup_feedback_audio()
 	_setup_runtime_navigation_baking()
 	_register_existing_buildings()
 	_register_existing_resources()
@@ -398,6 +402,54 @@ func _setup_rally_visual_root() -> void:
 	_rally_visual_root = Node3D.new()
 	_rally_visual_root.name = "RallyPointVisuals"
 	add_child(_rally_visual_root)
+
+func _setup_feedback_audio() -> void:
+	_feedback_audio_player = AudioStreamPlayer.new()
+	_feedback_audio_player.name = "UIFeedbackAudio"
+	_feedback_audio_player.bus = &"Master"
+	_feedback_audio_player.volume_db = -10.0
+	add_child(_feedback_audio_player)
+	_feedback_tone_streams = {
+		"ground": _make_tone_wav(392.0, 0.08, 0.26, false),
+		"resource": _make_tone_wav(523.25, 0.08, 0.26, false),
+		"attack": _make_tone_wav(659.25, 0.08, 0.26, false),
+		"follow": _make_tone_wav(466.16, 0.08, 0.26, false),
+		"relay": _make_tone_wav(587.33, 0.08, 0.26, false),
+		"error": _make_tone_wav(200.0, 0.12, 0.28, true)
+	}
+
+func _make_tone_wav(frequency_hz: float, duration_sec: float, amplitude: float, square_wave: bool) -> AudioStreamWAV:
+	var sample_count: int = maxi(1, int(round(duration_sec * float(FEEDBACK_TONE_SAMPLE_RATE))))
+	var pcm: PackedByteArray = PackedByteArray()
+	pcm.resize(sample_count * 2)
+	var level: float = clampf(amplitude, 0.0, 1.0)
+	for i in sample_count:
+		var t: float = float(i) / float(FEEDBACK_TONE_SAMPLE_RATE)
+		var sample: float = sin(TAU * frequency_hz * t)
+		if square_wave:
+			sample = 1.0 if sample >= 0.0 else -1.0
+		var sample_i16: int = int(round(clampf(sample * level, -1.0, 1.0) * 32767.0))
+		pcm[i * 2] = sample_i16 & 0xFF
+		pcm[i * 2 + 1] = (sample_i16 >> 8) & 0xFF
+
+	var wav: AudioStreamWAV = AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = FEEDBACK_TONE_SAMPLE_RATE
+	wav.stereo = false
+	wav.data = pcm
+	return wav
+
+func _play_feedback_tone(mode: String) -> void:
+	if _feedback_audio_player == null:
+		return
+	var normalized_mode: String = mode if mode != "" else "ground"
+	var stream: AudioStream = _feedback_tone_streams.get(normalized_mode) as AudioStream
+	if stream == null:
+		stream = _feedback_tone_streams.get("ground") as AudioStream
+	if stream == null:
+		return
+	_feedback_audio_player.stream = stream
+	_feedback_audio_player.play()
 
 func _process_queue_feedback(delta: float) -> void:
 	if _queue_reject_feedback_timer > 0.0:
@@ -725,6 +777,7 @@ func _create_rally_flag(world_position: Vector3, mode: String, hop_index: int, a
 	root.name = "RallyFlag%d" % hop_index
 	root.global_position = world_position + Vector3(0.0, RALLY_VISUAL_HEIGHT, 0.0)
 	var color: Color = _rally_mode_color(mode)
+	var mode_glyph: String = _rally_mode_glyph(mode)
 	var alpha_scale: float = 0.28 if alerting and not alert_phase else 1.0
 
 	var pole: MeshInstance3D = MeshInstance3D.new()
@@ -759,6 +812,13 @@ func _create_rally_flag(world_position: Vector3, mode: String, hop_index: int, a
 	index_label.font_size = 28
 	index_label.modulate = Color(1.0, 1.0, 1.0, 0.95 * alpha_scale)
 	root.add_child(index_label)
+
+	var mode_label: Label3D = Label3D.new()
+	mode_label.text = mode_glyph
+	mode_label.position = Vector3(0.23, 0.62, 0.04)
+	mode_label.font_size = 24
+	mode_label.modulate = Color(0.06, 0.06, 0.06, 0.95 * alpha_scale)
+	root.add_child(mode_label)
 	return root
 
 func _create_rally_link(from_position: Vector3, to_position: Vector3, mode: String, alerting: bool = false, alert_phase: bool = false) -> MeshInstance3D:
@@ -794,6 +854,19 @@ func _rally_mode_color(mode: String) -> Color:
 			return Color(0.78, 0.35, 0.95, 1.0)
 		_:
 			return Color(0.95, 0.86, 0.25, 1.0)
+
+func _rally_mode_glyph(mode: String) -> String:
+	match mode:
+		"attack":
+			return "A"
+		"resource":
+			return "G"
+		"follow":
+			return "F"
+		"relay":
+			return "R"
+		_:
+			return "M"
 
 func _try_remove_queue_marker_at(screen_pos: Vector2) -> bool:
 	var ray_result: Dictionary = _raycast_from_screen(screen_pos, true)
@@ -1092,8 +1165,8 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		if _selection_has_rally_building():
 			if _input_state == InputState.QUEUE_INPUT:
-				return "Selected Building: %d queue item(s) | Shift held: RMB append rally relay hop (max %d)" % [queue_size, RALLY_MAX_HOPS]
-			return "Selected Building: %d queue item(s) | R/T Train | RMB Set Rally | Shift+RMB Append Relay" % queue_size
+				return "Selected Building: %d queue item(s) | Shift held: RMB append rally relay hop (max %d) | Flag: M/G/A/F/R" % [queue_size, RALLY_MAX_HOPS]
+			return "Selected Building: %d queue item(s) | R/T Train | RMB Set Rally | Shift+RMB Append Relay | Flag: M/G/A/F/R" % queue_size
 		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
 	if _input_state == InputState.QUEUE_INPUT:
 		return "Queue Input: Shift held | Alt+LMB queue marker trims this and later points | W%d S%d B%d" % [selected_worker_count, selected_soldier_count, selected_building_count]
@@ -1127,7 +1200,7 @@ func _build_command_hint() -> String:
 		return _active_research_hint_text()
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		if _selection_has_rally_building():
-			return "Click command cards / hotkeys for production. RMB sets rally point."
+			return "Click command cards / hotkeys for production. RMB sets rally point (M/G/A/F/R flag + tone)."
 		return "Click command cards or use hotkeys for production/build commands."
 	if not _selected_units.is_empty():
 		return "RMB context command or click move/gather/stop in command card."
@@ -1354,7 +1427,7 @@ func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop" % [_worker_cost, _soldier_cost],
-		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Shift+RMB(Building) Append Relay | Alt+LMB Trim Queue"
+		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Shift+RMB(Building) Append Relay | Rally Flag M/G/A/F/R + tone | Alt+LMB Trim Queue"
 	]
 	if _queue_reject_feedback_timer > 0.0:
 		lines[0] = "Queue full: max 32 commands per unit."
@@ -2373,6 +2446,8 @@ func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2, appen
 		return
 	var target_node: Node3D = resolved.get("target") as Node3D
 	var rally_mode: String = str(resolved.get("rally_mode", "ground"))
+	var applied_count: int = 0
+	var rejected_count: int = 0
 	var rally_position: Vector3 = Vector3.ZERO
 	if target_node != null and is_instance_valid(target_node):
 		rally_position = target_node.global_position
@@ -2394,7 +2469,15 @@ func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2, appen
 		if selected_building.has_method("set_rally_point"):
 			var ok: bool = bool(selected_building.call("set_rally_point", rally_position, target_node, rally_mode, append_hop))
 			if not ok:
+				rejected_count += 1
 				_rally_reject_feedback_timer = 1.1
+			else:
+				applied_count += 1
+
+	if applied_count > 0:
+		_play_feedback_tone(rally_mode)
+	elif rejected_count > 0:
+		_play_feedback_tone("error")
 
 func _nearest_dropoff(from_position: Vector3) -> Node3D:
 	var nearest: Node3D = null
