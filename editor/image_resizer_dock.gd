@@ -18,6 +18,16 @@ const OUTPUT_FILTERS: PackedStringArray = [
 	"*.webp ; WEBP"
 ]
 
+const SUPPORTED_SOURCE_EXTENSIONS: PackedStringArray = [
+	"png",
+	"jpg",
+	"jpeg",
+	"webp",
+	"bmp",
+	"tga",
+	"svg"
+]
+
 var _editor_plugin: EditorPlugin = null
 
 var _source_edit: LineEdit
@@ -53,7 +63,7 @@ func _build_ui() -> void:
 	add_child(title)
 
 	var hint: Label = Label.new()
-	hint.text = "Source 支持 SVG，输出支持 PNG/JPG/WEBP。"
+	hint.text = "Source 支持 SVG，输出支持 PNG/JPG/WEBP。支持从 FileSystem 拖资源到 Source。"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint)
 
@@ -70,6 +80,11 @@ func _build_ui() -> void:
 	_source_edit = LineEdit.new()
 	_source_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_source_edit.placeholder_text = "res://icon.svg"
+	_source_edit.set_drag_forwarding(
+		Callable(),
+		Callable(self, "_source_can_drop_data_fw"),
+		Callable(self, "_source_drop_data_fw")
+	)
 	source_row.add_child(_source_edit)
 
 	var source_browse: Button = Button.new()
@@ -239,9 +254,7 @@ func _on_output_browse_pressed() -> void:
 	_output_dialog.popup_centered_ratio(0.75)
 
 func _on_source_file_selected(path: String) -> void:
-	_source_edit.text = path
-	if _output_edit.text.strip_edges().is_empty():
-		_output_edit.text = _default_output_path(path)
+	_apply_source_path(path)
 
 func _on_output_file_selected(path: String) -> void:
 	_output_edit.text = path
@@ -457,3 +470,80 @@ func _make_separator() -> HSeparator:
 	var separator: HSeparator = HSeparator.new()
 	separator.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return separator
+
+func _source_can_drop_data_fw(at_position: Vector2, data: Variant) -> bool:
+	return _can_drop_data(at_position, data)
+
+func _source_drop_data_fw(at_position: Vector2, data: Variant) -> void:
+	_drop_data(at_position, data)
+
+func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	return not _extract_first_supported_source_path(data).is_empty()
+
+func _drop_data(_at_position: Vector2, data: Variant) -> void:
+	var source_path: String = _extract_first_supported_source_path(data)
+	if source_path.is_empty():
+		_set_error("拖拽内容不是支持的图片资源。")
+		return
+	_apply_source_path(source_path)
+	_set_status("Source 已设置: %s" % source_path)
+
+func _apply_source_path(path: String) -> void:
+	var normalized_path: String = _normalize_path(path)
+	_source_edit.text = normalized_path
+	if _output_edit.text.strip_edges().is_empty():
+		_output_edit.text = _default_output_path(normalized_path)
+
+func _extract_first_supported_source_path(data: Variant) -> String:
+	var candidates: Array[String] = []
+
+	if data is String:
+		candidates.append(str(data))
+	elif data is PackedStringArray:
+		for path in data:
+			candidates.append(str(path))
+	elif data is Array:
+		for value in data:
+			candidates.append(str(value))
+	elif data is Dictionary:
+		var data_dict: Dictionary = data
+		var files_value: Variant = data_dict.get("files", null)
+		if files_value is PackedStringArray:
+			for path in files_value:
+				candidates.append(str(path))
+		elif files_value is Array:
+			for path in files_value:
+				candidates.append(str(path))
+
+		if data_dict.has("path"):
+			candidates.append(str(data_dict.get("path", "")))
+
+		if data_dict.has("resource"):
+			var resource_value: Variant = data_dict.get("resource")
+			if resource_value is Resource:
+				candidates.append((resource_value as Resource).resource_path)
+			else:
+				candidates.append(str(resource_value))
+
+		var value_field: Variant = data_dict.get("value", null)
+		if value_field is String:
+			candidates.append(str(value_field))
+		elif value_field is PackedStringArray:
+			for path in value_field:
+				candidates.append(str(path))
+		elif value_field is Array:
+			for path in value_field:
+				candidates.append(str(path))
+
+	for candidate in candidates:
+		var normalized_path: String = _normalize_path(candidate)
+		if _is_supported_source_path(normalized_path):
+			return normalized_path
+
+	return ""
+
+func _is_supported_source_path(path: String) -> bool:
+	if path.is_empty():
+		return false
+	var ext: String = path.get_extension().to_lower()
+	return ext in SUPPORTED_SOURCE_EXTENSIONS
