@@ -28,6 +28,10 @@ var _health: float = 1200.0
 var _attack_target: Node = null
 var _attack_timer: float = 0.0
 var _base_tint: Color = Color.WHITE
+var _has_rally_point: bool = false
+var _rally_point_position: Vector3 = Vector3.ZERO
+var _rally_target_node: Node = null
+var _rally_mode: String = "ground"
 
 func _ready() -> void:
 	add_to_group("selectable_building")
@@ -152,6 +156,36 @@ func get_skill_ids() -> Array[String]:
 func get_build_skill_ids() -> Array[String]:
 	return RTS_CATALOG.get_building_build_skill_ids(building_kind)
 
+func supports_rally_point() -> bool:
+	return can_queue_worker or can_queue_soldier
+
+func set_rally_point(target_position: Vector3, target_node: Node = null, mode: String = "ground") -> bool:
+	if not supports_rally_point():
+		return false
+	_has_rally_point = true
+	_rally_point_position = Vector3(target_position.x, 0.0, target_position.z)
+	_rally_target_node = target_node
+	_rally_mode = mode
+	return true
+
+func clear_rally_point() -> void:
+	_has_rally_point = false
+	_rally_point_position = Vector3.ZERO
+	_rally_target_node = null
+	_rally_mode = "ground"
+
+func get_rally_point_data() -> Dictionary:
+	if not _has_rally_point:
+		return {}
+	var valid_target: Node = null
+	if _rally_target_node != null and is_instance_valid(_rally_target_node):
+		valid_target = _rally_target_node
+	return {
+		"position": _rally_point_position,
+		"target_node": valid_target,
+		"mode": _rally_mode
+	}
+
 func configure_by_kind(kind: String) -> void:
 	_apply_building_config(kind)
 	_queue_unit_kinds.clear()
@@ -159,6 +193,7 @@ func configure_by_kind(kind: String) -> void:
 	_production_timer = 0.0
 	_attack_target = null
 	_attack_timer = 0.0
+	clear_rally_point()
 	_health = max_health
 	_refresh_dropoff_group()
 	_apply_building_visual()

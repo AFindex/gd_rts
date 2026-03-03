@@ -16,6 +16,7 @@ const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
 const QUEUE_MARKER_GROUP: StringName = &"command_queue_marker"
 const QUEUE_MARKER_LAYER: int = 1 << 5
 const QUEUE_MARKER_MAX_VISIBLE: int = 32
+const SMART_COMMAND_PRIORITY_RANGE: float = 0.5
 
 enum InputState {
 	IDLE,
@@ -814,6 +815,8 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
+		if _selection_has_rally_building():
+			return "Selected Building: %d queue item(s) | R/T Train | RMB Set Rally" % queue_size
 		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
 	if _input_state == InputState.QUEUE_INPUT:
 		return "Queue Input: Shift held | Alt+LMB queue marker trims this and later points | W%d S%d B%d" % [selected_worker_count, selected_soldier_count, selected_building_count]
@@ -842,6 +845,8 @@ func _build_command_hint() -> String:
 	if not _active_research.is_empty():
 		return _active_research_hint_text()
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
+		if _selection_has_rally_building():
+			return "Click command cards / hotkeys for production. RMB sets rally point."
 		return "Click command cards or use hotkeys for production/build commands."
 	if not _selected_units.is_empty():
 		return "RMB context command or click move/gather/stop in command card."
@@ -1067,7 +1072,7 @@ func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop" % [_worker_cost, _soldier_cost],
-		"Shift + Left Click: Additive Select | Shift + Right Click: Queue Command | Alt + Left Click: Trim Queue"
+		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Alt+LMB Trim Queue"
 	]
 	if _queue_reject_feedback_timer > 0.0:
 		lines[0] = "Queue full: max 32 commands per unit."
@@ -1174,6 +1179,18 @@ func _selection_has_combat_unit() -> bool:
 		if selected_unit.has_method("is_worker_unit") and not bool(selected_unit.call("is_worker_unit")):
 			if _is_player_owned(selected_unit):
 				return true
+	return false
+
+func _selection_has_rally_building() -> bool:
+	if not _selected_units.is_empty():
+		return false
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if selected_building.has_method("supports_rally_point") and bool(selected_building.call("supports_rally_point")):
+			return true
 	return false
 
 func _can_open_build_menu() -> bool:
@@ -1638,20 +1655,160 @@ func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool 
 func _issue_context_command(screen_pos: Vector2, queue_command: bool = false) -> void:
 	_prune_invalid_selection()
 	_build_menu_open = false
-	if _selected_units.is_empty():
+	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return
 
-	var ray_result: Dictionary = _raycast_from_screen(screen_pos)
-	if not ray_result.is_empty():
-		var collider: Node = ray_result.get("collider") as Node
-		if collider != null and collider.is_in_group("resource_node"):
-			_issue_gather_command(collider as Node3D, screen_pos, queue_command)
-			return
-		if collider != null and _is_attackable_enemy(collider):
-			_issue_attack_command(collider as Node3D, screen_pos, queue_command)
-			return
+	var resolved: Dictionary = _resolve_smart_context_command(screen_pos)
+	var resolved_command: String = str(resolved.get("command", "move"))
+	var resolved_target: Node3D = resolved.get("target") as Node3D
+	match resolved_command:
+		"attack":
+			_issue_attack_command(resolved_target, screen_pos, queue_command)
+		"gather":
+			_issue_gather_command(resolved_target, screen_pos, queue_command)
+		"return":
+			_issue_return_command_to_dropoff(resolved_target, queue_command)
+		"follow":
+			_issue_follow_command(resolved_target, queue_command)
+		"rally":
+			_apply_rally_point_command(resolved, screen_pos)
+			_refresh_hint_label()
+		_:
+			if _selected_units.is_empty() and _selection_has_rally_building():
+				_apply_rally_point_command({"rally_mode": "ground"}, screen_pos)
+				_refresh_hint_label()
+			else:
+				_issue_move_command(screen_pos, queue_command)
 
-	_issue_move_command(screen_pos, queue_command)
+func _resolve_smart_context_command(screen_pos: Vector2) -> Dictionary:
+	var ray_result: Dictionary = _raycast_from_screen(screen_pos)
+	var ground_point_variant: Variant = _ground_point_from_screen(screen_pos)
+	var hit_position: Vector3 = Vector3.ZERO
+	if ground_point_variant is Vector3:
+		hit_position = ground_point_variant as Vector3
+	if not ray_result.is_empty():
+		var hit_value: Variant = ray_result.get("position", hit_position)
+		if hit_value is Vector3:
+			hit_position = hit_value as Vector3
+	var candidates: Array[Node] = _collect_smart_candidates(ray_result, hit_position)
+
+	if _selected_units.is_empty() and _selection_has_rally_building():
+		return _resolve_rally_context_command(candidates, hit_position)
+
+	var attack_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "attack")
+	if attack_target != null:
+		return {"command": "attack", "target": attack_target}
+
+	var gather_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "gather")
+	if gather_target != null:
+		return {"command": "gather", "target": gather_target}
+
+	var return_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "return")
+	if return_target != null:
+		return {"command": "return", "target": return_target}
+
+	var follow_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "follow")
+	if follow_target != null:
+		return {"command": "follow", "target": follow_target}
+
+	return {"command": "move"}
+
+func _resolve_rally_context_command(candidates: Array[Node], hit_position: Vector3) -> Dictionary:
+	var attack_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "rally_enemy")
+	if attack_target != null:
+		return {"command": "rally", "target": attack_target, "rally_mode": "attack"}
+
+	var resource_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "rally_resource")
+	if resource_target != null:
+		return {"command": "rally", "target": resource_target, "rally_mode": "resource"}
+
+	var follow_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "rally_follow")
+	if follow_target != null:
+		return {"command": "rally", "target": follow_target, "rally_mode": "follow"}
+
+	var building_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "rally_building")
+	if building_target != null:
+		return {"command": "rally", "target": building_target, "rally_mode": "ground"}
+
+	return {"command": "rally", "rally_mode": "ground"}
+
+func _collect_smart_candidates(ray_result: Dictionary, hit_position: Vector3) -> Array[Node]:
+	var candidates: Array[Node] = []
+	var seen: Dictionary = {}
+	var ray_collider: Node = ray_result.get("collider") as Node
+	_append_smart_candidate(candidates, seen, ray_collider)
+	if ray_result.is_empty() and hit_position == Vector3.ZERO:
+		return candidates
+
+	var world_3d: World3D = get_world_3d()
+	if world_3d == null:
+		return candidates
+	var shape: SphereShape3D = SphereShape3D.new()
+	shape.radius = SMART_COMMAND_PRIORITY_RANGE
+	var query: PhysicsShapeQueryParameters3D = PhysicsShapeQueryParameters3D.new()
+	query.shape = shape
+	query.transform = Transform3D(Basis.IDENTITY, hit_position)
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	query.collision_mask = 0x7fffffff & ~QUEUE_MARKER_LAYER
+	var intersections: Array = world_3d.direct_space_state.intersect_shape(query, 24)
+	for hit in intersections:
+		var collider_value: Variant = hit.get("collider", null)
+		var collider: Node = collider_value as Node
+		_append_smart_candidate(candidates, seen, collider)
+	return candidates
+
+func _append_smart_candidate(candidates: Array[Node], seen: Dictionary, node: Node) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	var id: int = node.get_instance_id()
+	if seen.has(id):
+		return
+	seen[id] = true
+	candidates.append(node)
+
+func _find_nearest_smart_candidate(candidates: Array[Node], hit_position: Vector3, filter_mode: String) -> Node3D:
+	var nearest: Node3D = null
+	var best_distance_sq: float = INF
+	for candidate in candidates:
+		var node_3d: Node3D = candidate as Node3D
+		if node_3d == null:
+			continue
+		if not _smart_candidate_matches(node_3d, filter_mode):
+			continue
+		var distance_sq: float = hit_position.distance_squared_to(node_3d.global_position)
+		if nearest == null or distance_sq < best_distance_sq:
+			nearest = node_3d
+			best_distance_sq = distance_sq
+	return nearest
+
+func _smart_candidate_matches(node: Node3D, filter_mode: String) -> bool:
+	match filter_mode:
+		"attack":
+			return _selection_has_combat_unit() and _is_attackable_enemy(node)
+		"gather":
+			return _selection_has_worker() and node.is_in_group("resource_node")
+		"return":
+			return _selection_has_worker_cargo() and _is_player_dropoff_node(node)
+		"follow":
+			return not _selected_units.is_empty() and node.is_in_group("selectable_unit") and _is_player_owned(node)
+		"rally_enemy":
+			return _is_attackable_enemy(node)
+		"rally_resource":
+			return node.is_in_group("resource_node")
+		"rally_follow":
+			return node.is_in_group("selectable_unit") and _is_player_owned(node)
+		"rally_building":
+			return node.is_in_group("selectable_building") and _is_player_owned(node)
+		_:
+			return false
+
+func _is_player_dropoff_node(node: Node) -> bool:
+	if node == null or not is_instance_valid(node):
+		return false
+	if not node.is_in_group("resource_dropoff"):
+		return false
+	return _is_player_owned(node)
 
 func _select_single(screen_pos: Vector2, additive: bool) -> void:
 	_build_menu_open = false
@@ -1869,6 +2026,41 @@ func _issue_stop_command(queue_command: bool = false) -> void:
 		var stop_command: RTSCommand = RTS_COMMAND.make_stop(queue_command)
 		_schedule_unit_command(unit_node, stop_command)
 
+func _issue_follow_command(target_node: Node3D, queue_command: bool = false) -> void:
+	if target_node == null or not is_instance_valid(target_node):
+		return
+	var unit_count: int = _selected_units.size()
+	if unit_count <= 0:
+		return
+	var desired_distance: float = 3.8
+	for i in unit_count:
+		var unit_node: Node = _selected_units[i] as Node
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if not _is_player_owned(unit_node):
+			continue
+		if unit_node == target_node:
+			continue
+		var angle: float = TAU * float(i) / float(maxi(1, unit_count))
+		var offset: Vector3 = Vector3(cos(angle) * desired_distance, 0.0, sin(angle) * desired_distance)
+		var follow_command: RTSCommand = RTS_COMMAND.make_move(target_node.global_position + offset, queue_command)
+		_schedule_unit_command(unit_node, follow_command)
+
+func _issue_return_command_to_dropoff(dropoff_node: Node3D, queue_command: bool = false) -> void:
+	if dropoff_node == null or not is_instance_valid(dropoff_node):
+		return
+	for unit_node in _selected_units:
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if not _is_player_owned(unit_node):
+			continue
+		if not unit_node.has_method("is_worker_unit"):
+			continue
+		if not bool(unit_node.call("is_worker_unit")):
+			continue
+		var return_command: RTSCommand = RTS_COMMAND.make_return(dropoff_node, queue_command)
+		_schedule_unit_command(unit_node, return_command)
+
 func _issue_return_command(queue_command: bool = false) -> void:
 	for unit_node in _selected_units:
 		if unit_node == null or not is_instance_valid(unit_node):
@@ -1887,6 +2079,31 @@ func _issue_return_command(queue_command: bool = false) -> void:
 			continue
 		var return_command: RTSCommand = RTS_COMMAND.make_return(dropoff, queue_command)
 		_schedule_unit_command(unit_node, return_command)
+
+func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2) -> void:
+	if not _selection_has_rally_building():
+		return
+	var target_node: Node3D = resolved.get("target") as Node3D
+	var rally_mode: String = str(resolved.get("rally_mode", "ground"))
+	var rally_position: Vector3 = Vector3.ZERO
+	if target_node != null and is_instance_valid(target_node):
+		rally_position = target_node.global_position
+	else:
+		var ground_variant: Variant = _ground_point_from_screen(screen_pos)
+		if ground_variant is Vector3:
+			rally_position = ground_variant as Vector3
+
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if not selected_building.has_method("supports_rally_point"):
+			continue
+		if not bool(selected_building.call("supports_rally_point")):
+			continue
+		if selected_building.has_method("set_rally_point"):
+			selected_building.call("set_rally_point", rally_position, target_node, rally_mode)
 
 func _nearest_dropoff(from_position: Vector3) -> Node3D:
 	var nearest: Node3D = null
@@ -2110,6 +2327,56 @@ func _spawn_unit(unit_kind: String, spawn_position: Vector3, source_building: No
 		unit.set("is_worker", is_worker)
 	_units_root.add_child(unit)
 	unit.global_position = _find_open_spawn_position(spawn_position)
+	_apply_rally_to_spawned_unit(unit, source_building)
+
+func _apply_rally_to_spawned_unit(unit_node: Node, source_building: Node) -> void:
+	if unit_node == null or not is_instance_valid(unit_node):
+		return
+	if source_building == null or not is_instance_valid(source_building):
+		return
+	if not source_building.has_method("get_rally_point_data"):
+		return
+	var rally_data_value: Variant = source_building.call("get_rally_point_data")
+	if not (rally_data_value is Dictionary):
+		return
+	var rally_data: Dictionary = rally_data_value as Dictionary
+	if rally_data.is_empty():
+		return
+	var mode: String = str(rally_data.get("mode", "ground"))
+	var target_node: Node3D = rally_data.get("target_node") as Node3D
+	var target_position: Vector3 = Vector3.ZERO
+	var has_target_position: bool = rally_data.has("position")
+	var target_position_value: Variant = rally_data.get("position", Vector3.ZERO)
+	if target_position_value is Vector3:
+		target_position = target_position_value as Vector3
+
+	match mode:
+		"attack":
+			if target_node != null and is_instance_valid(target_node):
+				if unit_node.has_method("is_worker_unit") and bool(unit_node.call("is_worker_unit")):
+					_schedule_unit_command(unit_node, RTS_COMMAND.make_move(target_node.global_position, false))
+					return
+				_schedule_unit_command(unit_node, RTS_COMMAND.make_attack(target_node, false))
+				return
+		"resource":
+			if target_node != null and is_instance_valid(target_node) and target_node.is_in_group("resource_node"):
+				var dropoff: Node3D = null
+				var source_building_3d: Node3D = source_building as Node3D
+				if source_building_3d != null and source_building_3d.is_in_group("resource_dropoff"):
+					dropoff = source_building_3d
+				elif unit_node is Node3D:
+					dropoff = _nearest_dropoff((unit_node as Node3D).global_position)
+				if dropoff != null:
+					_schedule_unit_command(unit_node, RTS_COMMAND.make_gather(target_node, dropoff, false))
+					return
+		"follow":
+			if target_node != null and is_instance_valid(target_node):
+				var follow_offset: Vector3 = Vector3(3.8, 0.0, 0.0)
+				_schedule_unit_command(unit_node, RTS_COMMAND.make_move(target_node.global_position + follow_offset, false))
+				return
+
+	if has_target_position:
+		_schedule_unit_command(unit_node, RTS_COMMAND.make_move(target_position, false))
 
 func _find_open_spawn_position(origin: Vector3) -> Vector3:
 	for ring in 4:
