@@ -56,6 +56,8 @@ var _match_rule_defs: Array[Dictionary] = []
 var _match_check_accum: float = 0.0
 var _match_outcome_rule_id: String = ""
 var _match_notice: String = ""
+var _unlocked_techs: Dictionary = {}
+var _active_research: Dictionary = {}
 var _nav_rebake_in_progress: bool = false
 var _nav_rebake_pending: bool = false
 
@@ -86,6 +88,13 @@ func _apply_runtime_config() -> void:
 	_match_rule_check_interval = maxf(0.05, float(match_settings.get("rule_check_interval", 0.25)))
 	_match_notify_only = bool(match_settings.get("notify_only", true))
 	_match_rule_defs = RTS_CATALOG.get_match_rule_defs()
+	_active_research.clear()
+	_unlocked_techs.clear()
+	var default_techs: Array[String] = RTS_CATALOG.get_default_unlocked_techs()
+	for tech_id in default_techs:
+		if tech_id == "":
+			continue
+		_unlocked_techs[tech_id] = true
 
 func _connect_hud_signals() -> void:
 	if _hud == null or not _hud.has_signal("command_pressed"):
@@ -99,11 +108,32 @@ func _process(delta: float) -> void:
 		_update_placement_preview()
 
 	_process_match_rules(delta)
+	_process_active_research(delta)
 
 	_hint_refresh_accum += delta
 	if _hint_refresh_accum >= 0.2:
 		_hint_refresh_accum = 0.0
 		_refresh_hint_label()
+
+func _process_active_research(delta: float) -> void:
+	if _active_research.is_empty():
+		return
+	var finished: Array[String] = []
+	for tech_key in _active_research.keys():
+		var tech_id: String = str(tech_key)
+		var entry: Variant = _active_research.get(tech_id, {})
+		if not (entry is Dictionary):
+			finished.append(tech_id)
+			continue
+		var task: Dictionary = entry as Dictionary
+		var remaining: float = maxf(0.0, float(task.get("remaining", 0.0)) - delta)
+		task["remaining"] = remaining
+		_active_research[tech_id] = task
+		if remaining <= 0.0:
+			finished.append(tech_id)
+	for tech_id in finished:
+		_active_research.erase(tech_id)
+		unlock_tech(tech_id)
 
 func _process_match_rules(delta: float) -> void:
 	if _match_outcome_rule_id != "":
@@ -486,7 +516,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 		if target_mode == "ground":
 			return "Targeting %s | Left Click Ground | RMB/ESC Cancel" % skill_label
 		if target_mode == "unit_or_building":
-			return "Targeting %s | Left Click Enemy Unit/Building | RMB/ESC Cancel" % skill_label
+			return "Targeting %s | Left Click Enemy for focus fire, or Ground for attack-move | RMB/ESC Cancel" % skill_label
 		return "Targeting %s | RMB/ESC Cancel" % skill_label
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
@@ -510,11 +540,36 @@ func _build_command_hint() -> String:
 		return "Build menu open. Select a building option or press ESC to close."
 	if _pending_target_skill != "":
 		return "Targeted skill armed. Left click world target, RMB/ESC to cancel."
+	if not _active_research.is_empty():
+		return _active_research_hint_text()
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		return "Click command cards or use hotkeys for production/build commands."
 	if not _selected_units.is_empty():
 		return "RMB context command or click move/gather/stop in command card."
 	return "Select something to open context commands."
+
+func _active_research_hint_text() -> String:
+	if _active_research.is_empty():
+		return ""
+	var best_tech_id: String = ""
+	var best_remaining: float = INF
+	for tech_key in _active_research.keys():
+		var tech_id: String = str(tech_key)
+		var task_value: Variant = _active_research.get(tech_id, {})
+		if not (task_value is Dictionary):
+			continue
+		var task: Dictionary = task_value as Dictionary
+		var remaining: float = maxf(0.0, float(task.get("remaining", 0.0)))
+		if best_tech_id == "" or remaining < best_remaining:
+			best_tech_id = tech_id
+			best_remaining = remaining
+	if best_tech_id == "":
+		return "Research in progress."
+	var tech_name: String = _tech_display_name(best_tech_id)
+	var rounded_remaining: int = int(ceil(best_remaining))
+	if _active_research.size() > 1:
+		return "Researching %s (%ds). +%d more active." % [tech_name, rounded_remaining, _active_research.size() - 1]
+	return "Researching %s (%ds remaining)." % [tech_name, rounded_remaining]
 
 func _build_menu_hint_text() -> String:
 	var parts: Array[String] = []
@@ -698,12 +753,21 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 			overrides["cost_text"] = str(_soldier_cost)
 			overrides["cooldown_ratio"] = _selected_queue_cooldown_ratio("soldier")
 			overrides["disabled_reason"] = "" if train_soldier_enabled else _train_soldier_block_reason()
+	if overrides.is_empty():
+		var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
+		if tech_id != "":
+			var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
+			var reason: String = _research_skill_block_reason(skill_id)
+			overrides["enabled"] = reason == ""
+			overrides["cost_text"] = str(research_cost) if research_cost > 0 else ""
+			overrides["cooldown_ratio"] = _research_skill_cooldown_ratio(skill_id)
+			overrides["disabled_reason"] = reason
 	return overrides
 
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
-		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack | S: Stop" % [_worker_cost, _soldier_cost],
+		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop" % [_worker_cost, _soldier_cost],
 		"Shift + Left Click: Additive Selection | Command cards are clickable"
 	]
 	if _match_notice != "":
@@ -719,6 +783,9 @@ func _build_notifications() -> Array[String]:
 	elif _pending_target_skill != "":
 		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
 		lines[0] = "Targeting: %s" % str(skill_info.get("label", _pending_target_skill))
+	elif not _active_research.is_empty():
+		lines[0] = _active_research_hint_text()
+		lines[1] = "Unlocked Tech: %d | Active Research: %d" % [_unlocked_techs.size(), _active_research.size()]
 	return lines
 
 func _build_multi_roles() -> Array[String]:
@@ -855,6 +922,161 @@ func _building_cost(building_kind: String) -> int:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
 	return int(building_def.get("cost", 0))
 
+func has_tech(tech_id: String) -> bool:
+	if tech_id == "":
+		return false
+	return bool(_unlocked_techs.get(tech_id, false))
+
+func unlock_tech(tech_id: String) -> bool:
+	var normalized: String = tech_id.strip_edges()
+	if normalized == "":
+		return false
+	if has_tech(normalized):
+		return false
+	_unlocked_techs[normalized] = true
+	_refresh_hint_label()
+	return true
+
+func _requirements_reason_for_building_kind(building_kind: String) -> String:
+	var required_buildings: Array[Dictionary] = RTS_CATALOG.get_building_requires_buildings(building_kind)
+	var required_techs: Array[String] = RTS_CATALOG.get_building_requires_tech(building_kind)
+	return _requirements_reason_from_lists(required_buildings, required_techs)
+
+func _requirements_reason_for_unit_kind(unit_kind: String) -> String:
+	var required_buildings: Array[Dictionary] = RTS_CATALOG.get_unit_requires_buildings(unit_kind)
+	var required_techs: Array[String] = RTS_CATALOG.get_unit_requires_tech(unit_kind)
+	return _requirements_reason_from_lists(required_buildings, required_techs)
+
+func _requirements_reason_from_lists(required_buildings: Array[Dictionary], required_techs: Array[String]) -> String:
+	var parts: Array[String] = []
+	var missing_buildings: Array[String] = _missing_required_buildings(required_buildings)
+	if not missing_buildings.is_empty():
+		parts.append("Buildings: %s" % ", ".join(missing_buildings))
+	var missing_techs: Array[String] = _missing_required_techs(required_techs)
+	if not missing_techs.is_empty():
+		parts.append("Tech: %s" % ", ".join(missing_techs))
+	if parts.is_empty():
+		return ""
+	return "Locked - %s" % " | ".join(parts)
+
+func _missing_required_buildings(requirements: Array[Dictionary]) -> Array[String]:
+	var missing: Array[String] = []
+	for requirement in requirements:
+		var kind: String = str(requirement.get("kind", "")).strip_edges()
+		if kind == "":
+			continue
+		var required_count: int = maxi(1, int(requirement.get("count", 1)))
+		var current_count: int = _player_owned_building_count(kind)
+		if current_count >= required_count:
+			continue
+		var display_name: String = _building_display_name(kind)
+		missing.append("%s (%d/%d)" % [display_name, current_count, required_count])
+	return missing
+
+func _missing_required_techs(required_techs: Array[String]) -> Array[String]:
+	var missing: Array[String] = []
+	for tech_id in required_techs:
+		var normalized: String = tech_id.strip_edges()
+		if normalized == "":
+			continue
+		if has_tech(normalized):
+			continue
+		missing.append(_tech_display_name(normalized))
+	return missing
+
+func _player_owned_building_count(building_kind: String) -> int:
+	if building_kind == "":
+		return 0
+	var count: int = 0
+	var nodes: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
+	for node in nodes:
+		if node == null or not is_instance_valid(node):
+			continue
+		if not _is_player_owned(node):
+			continue
+		if node.has_method("is_alive") and not bool(node.call("is_alive")):
+			continue
+		if str(node.get("building_kind")) != building_kind:
+			continue
+		count += 1
+	return count
+
+func _building_display_name(building_kind: String) -> String:
+	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
+	return str(building_def.get("display_name", building_kind.capitalize()))
+
+func _tech_display_name(tech_id: String) -> String:
+	var tech_def: Dictionary = RTS_CATALOG.get_tech_def(tech_id)
+	return str(tech_def.get("display_name", tech_id.capitalize()))
+
+func _requirements_reason_for_tech(tech_id: String) -> String:
+	var required_buildings: Array[Dictionary] = RTS_CATALOG.get_tech_requires_buildings(tech_id)
+	var required_techs: Array[String] = RTS_CATALOG.get_tech_requires_tech(tech_id)
+	return _requirements_reason_from_lists(required_buildings, required_techs)
+
+func _selection_has_skill(skill_id: String) -> bool:
+	if skill_id == "":
+		return false
+	var skill_ids: Array[String] = _selection_skill_ids()
+	return skill_ids.has(skill_id)
+
+func _is_tech_researching(tech_id: String) -> bool:
+	if tech_id == "":
+		return false
+	return _active_research.has(tech_id)
+
+func _research_skill_block_reason(skill_id: String) -> String:
+	var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
+	if tech_id == "":
+		return "Unknown research command."
+	if not _selection_has_skill(skill_id):
+		return "Selected buildings cannot perform this research."
+	if has_tech(tech_id):
+		return "Already researched."
+	if _is_tech_researching(tech_id):
+		return "Research in progress."
+	var requirement_reason: String = _requirements_reason_for_tech(tech_id)
+	if requirement_reason != "":
+		return requirement_reason
+	var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
+	if research_cost <= 0:
+		return "Invalid research cost."
+	if _minerals < research_cost:
+		return "Not enough minerals."
+	return ""
+
+func _research_skill_cooldown_ratio(skill_id: String) -> float:
+	var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
+	if tech_id == "" or not _is_tech_researching(tech_id):
+		return 0.0
+	var task_value: Variant = _active_research.get(tech_id, {})
+	if not (task_value is Dictionary):
+		return 0.0
+	var task: Dictionary = task_value as Dictionary
+	var total: float = maxf(0.01, float(task.get("total", 0.01)))
+	var remaining: float = clampf(float(task.get("remaining", 0.0)), 0.0, total)
+	return clampf(remaining / total, 0.0, 1.0)
+
+func _start_research_skill(skill_id: String) -> bool:
+	var reason: String = _research_skill_block_reason(skill_id)
+	if reason != "":
+		return false
+	var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
+	if tech_id == "":
+		return false
+	var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
+	if not try_spend_minerals(research_cost):
+		return false
+	var research_time: float = RTS_CATALOG.get_tech_research_time(tech_id)
+	if research_time <= 0.0:
+		unlock_tech(tech_id)
+		return true
+	_active_research[tech_id] = {
+		"remaining": research_time,
+		"total": research_time
+	}
+	return true
+
 func _can_start_build_skill(skill_id: String) -> bool:
 	return _build_skill_block_reason(skill_id) == ""
 
@@ -864,6 +1086,9 @@ func _build_skill_block_reason(skill_id: String) -> String:
 	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
 	if build_kind == "":
 		return "Unknown build skill."
+	var requirement_reason: String = _requirements_reason_for_building_kind(build_kind)
+	if requirement_reason != "":
+		return requirement_reason
 	var build_cost: int = _building_cost(build_kind)
 	if build_cost <= 0:
 		return "Invalid build cost."
@@ -902,6 +1127,9 @@ func _selected_queue_cooldown_ratio(unit_kind: String) -> float:
 func _train_block_reason(unit_kind: String, label: String, cost: int) -> String:
 	if not _has_trainer_for_kind(unit_kind):
 		return "No selected building can train %s." % label
+	var requirement_reason: String = _requirements_reason_for_unit_kind(unit_kind)
+	if requirement_reason != "":
+		return requirement_reason
 	if _all_trainers_queue_full(unit_kind):
 		return "All production queues are full."
 	if _minerals < cost:
@@ -1055,6 +1283,11 @@ func _execute_command(command_id: String) -> void:
 		"menu":
 			pass
 		_:
+			var research_tech_id: String = RTS_CATALOG.get_tech_id_from_skill(command_id)
+			if research_tech_id != "":
+				_start_research_skill(command_id)
+				_refresh_hint_label()
+				return
 			var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(command_id)
 			if build_kind == "":
 				return
@@ -1090,14 +1323,13 @@ func _try_execute_pending_target_skill(screen_pos: Vector2) -> bool:
 			return true
 		"attack":
 			var ray_result: Dictionary = _raycast_from_screen(screen_pos)
-			if ray_result.is_empty():
+			if not ray_result.is_empty():
+				var collider: Node = ray_result.get("collider") as Node
+				if collider != null and _is_attackable_enemy(collider):
+					_issue_attack_command(collider as Node3D, screen_pos)
+					return true
+			if not _issue_attack_move_command(screen_pos):
 				return false
-			var collider: Node = ray_result.get("collider") as Node
-			if collider == null:
-				return false
-			if not _is_attackable_enemy(collider):
-				return false
-			_issue_attack_command(collider as Node3D, screen_pos)
 			return true
 		_:
 			return false
@@ -1173,6 +1405,8 @@ func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> vo
 			_add_selected_unit(unit)
 
 func _queue_worker_from_selection() -> void:
+	if _train_worker_block_reason() != "":
+		return
 	var queued_count: int = 0
 	for node in _selected_buildings:
 		if node == null or not is_instance_valid(node):
@@ -1200,6 +1434,8 @@ func _queue_worker_from_selection() -> void:
 		_refresh_hint_label()
 
 func _queue_soldier_from_selection() -> void:
+	if _train_soldier_block_reason() != "":
+		return
 	var queued_count: int = 0
 	for node in _selected_buildings:
 		if node == null or not is_instance_valid(node):
@@ -1268,6 +1504,37 @@ func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2) ->
 			issued_count += 1
 	if issued_count == 0:
 		_issue_move_command(fallback_screen_pos)
+
+func _issue_attack_move_command(screen_pos: Vector2) -> bool:
+	if _selected_units.is_empty():
+		return false
+	var target: Variant = _ground_point_from_screen(screen_pos)
+	if target == null:
+		return false
+	var target_point: Vector3 = target as Vector3
+	var issued_count: int = 0
+	var count: int = _selected_units.size()
+	var cols: int = int(ceil(sqrt(float(count))))
+	var spacing: float = 1.6
+	for i in count:
+		var row: int = i / cols
+		var col: int = i % cols
+		var offset: Vector3 = Vector3((float(col) - float(cols - 1) * 0.5) * spacing, 0.0, (float(row) - float(cols - 1) * 0.5) * spacing)
+		var unit_node: Node = _selected_units[i] as Node
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if not _is_player_owned(unit_node):
+			continue
+		var destination: Vector3 = target_point + offset
+		if unit_node.has_method("command_attack_move"):
+			var issued_variant: Variant = unit_node.call("command_attack_move", destination)
+			if bool(issued_variant):
+				issued_count += 1
+				continue
+		if unit_node.has_method("command_move"):
+			unit_node.call("command_move", destination)
+			issued_count += 1
+	return issued_count > 0
 
 func _issue_move_command(screen_pos: Vector2) -> void:
 	if _selected_units.is_empty():

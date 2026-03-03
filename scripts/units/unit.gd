@@ -15,6 +15,9 @@ const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65
 @export var attack_range: float = 2.4
 @export var attack_damage: float = 12.0
 @export var attack_cooldown: float = 0.8
+@export var auto_acquire_range: float = 8.0
+@export var attack_move_acquire_range: float = 11.0
+@export var retarget_interval: float = 0.2
 @export var debug_nav_log: bool = false
 @export var debug_nav_log_interval: float = 0.8
 
@@ -28,6 +31,7 @@ enum UnitMode {
 	GATHER_RESOURCE,
 	RETURN_RESOURCE,
 	ATTACK,
+	ATTACK_MOVE,
 }
 
 var _mode: UnitMode = UnitMode.IDLE
@@ -40,6 +44,9 @@ var _gather_timer: float = 0.0
 var _carried_amount: int = 0
 var _attack_target: Node3D = null
 var _attack_timer: float = 0.0
+var _attack_move_point: Vector3 = Vector3.ZERO
+var _has_attack_move_point: bool = false
+var _retarget_timer: float = 0.0
 var _base_tint: Color = Color.WHITE
 var _nav_target_cached: Vector3 = Vector3.ZERO
 var _has_nav_target_cached: bool = false
@@ -60,8 +67,8 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE:
 		_process_worker_cycle(delta)
-	elif _mode == UnitMode.ATTACK:
-		_process_attack_cycle(delta)
+	elif _mode == UnitMode.ATTACK or _mode == UnitMode.ATTACK_MOVE:
+		_process_combat_cycle(delta)
 	_apply_movement(delta)
 
 func is_worker_unit() -> bool:
@@ -96,6 +103,8 @@ func get_mode_label() -> String:
 			return "Returning"
 		UnitMode.ATTACK:
 			return "Attacking"
+		UnitMode.ATTACK_MOVE:
+			return "Attack-Move"
 		_:
 			return "Idle"
 
@@ -133,6 +142,9 @@ func command_move(target: Vector3) -> void:
 	_dropoff_target = null
 	_attack_target = null
 	_attack_timer = 0.0
+	_has_attack_move_point = false
+	_attack_move_point = Vector3.ZERO
+	_retarget_timer = 0.0
 	_gather_timer = 0.0
 	_move_to(target)
 
@@ -148,6 +160,9 @@ func command_gather(resource_node: Node3D, dropoff_node: Node3D) -> void:
 	_dropoff_target = dropoff_node
 	_attack_target = null
 	_attack_timer = 0.0
+	_has_attack_move_point = false
+	_attack_move_point = Vector3.ZERO
+	_retarget_timer = 0.0
 	_gather_timer = 0.0
 	_mode = UnitMode.GATHER_RESOURCE
 	_move_to(_gather_target.global_position)
@@ -161,6 +176,9 @@ func command_return_to_dropoff(dropoff_node: Node3D) -> void:
 	_gather_target = null
 	_attack_target = null
 	_attack_timer = 0.0
+	_has_attack_move_point = false
+	_attack_move_point = Vector3.ZERO
+	_retarget_timer = 0.0
 	_gather_timer = 0.0
 	_mode = UnitMode.RETURN_RESOURCE
 	_move_to(_dropoff_target.global_position)
@@ -173,6 +191,9 @@ func command_stop() -> void:
 	_dropoff_target = null
 	_attack_target = null
 	_attack_timer = 0.0
+	_has_attack_move_point = false
+	_attack_move_point = Vector3.ZERO
+	_retarget_timer = 0.0
 	_gather_timer = 0.0
 	_reset_navigation_motion()
 
@@ -187,10 +208,29 @@ func command_attack(target_node: Node3D) -> bool:
 		return false
 	_attack_target = target_node
 	_attack_timer = 0.0
+	_attack_move_point = target_node.global_position
+	_has_attack_move_point = true
+	_retarget_timer = 0.0
 	_gather_target = null
 	_dropoff_target = null
 	_mode = UnitMode.ATTACK
 	_move_to(target_node.global_position)
+	return true
+
+func command_attack_move(target: Vector3) -> bool:
+	if is_worker:
+		return false
+	if attack_damage <= 0.0 or attack_range <= 0.0:
+		return false
+	_attack_target = null
+	_attack_timer = 0.0
+	_attack_move_point = Vector3(target.x, global_position.y, target.z)
+	_has_attack_move_point = true
+	_retarget_timer = 0.0
+	_gather_target = null
+	_dropoff_target = null
+	_mode = UnitMode.ATTACK_MOVE
+	_move_to(_attack_move_point)
 	return true
 
 func apply_damage(amount: float, _source: Node = null) -> void:
@@ -251,15 +291,29 @@ func _process_worker_cycle(delta: float) -> void:
 		elif not _has_target:
 			_move_to(_dropoff_target.global_position)
 
-func _process_attack_cycle(delta: float) -> void:
-	if _attack_target == null or not is_instance_valid(_attack_target):
+func _process_combat_cycle(delta: float) -> void:
+	if is_worker or attack_damage <= 0.0 or attack_range <= 0.0:
 		command_stop()
 		return
-	if not _target_is_enemy(_attack_target):
-		command_stop()
+	_retarget_timer = maxf(0.0, _retarget_timer - delta)
+
+	if not _is_valid_enemy_target(_attack_target):
+		_attack_target = null
+		if _mode == UnitMode.ATTACK:
+			_mode = UnitMode.ATTACK_MOVE
+			if not _has_attack_move_point:
+				_attack_move_point = _target_position
+				_has_attack_move_point = true
+		if not _try_acquire_new_combat_target(true):
+			_continue_attack_move_progress()
+			return
+
+	if _attack_target == null:
+		_continue_attack_move_progress()
 		return
-	if _attack_target.has_method("is_alive") and not bool(_attack_target.call("is_alive")):
-		command_stop()
+	if not is_instance_valid(_attack_target):
+		_attack_target = null
+		_continue_attack_move_progress()
 		return
 
 	var target_position: Vector3 = _attack_target.global_position
@@ -273,8 +327,78 @@ func _process_attack_cycle(delta: float) -> void:
 			if _attack_target != null and _attack_target.has_method("apply_damage"):
 				_attack_target.call("apply_damage", attack_damage, self)
 				_spawn_attack_vfx(target_position)
-	else:
-		_move_to(target_position)
+		return
+
+	_move_to(target_position)
+	if _mode == UnitMode.ATTACK_MOVE and _retarget_timer <= 0.0:
+		_try_acquire_new_combat_target()
+
+func _continue_attack_move_progress() -> void:
+	if _mode != UnitMode.ATTACK_MOVE:
+		command_stop()
+		return
+	if _try_acquire_new_combat_target():
+		return
+	if not _has_attack_move_point:
+		_has_target = false
+		velocity = Vector3.ZERO
+		return
+	if _is_near(_attack_move_point, maxf(0.45, attack_range * 0.35)):
+		_has_target = false
+		velocity = Vector3.ZERO
+		return
+	_move_to(_attack_move_point)
+
+func _try_acquire_new_combat_target(force: bool = false) -> bool:
+	if not force and _retarget_timer > 0.0:
+		return false
+	_retarget_timer = maxf(0.05, retarget_interval)
+	var search_range: float = auto_acquire_range
+	if _mode == UnitMode.ATTACK_MOVE:
+		search_range = maxf(search_range, attack_move_acquire_range)
+	var new_target: Node3D = _find_priority_enemy_in_range(search_range)
+	if new_target == null:
+		return false
+	_attack_target = new_target
+	_attack_timer = 0.0
+	return true
+
+func _find_priority_enemy_in_range(search_range: float) -> Node3D:
+	var range_sq: float = search_range * search_range
+	var from_position: Vector3 = global_position
+	var best_unit: Node3D = _find_nearest_enemy_in_group("selectable_unit", from_position, range_sq)
+	if best_unit != null:
+		return best_unit
+	return _find_nearest_enemy_in_group("selectable_building", from_position, range_sq)
+
+func _find_nearest_enemy_in_group(group_name: String, from_position: Vector3, range_sq: float) -> Node3D:
+	var nearest: Node3D = null
+	var best_distance_sq: float = range_sq
+	var candidates: Array[Node] = get_tree().get_nodes_in_group(group_name)
+	for node in candidates:
+		var target: Node3D = node as Node3D
+		if not _is_valid_enemy_target(target):
+			continue
+		var delta: Vector3 = target.global_position - from_position
+		delta.y = 0.0
+		var distance_sq: float = delta.length_squared()
+		if distance_sq > range_sq:
+			continue
+		if nearest == null or distance_sq < best_distance_sq:
+			nearest = target
+			best_distance_sq = distance_sq
+	return nearest
+
+func _is_valid_enemy_target(target_node: Node) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	if target_node == self:
+		return false
+	if not _target_is_enemy(target_node):
+		return false
+	if target_node.has_method("is_alive") and not bool(target_node.call("is_alive")):
+		return false
+	return true
 
 func _switch_to_return_mode() -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
@@ -291,6 +415,9 @@ func _stop_worker_cycle(reset_carry: bool) -> void:
 	_gather_target = null
 	_dropoff_target = null
 	_gather_timer = 0.0
+	_has_attack_move_point = false
+	_attack_move_point = Vector3.ZERO
+	_retarget_timer = 0.0
 	_reset_navigation_motion()
 	if reset_carry:
 		_carried_amount = 0

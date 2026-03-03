@@ -190,6 +190,15 @@ func _apply_building_visual() -> void:
 	elif building_kind == "tower":
 		building_color = Color(0.95, 0.72, 0.3, 1.0)
 		_sprite.scale = Vector3(1.15, 1.15, 1.15)
+	elif building_kind == "academy":
+		building_color = Color(0.5, 0.88, 1.0, 1.0)
+		_sprite.scale = Vector3(1.32, 1.32, 1.32)
+	elif building_kind == "engineering_bay":
+		building_color = Color(0.72, 0.96, 0.62, 1.0)
+		_sprite.scale = Vector3(1.34, 1.34, 1.34)
+	elif building_kind == "tech_lab":
+		building_color = Color(0.98, 0.72, 0.46, 1.0)
+		_sprite.scale = Vector3(1.36, 1.36, 1.36)
 	else:
 		building_color = Color(0.95, 0.95, 1.0, 1.0)
 		_sprite.scale = Vector3(1.45, 1.45, 1.45)
