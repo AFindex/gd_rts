@@ -3,6 +3,7 @@ extends Node3D
 const UNIT_SCENE: PackedScene = preload("res://scenes/units/unit.tscn")
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
 
 const WORKER_COST: int = 50
 const SOLDIER_COST: int = 70
@@ -12,6 +13,14 @@ const BUILDING_BLOCK_RADIUS: float = 3.8
 const RESOURCE_BLOCK_RADIUS: float = 3.2
 const PLAYER_TEAM_ID: int = 1
 const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
+
+enum InputState {
+	IDLE,
+	UNIT_SELECTED,
+	SKILL_SELECTED,
+	BUILDING_PLACEMENT,
+	QUEUE_INPUT,
+}
 
 @export var camera_path: NodePath
 @export var units_root_path: NodePath
@@ -48,6 +57,8 @@ var _placement_preview_material: StandardMaterial3D
 
 var _pending_target_skill: String = ""
 var _build_menu_open: bool = false
+var _input_state: int = InputState.IDLE
+var _execution_queue: Array[Dictionary] = []
 
 var _hint_refresh_accum: float = 0.0
 var _match_rule_check_interval: float = 0.25
@@ -78,6 +89,7 @@ func _ready() -> void:
 	_request_navmesh_rebake("startup")
 	_refresh_resource_label()
 	_refresh_hint_label()
+	_refresh_input_state()
 
 func _apply_runtime_config() -> void:
 	var worker_def: Dictionary = RTS_CATALOG.get_unit_def("worker")
@@ -104,11 +116,13 @@ func _connect_hud_signals() -> void:
 		_hud.connect("command_pressed", callback)
 
 func _process(delta: float) -> void:
+	_drain_execution_queue()
 	if _placing_building:
 		_update_placement_preview()
 
 	_process_match_rules(delta)
 	_process_active_research(delta)
+	_refresh_input_state()
 
 	_hint_refresh_accum += delta
 	if _hint_refresh_accum >= 0.2:
@@ -214,7 +228,7 @@ func _input(event: InputEvent) -> void:
 			if _pending_target_skill != "":
 				if _pick_ui_control(mouse_button.position) != null:
 					return
-				if _try_execute_pending_target_skill(mouse_button.position):
+				if _try_execute_pending_target_skill(mouse_button.position, _is_queue_input_active()):
 					_pending_target_skill = ""
 				_refresh_hint_label()
 				return
@@ -298,7 +312,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_pending_target_skill = ""
 			_refresh_hint_label()
 			return
-		_issue_context_command(mouse_button.position)
+		_issue_context_command(mouse_button.position, _is_queue_input_active())
 
 func _pick_ui_control(screen_pos: Vector2) -> Control:
 	var viewport: Viewport = get_viewport()
@@ -325,6 +339,77 @@ func _try_execute_build_hotkey(keycode: int) -> bool:
 			_execute_command(skill_id)
 			return true
 	return false
+
+func _is_queue_input_active() -> bool:
+	return Input.is_key_pressed(KEY_SHIFT)
+
+func _refresh_input_state() -> void:
+	var next_state: int = InputState.IDLE
+	if _placing_building:
+		next_state = InputState.BUILDING_PLACEMENT
+	elif _pending_target_skill != "":
+		next_state = InputState.SKILL_SELECTED
+	elif _is_queue_input_active() and (not _selected_units.is_empty() or not _selected_buildings.is_empty()):
+		next_state = InputState.QUEUE_INPUT
+	elif not _selected_units.is_empty() or not _selected_buildings.is_empty():
+		next_state = InputState.UNIT_SELECTED
+	_input_state = next_state
+
+func _schedule_unit_command(unit_node: Node, command: RTSCommand) -> void:
+	if unit_node == null or not is_instance_valid(unit_node):
+		return
+	if command == null:
+		return
+	_execution_queue.append({
+		"unit": unit_node,
+		"command": command
+	})
+	if not command.is_queue_command:
+		_drain_execution_queue()
+
+func _drain_execution_queue() -> void:
+	if _execution_queue.is_empty():
+		return
+	while not _execution_queue.is_empty():
+		var entry_value: Variant = _execution_queue.pop_front()
+		if not (entry_value is Dictionary):
+			continue
+		var entry: Dictionary = entry_value as Dictionary
+		var unit_node: Node = entry.get("unit") as Node
+		var command: RTSCommand = entry.get("command") as RTSCommand
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if command == null:
+			continue
+		if unit_node.has_method("submit_command"):
+			unit_node.call("submit_command", command)
+			continue
+		_fallback_execute_unit_command(unit_node, command)
+
+func _fallback_execute_unit_command(unit_node: Node, command: RTSCommand) -> void:
+	match command.command_type:
+		RTSCommand.CommandType.MOVE:
+			if unit_node.has_method("command_move"):
+				unit_node.call("command_move", command.target_position)
+		RTSCommand.CommandType.ATTACK:
+			var target_unit: Node3D = command.target_unit as Node3D
+			if target_unit != null and unit_node.has_method("command_attack"):
+				unit_node.call("command_attack", target_unit)
+		RTSCommand.CommandType.ATTACK_MOVE:
+			if unit_node.has_method("command_attack_move"):
+				unit_node.call("command_attack_move", command.target_position)
+		RTSCommand.CommandType.GATHER:
+			var resource_node: Node3D = command.payload.get("resource") as Node3D
+			var dropoff_node: Node3D = command.payload.get("dropoff") as Node3D
+			if resource_node != null and dropoff_node != null and unit_node.has_method("command_gather"):
+				unit_node.call("command_gather", resource_node, dropoff_node)
+		RTSCommand.CommandType.RETURN_RESOURCE:
+			var dropoff: Node3D = command.payload.get("dropoff") as Node3D
+			if dropoff != null and unit_node.has_method("command_return_to_dropoff"):
+				unit_node.call("command_return_to_dropoff", dropoff)
+		RTSCommand.CommandType.STOP:
+			if unit_node.has_method("command_stop"):
+				unit_node.call("command_stop")
 
 func add_minerals(amount: int) -> void:
 	if amount <= 0:
@@ -411,7 +496,8 @@ func _build_hud_snapshot() -> Dictionary:
 				status_energy = float(unit.call("get_carry_fill_ratio")) if unit.has_method("get_carry_fill_ratio") else 0.0
 			status_health = float(unit.call("get_health_ratio")) if unit.has_method("get_health_ratio") else 1.0
 			var unit_hp_text: String = "%d%%" % int(round(status_health * 100.0))
-			single_detail = "Role: %s\nState: %s\nHP: %s" % [unit_role, unit_state, unit_hp_text]
+			var pending_commands: int = int(unit.call("get_pending_command_count")) if unit.has_method("get_pending_command_count") else 0
+			single_detail = "Role: %s\nState: %s\nHP: %s\nCmd Queue: %d" % [unit_role, unit_state, unit_hp_text, pending_commands]
 			single_armor = "Armor Type: Light"
 
 			portrait_title = unit_name
@@ -467,6 +553,7 @@ func _build_hud_snapshot() -> Dictionary:
 		"supply_used": supply_used,
 		"supply_cap": SUPPLY_CAP,
 		"top_legacy_text": top_legacy_text,
+		"input_state": _input_state_label(),
 		"mode": mode,
 		"selection_hint": _build_selection_hint(selected_worker_count, selected_soldier_count, selected_building_count, queue_size),
 		"single_title": single_title,
@@ -497,6 +584,19 @@ func _selection_mode(selection_total: int) -> String:
 		return "single"
 	return "multi"
 
+func _input_state_label() -> String:
+	match _input_state:
+		InputState.UNIT_SELECTED:
+			return "UNIT_SELECTED"
+		InputState.SKILL_SELECTED:
+			return "SKILL_SELECTED"
+		InputState.BUILDING_PLACEMENT:
+			return "BUILDING_PLACEMENT"
+		InputState.QUEUE_INPUT:
+			return "QUEUE_INPUT"
+		_:
+			return "IDLE"
+
 func _build_selection_hint(selected_worker_count: int, selected_soldier_count: int, selected_building_count: int, queue_size: int) -> String:
 	if _placing_building:
 		var placement_state: String = "Valid" if _placement_can_place else "Invalid"
@@ -522,6 +622,8 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 		return "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
+	if _input_state == InputState.QUEUE_INPUT:
+		return "Queue Input: Shift held | Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
 	return "Selected -> Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
 
 func _build_subgroup_text(mode: String, selection_total: int) -> String:
@@ -540,6 +642,8 @@ func _build_command_hint() -> String:
 		return "Build menu open. Select a building option or press ESC to close."
 	if _pending_target_skill != "":
 		return "Targeted skill armed. Left click world target, RMB/ESC to cancel."
+	if _input_state == InputState.QUEUE_INPUT:
+		return "Queue input active. Shift-held commands are appended."
 	if not _active_research.is_empty():
 		return _active_research_hint_text()
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
@@ -768,7 +872,7 @@ func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop" % [_worker_cost, _soldier_cost],
-		"Shift + Left Click: Additive Selection | Command cards are clickable"
+		"Shift + Left Click: Additive Select | Shift + Right Click: Queue Command"
 	]
 	if _match_notice != "":
 		lines[0] = _match_notice
@@ -1277,9 +1381,9 @@ func _execute_command(command_id: String) -> void:
 		"move", "gather", "attack":
 			_begin_target_skill(command_id)
 		"return_resource":
-			_issue_return_command()
+			_issue_return_command(_is_queue_input_active())
 		"stop":
-			_issue_stop_command()
+			_issue_stop_command(_is_queue_input_active())
 		"menu":
 			pass
 		_:
@@ -1307,10 +1411,10 @@ func _begin_target_skill(skill_id: String) -> void:
 	_build_menu_open = false
 	_pending_target_skill = skill_id
 
-func _try_execute_pending_target_skill(screen_pos: Vector2) -> bool:
+func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool = false) -> bool:
 	match _pending_target_skill:
 		"move":
-			_issue_move_command(screen_pos)
+			_issue_move_command(screen_pos, queue_command)
 			return true
 		"gather":
 			var ray_result: Dictionary = _raycast_from_screen(screen_pos)
@@ -1319,22 +1423,22 @@ func _try_execute_pending_target_skill(screen_pos: Vector2) -> bool:
 			var collider: Node = ray_result.get("collider") as Node
 			if collider == null or not collider.is_in_group("resource_node"):
 				return false
-			_issue_gather_command(collider as Node3D, screen_pos)
+			_issue_gather_command(collider as Node3D, screen_pos, queue_command)
 			return true
 		"attack":
 			var ray_result: Dictionary = _raycast_from_screen(screen_pos)
 			if not ray_result.is_empty():
 				var collider: Node = ray_result.get("collider") as Node
 				if collider != null and _is_attackable_enemy(collider):
-					_issue_attack_command(collider as Node3D, screen_pos)
+					_issue_attack_command(collider as Node3D, screen_pos, queue_command)
 					return true
-			if not _issue_attack_move_command(screen_pos):
+			if not _issue_attack_move_command(screen_pos, queue_command):
 				return false
 			return true
 		_:
 			return false
 
-func _issue_context_command(screen_pos: Vector2) -> void:
+func _issue_context_command(screen_pos: Vector2, queue_command: bool = false) -> void:
 	_prune_invalid_selection()
 	_build_menu_open = false
 	if _selected_units.is_empty():
@@ -1344,13 +1448,13 @@ func _issue_context_command(screen_pos: Vector2) -> void:
 	if not ray_result.is_empty():
 		var collider: Node = ray_result.get("collider") as Node
 		if collider != null and collider.is_in_group("resource_node"):
-			_issue_gather_command(collider as Node3D, screen_pos)
+			_issue_gather_command(collider as Node3D, screen_pos, queue_command)
 			return
 		if collider != null and _is_attackable_enemy(collider):
-			_issue_attack_command(collider as Node3D, screen_pos)
+			_issue_attack_command(collider as Node3D, screen_pos, queue_command)
 			return
 
-	_issue_move_command(screen_pos)
+	_issue_move_command(screen_pos, queue_command)
 
 func _select_single(screen_pos: Vector2, additive: bool) -> void:
 	_build_menu_open = false
@@ -1462,13 +1566,13 @@ func _queue_soldier_from_selection() -> void:
 	if queued_count > 0:
 		_refresh_hint_label()
 
-func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2) -> void:
+func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2, queue_command: bool = false) -> void:
 	if resource_node == null:
 		return
 
 	var dropoff: Node3D = _nearest_dropoff(resource_node.global_position)
 	if dropoff == null:
-		_issue_move_command(fallback_screen_pos)
+		_issue_move_command(fallback_screen_pos, queue_command)
 		return
 
 	var issued_count: int = 0
@@ -1482,13 +1586,14 @@ func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2) 
 			var worker_value: Variant = unit_node.call("is_worker_unit")
 			is_worker = bool(worker_value)
 		if is_worker and unit_node.has_method("command_gather"):
-			unit_node.call("command_gather", resource_node, dropoff)
+			var gather_command: RTSCommand = RTS_COMMAND.make_gather(resource_node, dropoff, queue_command)
+			_schedule_unit_command(unit_node, gather_command)
 			issued_count += 1
 
 	if issued_count == 0:
-		_issue_move_command(fallback_screen_pos)
+		_issue_move_command(fallback_screen_pos, queue_command)
 
-func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2) -> void:
+func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2, queue_command: bool = false) -> void:
 	if target_node == null or not is_instance_valid(target_node):
 		return
 	var issued_count: int = 0
@@ -1497,15 +1602,17 @@ func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2) ->
 			continue
 		if not _is_player_owned(unit_node):
 			continue
-		if not unit_node.has_method("command_attack"):
+		if not unit_node.has_method("is_worker_unit"):
 			continue
-		var issued_variant: Variant = unit_node.call("command_attack", target_node)
-		if bool(issued_variant):
-			issued_count += 1
+		if bool(unit_node.call("is_worker_unit")):
+			continue
+		var attack_command: RTSCommand = RTS_COMMAND.make_attack(target_node, queue_command)
+		_schedule_unit_command(unit_node, attack_command)
+		issued_count += 1
 	if issued_count == 0:
-		_issue_move_command(fallback_screen_pos)
+		_issue_move_command(fallback_screen_pos, queue_command)
 
-func _issue_attack_move_command(screen_pos: Vector2) -> bool:
+func _issue_attack_move_command(screen_pos: Vector2, queue_command: bool = false) -> bool:
 	if _selected_units.is_empty():
 		return false
 	var target: Variant = _ground_point_from_screen(screen_pos)
@@ -1526,17 +1633,12 @@ func _issue_attack_move_command(screen_pos: Vector2) -> bool:
 		if not _is_player_owned(unit_node):
 			continue
 		var destination: Vector3 = target_point + offset
-		if unit_node.has_method("command_attack_move"):
-			var issued_variant: Variant = unit_node.call("command_attack_move", destination)
-			if bool(issued_variant):
-				issued_count += 1
-				continue
-		if unit_node.has_method("command_move"):
-			unit_node.call("command_move", destination)
-			issued_count += 1
+		var attack_move_command: RTSCommand = RTS_COMMAND.make_attack_move(destination, queue_command)
+		_schedule_unit_command(unit_node, attack_move_command)
+		issued_count += 1
 	return issued_count > 0
 
-func _issue_move_command(screen_pos: Vector2) -> void:
+func _issue_move_command(screen_pos: Vector2, queue_command: bool = false) -> void:
 	if _selected_units.is_empty():
 		return
 
@@ -1558,21 +1660,19 @@ func _issue_move_command(screen_pos: Vector2) -> void:
 			continue
 		if not _is_player_owned(unit):
 			continue
-		if unit.has_method("command_move"):
-			unit.call("command_move", target_point + offset)
-		elif unit.has_method("move_to"):
-			unit.call("move_to", target_point + offset)
+		var move_command: RTSCommand = RTS_COMMAND.make_move(target_point + offset, queue_command)
+		_schedule_unit_command(unit, move_command)
 
-func _issue_stop_command() -> void:
+func _issue_stop_command(queue_command: bool = false) -> void:
 	for unit_node in _selected_units:
 		if unit_node == null or not is_instance_valid(unit_node):
 			continue
 		if not _is_player_owned(unit_node):
 			continue
-		if unit_node.has_method("command_stop"):
-			unit_node.call("command_stop")
+		var stop_command: RTSCommand = RTS_COMMAND.make_stop(queue_command)
+		_schedule_unit_command(unit_node, stop_command)
 
-func _issue_return_command() -> void:
+func _issue_return_command(queue_command: bool = false) -> void:
 	for unit_node in _selected_units:
 		if unit_node == null or not is_instance_valid(unit_node):
 			continue
@@ -1588,8 +1688,8 @@ func _issue_return_command() -> void:
 		var dropoff: Node3D = _nearest_dropoff(unit_3d.global_position)
 		if dropoff == null:
 			continue
-		if unit_node.has_method("command_return_to_dropoff"):
-			unit_node.call("command_return_to_dropoff", dropoff)
+		var return_command: RTSCommand = RTS_COMMAND.make_return(dropoff, queue_command)
+		_schedule_unit_command(unit_node, return_command)
 
 func _nearest_dropoff(from_position: Vector3) -> Node3D:
 	var nearest: Node3D = null

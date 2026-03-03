@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
 const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65
 const UNIT_COLLISION_LAYER_BIT: int = 1 << 1
 
@@ -58,6 +59,8 @@ var _stuck_log_accum: float = 0.0
 var _last_desired_velocity: Vector3 = Vector3.ZERO
 var _default_collision_mask: int = 0
 var _worker_collection_profile_active: bool = false
+var _command_queue: Array[RefCounted] = []
+var _active_command: RefCounted = null
 
 func _ready() -> void:
 	add_to_group("selectable_unit")
@@ -75,6 +78,7 @@ func _physics_process(delta: float) -> void:
 		_process_combat_cycle(delta)
 	_sync_worker_collection_navigation_profile()
 	_apply_movement(delta)
+	_process_command_queue()
 
 func is_worker_unit() -> bool:
 	return is_worker
@@ -141,7 +145,38 @@ func set_worker_role(worker: bool) -> void:
 	_health = max_health
 	_apply_role_visual()
 
-func command_move(target: Vector3) -> void:
+func submit_command(command: RefCounted) -> bool:
+	if command == null:
+		return false
+	if not command is RTSCommand:
+		return false
+	var rts_command: RTSCommand = command as RTSCommand
+	if rts_command == null:
+		return false
+
+	if rts_command.is_queue_command:
+		_command_queue.append(rts_command)
+		if _active_command == null:
+			_start_next_queued_command()
+		return true
+
+	_command_queue.clear()
+	_active_command = rts_command
+	_execute_rts_command(rts_command)
+	return true
+
+func clear_pending_commands() -> void:
+	_command_queue.clear()
+	_active_command = null
+
+func get_pending_command_count() -> int:
+	var active_count: int = 1 if _active_command != null else 0
+	return active_count + _command_queue.size()
+
+func command_move(target: Vector3, preserve_queue: bool = false) -> void:
+	if not preserve_queue:
+		_command_queue.clear()
+		_active_command = null
 	_mode = UnitMode.MOVE
 	_gather_target = null
 	_dropoff_target = null
@@ -156,11 +191,14 @@ func command_move(target: Vector3) -> void:
 func move_to(target: Vector3) -> void:
 	command_move(target)
 
-func command_gather(resource_node: Node3D, dropoff_node: Node3D) -> void:
+func command_gather(resource_node: Node3D, dropoff_node: Node3D, preserve_queue: bool = false) -> void:
 	if not is_worker:
 		return
 	if resource_node == null or dropoff_node == null:
 		return
+	if not preserve_queue:
+		_command_queue.clear()
+		_active_command = null
 	_gather_target = resource_node
 	_dropoff_target = dropoff_node
 	_attack_target = null
@@ -172,11 +210,14 @@ func command_gather(resource_node: Node3D, dropoff_node: Node3D) -> void:
 	_mode = UnitMode.GATHER_RESOURCE
 	_move_to(_gather_target.global_position)
 
-func command_return_to_dropoff(dropoff_node: Node3D) -> void:
+func command_return_to_dropoff(dropoff_node: Node3D, preserve_queue: bool = false) -> void:
 	if not is_worker:
 		return
 	if dropoff_node == null or not is_instance_valid(dropoff_node):
 		return
+	if not preserve_queue:
+		_command_queue.clear()
+		_active_command = null
 	_dropoff_target = dropoff_node
 	_gather_target = null
 	_attack_target = null
@@ -188,7 +229,10 @@ func command_return_to_dropoff(dropoff_node: Node3D) -> void:
 	_mode = UnitMode.RETURN_RESOURCE
 	_move_to(_dropoff_target.global_position)
 
-func command_stop() -> void:
+func command_stop(preserve_queue: bool = false) -> void:
+	if not preserve_queue:
+		_command_queue.clear()
+		_active_command = null
 	_mode = UnitMode.IDLE
 	_has_target = false
 	velocity = Vector3.ZERO
@@ -202,7 +246,7 @@ func command_stop() -> void:
 	_gather_timer = 0.0
 	_reset_navigation_motion()
 
-func command_attack(target_node: Node3D) -> bool:
+func command_attack(target_node: Node3D, preserve_queue: bool = false) -> bool:
 	if target_node == null or not is_instance_valid(target_node):
 		return false
 	if is_worker:
@@ -211,6 +255,9 @@ func command_attack(target_node: Node3D) -> bool:
 		return false
 	if not _target_is_enemy(target_node):
 		return false
+	if not preserve_queue:
+		_command_queue.clear()
+		_active_command = null
 	_attack_target = target_node
 	_attack_timer = 0.0
 	_attack_move_point = target_node.global_position
@@ -222,11 +269,14 @@ func command_attack(target_node: Node3D) -> bool:
 	_move_to(target_node.global_position)
 	return true
 
-func command_attack_move(target: Vector3) -> bool:
+func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 	if is_worker:
 		return false
 	if attack_damage <= 0.0 or attack_range <= 0.0:
 		return false
+	if not preserve_queue:
+		_command_queue.clear()
+		_active_command = null
 	_attack_target = null
 	_attack_timer = 0.0
 	_attack_move_point = Vector3(target.x, global_position.y, target.z)
@@ -237,6 +287,89 @@ func command_attack_move(target: Vector3) -> bool:
 	_mode = UnitMode.ATTACK_MOVE
 	_move_to(_attack_move_point)
 	return true
+
+func _process_command_queue() -> void:
+	if _active_command != null:
+		var active_command: RTSCommand = _active_command as RTSCommand
+		if active_command == null or _is_command_complete(active_command):
+			_active_command = null
+	if _active_command != null:
+		return
+	if _command_queue.is_empty():
+		return
+	_start_next_queued_command()
+
+func _start_next_queued_command() -> void:
+	if _command_queue.is_empty():
+		return
+	var queued_value: Variant = _command_queue.pop_front()
+	var queued_command: RTSCommand = queued_value as RTSCommand
+	if queued_command == null:
+		return
+	_active_command = queued_command
+	_execute_rts_command(queued_command)
+	if queued_command.command_type == RTSCommand.CommandType.STOP:
+		_active_command = null
+
+func _is_command_complete(command: RTSCommand) -> bool:
+	match command.command_type:
+		RTSCommand.CommandType.MOVE:
+			return not _has_target and (_mode == UnitMode.MOVE or _mode == UnitMode.IDLE)
+		RTSCommand.CommandType.ATTACK:
+			if _attack_target != null:
+				return false
+			return _mode == UnitMode.IDLE or (not _has_target and _mode != UnitMode.ATTACK)
+		RTSCommand.CommandType.ATTACK_MOVE:
+			if _mode != UnitMode.ATTACK_MOVE:
+				return true
+			if _attack_target != null:
+				return false
+			return not _has_target and _is_near(_attack_move_point, maxf(0.45, attack_range * 0.35))
+		RTSCommand.CommandType.GATHER:
+			return _mode != UnitMode.GATHER_RESOURCE and _mode != UnitMode.RETURN_RESOURCE
+		RTSCommand.CommandType.RETURN_RESOURCE:
+			return _mode == UnitMode.IDLE and not _has_target and _carried_amount <= 0
+		RTSCommand.CommandType.STOP:
+			return true
+		_:
+			return true
+
+func _execute_rts_command(command: RTSCommand) -> void:
+	match command.command_type:
+		RTSCommand.CommandType.MOVE:
+			command_move(command.target_position, true)
+		RTSCommand.CommandType.ATTACK:
+			var attack_target: Node3D = command.target_unit as Node3D
+			if attack_target != null and is_instance_valid(attack_target):
+				if not command_attack(attack_target, true) and command.target_type == RTSCommand.TargetType.POINT:
+					command_move(command.target_position, true)
+			elif command.target_type == RTSCommand.TargetType.POINT:
+				command_move(command.target_position, true)
+			else:
+				command_stop(true)
+		RTSCommand.CommandType.ATTACK_MOVE:
+			if not command_attack_move(command.target_position, true):
+				command_move(command.target_position, true)
+		RTSCommand.CommandType.GATHER:
+			var gather_resource: Node3D = command.payload.get("resource") as Node3D
+			var gather_dropoff: Node3D = command.payload.get("dropoff") as Node3D
+			if gather_resource == null or gather_dropoff == null:
+				command_stop(true)
+				return
+			if not is_instance_valid(gather_resource) or not is_instance_valid(gather_dropoff):
+				command_stop(true)
+				return
+			command_gather(gather_resource, gather_dropoff, true)
+		RTSCommand.CommandType.RETURN_RESOURCE:
+			var dropoff: Node3D = command.payload.get("dropoff") as Node3D
+			if dropoff == null or not is_instance_valid(dropoff):
+				command_stop(true)
+				return
+			command_return_to_dropoff(dropoff, true)
+		RTSCommand.CommandType.STOP:
+			command_stop(true)
+		_:
+			command_stop(true)
 
 func apply_damage(amount: float, _source: Node = null) -> void:
 	if amount <= 0.0 or not is_alive():
@@ -298,7 +431,7 @@ func _process_worker_cycle(delta: float) -> void:
 
 func _process_combat_cycle(delta: float) -> void:
 	if is_worker or attack_damage <= 0.0 or attack_range <= 0.0:
-		command_stop()
+		command_stop(true)
 		return
 	_retarget_timer = maxf(0.0, _retarget_timer - delta)
 
@@ -345,7 +478,7 @@ func _process_combat_cycle(delta: float) -> void:
 
 func _continue_attack_move_progress() -> void:
 	if _mode != UnitMode.ATTACK_MOVE:
-		command_stop()
+		command_stop(true)
 		return
 	if _try_acquire_new_combat_target():
 		return
