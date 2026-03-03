@@ -2,6 +2,7 @@ extends CharacterBody3D
 
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65
+const UNIT_COLLISION_LAYER_BIT: int = 1 << 1
 
 @export var move_speed: float = 6.0
 @export var is_worker: bool = false
@@ -55,6 +56,8 @@ var _has_safe_velocity: bool = false
 var _safe_velocity_frame: int = -1
 var _stuck_log_accum: float = 0.0
 var _last_desired_velocity: Vector3 = Vector3.ZERO
+var _default_collision_mask: int = 0
+var _worker_collection_profile_active: bool = false
 
 func _ready() -> void:
 	add_to_group("selectable_unit")
@@ -62,6 +65,7 @@ func _ready() -> void:
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
+	_default_collision_mask = collision_mask
 	_setup_navigation_agent()
 
 func _physics_process(delta: float) -> void:
@@ -69,6 +73,7 @@ func _physics_process(delta: float) -> void:
 		_process_worker_cycle(delta)
 	elif _mode == UnitMode.ATTACK or _mode == UnitMode.ATTACK_MOVE:
 		_process_combat_cycle(delta)
+	_sync_worker_collection_navigation_profile()
 	_apply_movement(delta)
 
 func is_worker_unit() -> bool:
@@ -613,6 +618,7 @@ func _setup_navigation_agent() -> void:
 	var callback: Callable = Callable(self, "_on_nav_velocity_computed")
 	if not _nav_agent.is_connected("velocity_computed", callback):
 		_nav_agent.connect("velocity_computed", callback)
+	_sync_worker_collection_navigation_profile()
 
 func _can_use_navigation() -> bool:
 	if _nav_agent == null:
@@ -636,6 +642,29 @@ func _reset_navigation_motion() -> void:
 	_last_desired_velocity = Vector3.ZERO
 	if _nav_agent != null and _nav_agent.avoidance_enabled:
 		_nav_agent.set_velocity_forced(Vector3.ZERO)
+
+func _sync_worker_collection_navigation_profile() -> void:
+	var should_use_collection_profile: bool = is_worker and (_mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE)
+	if should_use_collection_profile == _worker_collection_profile_active:
+		return
+	_worker_collection_profile_active = should_use_collection_profile
+	if should_use_collection_profile:
+		# SC2-style worker flow: gather/return keeps navmesh pathing, but ignores local avoidance and unit collision.
+		collision_mask = _default_collision_mask & ~UNIT_COLLISION_LAYER_BIT
+		if _nav_agent != null:
+			_nav_agent.set_velocity_forced(Vector3.ZERO)
+			_nav_agent.avoidance_enabled = false
+		_has_safe_velocity = false
+		_safe_velocity = Vector3.ZERO
+		_safe_velocity_frame = -1
+		return
+	collision_mask = _default_collision_mask
+	if _nav_agent != null:
+		_nav_agent.avoidance_enabled = true
+		_nav_agent.set_velocity_forced(Vector3.ZERO)
+	_has_safe_velocity = false
+	_safe_velocity = Vector3.ZERO
+	_safe_velocity_frame = -1
 
 func _log_nav_state(tag: String, move_target: Vector3, desired_velocity: Vector3, nav_finished: bool, target_distance: float) -> void:
 	var map_valid: bool = _can_use_navigation()
