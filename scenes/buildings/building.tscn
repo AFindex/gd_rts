@@ -23,6 +23,8 @@ collision_layer = 4
 position = Vector3(0, 1.2, 0)
 shape = SubResource("BoxShape3D_1")
 
+[node name="Obstacle3D" type="NavigationObstacle3D" parent="."]
+
 [node name="Sprite3D" type="Sprite3D" parent="."]
 position = Vector3(0, 2.0, 0)
 pixel_size = 0.0025

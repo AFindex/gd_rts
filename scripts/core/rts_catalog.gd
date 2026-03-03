@@ -197,6 +197,30 @@ const SKILL_DEFS: Dictionary = {
 	}
 }
 
+const MATCH_SETTINGS: Dictionary = {
+	"rule_check_interval": 0.25,
+	"notify_only": true
+}
+
+const MATCH_RULE_DEFS: Array[Dictionary] = [
+	{
+		"id": "player_defeat_base_lost",
+		"watch_group": "selectable_building",
+		"team_id": 1,
+		"building_kind": "base",
+		"trigger_at_or_below": 0,
+		"notice": "[DEFEAT] Main Base destroyed (test notice)."
+	},
+	{
+		"id": "player_victory_enemy_core_lost",
+		"watch_group": "selectable_building",
+		"team_id": 2,
+		"building_kind": "barracks",
+		"trigger_at_or_below": 0,
+		"notice": "[VICTORY] Enemy core destroyed (test notice)."
+	}
+]
+
 static func get_unit_def(unit_kind: String) -> Dictionary:
 	var value: Variant = UNIT_DEFS.get(unit_kind, {})
 	if value is Dictionary:
@@ -224,6 +248,16 @@ static func get_unit_build_skill_ids(unit_kind: String) -> Array[String]:
 static func get_building_build_skill_ids(building_kind: String) -> Array[String]:
 	var building_def: Dictionary = get_building_def(building_kind)
 	return _normalize_skill_ids(building_def.get("build_skills", []))
+
+static func get_match_settings() -> Dictionary:
+	return MATCH_SETTINGS.duplicate(true)
+
+static func get_match_rule_defs() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for rule_value in MATCH_RULE_DEFS:
+		if rule_value is Dictionary:
+			result.append((rule_value as Dictionary).duplicate(true))
+	return result
 
 static func get_skill_def(skill_id: String) -> Dictionary:
 	var value: Variant = SKILL_DEFS.get(skill_id, {})

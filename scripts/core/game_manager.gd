@@ -45,6 +45,12 @@ var _pending_target_skill: String = ""
 var _build_menu_open: bool = false
 
 var _hint_refresh_accum: float = 0.0
+var _match_rule_check_interval: float = 0.25
+var _match_notify_only: bool = true
+var _match_rule_defs: Array[Dictionary] = []
+var _match_check_accum: float = 0.0
+var _match_outcome_rule_id: String = ""
+var _match_notice: String = ""
 
 func _ready() -> void:
 	add_to_group("game_manager")
@@ -63,8 +69,12 @@ func _ready() -> void:
 func _apply_runtime_config() -> void:
 	var worker_def: Dictionary = RTS_CATALOG.get_unit_def("worker")
 	var soldier_def: Dictionary = RTS_CATALOG.get_unit_def("soldier")
+	var match_settings: Dictionary = RTS_CATALOG.get_match_settings()
 	_worker_cost = int(worker_def.get("cost", WORKER_COST))
 	_soldier_cost = int(soldier_def.get("cost", SOLDIER_COST))
+	_match_rule_check_interval = maxf(0.05, float(match_settings.get("rule_check_interval", 0.25)))
+	_match_notify_only = bool(match_settings.get("notify_only", true))
+	_match_rule_defs = RTS_CATALOG.get_match_rule_defs()
 
 func _connect_hud_signals() -> void:
 	if _hud == null or not _hud.has_signal("command_pressed"):
@@ -77,10 +87,81 @@ func _process(delta: float) -> void:
 	if _placing_building:
 		_update_placement_preview()
 
+	_process_match_rules(delta)
+
 	_hint_refresh_accum += delta
 	if _hint_refresh_accum >= 0.2:
 		_hint_refresh_accum = 0.0
 		_refresh_hint_label()
+
+func _process_match_rules(delta: float) -> void:
+	if _match_outcome_rule_id != "":
+		return
+	if _match_rule_defs.is_empty():
+		return
+	_match_check_accum += delta
+	if _match_check_accum < _match_rule_check_interval:
+		return
+	_match_check_accum = 0.0
+	_evaluate_match_rules()
+
+func _evaluate_match_rules() -> void:
+	for rule in _match_rule_defs:
+		if _is_match_rule_triggered(rule):
+			_trigger_match_rule(rule)
+			return
+
+func _is_match_rule_triggered(rule: Dictionary) -> bool:
+	var watch_group: String = str(rule.get("watch_group", ""))
+	if watch_group == "":
+		return false
+	var threshold: int = int(rule.get("trigger_at_or_below", 0))
+	var count: int = _count_rule_targets(rule)
+	return count <= threshold
+
+func _count_rule_targets(rule: Dictionary) -> int:
+	var watch_group: String = str(rule.get("watch_group", ""))
+	if watch_group == "":
+		return 0
+
+	var team_filter: int = int(rule.get("team_id", -1))
+	var building_kind_filter: String = str(rule.get("building_kind", ""))
+	var unit_kind_filter: String = str(rule.get("unit_kind", ""))
+	var requires_alive: bool = bool(rule.get("requires_alive", true))
+
+	var count: int = 0
+	var nodes: Array[Node] = get_tree().get_nodes_in_group(watch_group)
+	for node in nodes:
+		if node == null or not is_instance_valid(node):
+			continue
+		if team_filter >= 0:
+			if not node.has_method("get_team_id"):
+				continue
+			if int(node.call("get_team_id")) != team_filter:
+				continue
+		if requires_alive and node.has_method("is_alive") and not bool(node.call("is_alive")):
+			continue
+		if building_kind_filter != "":
+			if str(node.get("building_kind")) != building_kind_filter:
+				continue
+		if unit_kind_filter != "":
+			if not node.has_method("get_unit_kind"):
+				continue
+			if str(node.call("get_unit_kind")) != unit_kind_filter:
+				continue
+		count += 1
+	return count
+
+func _trigger_match_rule(rule: Dictionary) -> void:
+	_match_outcome_rule_id = str(rule.get("id", "match_outcome"))
+	var notice: String = str(rule.get("notice", "")).strip_edges()
+	if notice == "":
+		notice = "Match outcome triggered: %s" % _match_outcome_rule_id
+	_match_notice = notice
+	_refresh_hint_label()
+	if not _match_notify_only:
+		_pending_target_skill = ""
+		_build_menu_open = false
 
 func _input(event: InputEvent) -> void:
 	if _camera == null:
@@ -410,6 +491,8 @@ func _build_subgroup_text(mode: String, selection_total: int) -> String:
 	return "Subgroup: None"
 
 func _build_command_hint() -> String:
+	if _match_notice != "":
+		return _match_notice
 	if _placing_building:
 		return "Placement mode active. Use mouse or command card to confirm/cancel."
 	if _build_menu_open:
@@ -612,6 +695,11 @@ func _build_notifications() -> Array[String]:
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack | S: Stop" % [_worker_cost, _soldier_cost],
 		"Shift + Left Click: Additive Selection | Command cards are clickable"
 	]
+	if _match_notice != "":
+		lines[0] = _match_notice
+		lines[1] = "Match Rule: %s" % _match_outcome_rule_id
+		lines[2] = "Notify-only mode for testing."
+		return lines
 	if _placing_building:
 		var state: String = "valid" if _placement_can_place else "invalid"
 		lines[0] = "Placement %s | Cost: %d Minerals" % [state, _placing_cost]

@@ -17,6 +17,7 @@ const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 
 @onready var _selection_ring: MeshInstance3D = $SelectionRing
 @onready var _sprite: Sprite3D = $Sprite3D
+@onready var _nav_agent: NavigationAgent3D = $NavigationAgent3D
 
 enum UnitMode {
 	IDLE,
@@ -37,6 +38,8 @@ var _carried_amount: int = 0
 var _attack_target: Node3D = null
 var _attack_timer: float = 0.0
 var _base_tint: Color = Color.WHITE
+var _nav_target_cached: Vector3 = Vector3.ZERO
+var _has_nav_target_cached: bool = false
 
 func _ready() -> void:
 	add_to_group("selectable_unit")
@@ -44,6 +47,7 @@ func _ready() -> void:
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
+	_setup_navigation_agent()
 
 func _physics_process(delta: float) -> void:
 	if _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE:
@@ -162,6 +166,7 @@ func command_stop() -> void:
 	_attack_target = null
 	_attack_timer = 0.0
 	_gather_timer = 0.0
+	_has_nav_target_cached = false
 
 func command_attack(target_node: Node3D) -> bool:
 	if target_node == null or not is_instance_valid(target_node):
@@ -302,10 +307,22 @@ func _apply_movement() -> void:
 		move_and_slide()
 		return
 
-	var to_target: Vector3 = _target_position - global_position
+	var move_target: Vector3 = _target_position
+	if _can_use_navigation():
+		if _nav_agent.is_navigation_finished():
+			_has_target = false
+			_has_nav_target_cached = false
+			velocity = Vector3.ZERO
+			move_and_slide()
+			return
+		move_target = _nav_agent.get_next_path_position()
+
+	var to_target: Vector3 = move_target - global_position
 	to_target.y = 0.0
 	if to_target.length() <= 0.1:
-		_has_target = false
+		if not _can_use_navigation() or _nav_agent.is_navigation_finished():
+			_has_target = false
+			_has_nav_target_cached = false
 		velocity = Vector3.ZERO
 		move_and_slide()
 		return
@@ -317,6 +334,11 @@ func _apply_movement() -> void:
 func _move_to(target: Vector3) -> void:
 	_target_position = Vector3(target.x, global_position.y, target.z)
 	_has_target = true
+	if _can_use_navigation():
+		if not _has_nav_target_cached or _nav_target_cached.distance_to(_target_position) > 0.25:
+			_nav_agent.target_position = _target_position
+			_nav_target_cached = _target_position
+			_has_nav_target_cached = true
 
 func _is_near(target_position: Vector3, distance_limit: float) -> bool:
 	var delta: Vector3 = target_position - global_position
@@ -349,6 +371,8 @@ func _apply_runtime_config_for_role() -> void:
 	attack_damage = float(unit_def.get("attack_damage", attack_damage))
 	attack_range = float(unit_def.get("attack_range", attack_range))
 	attack_cooldown = float(unit_def.get("attack_cooldown", attack_cooldown))
+	if _nav_agent != null:
+		_nav_agent.max_speed = move_speed
 
 func _target_is_enemy(target_node: Node) -> bool:
 	if target_node == null:
@@ -394,3 +418,18 @@ func _play_hit_flash() -> void:
 	_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	var tween: Tween = create_tween()
 	tween.tween_property(_sprite, "modulate", _base_tint, 0.08)
+
+func _setup_navigation_agent() -> void:
+	if _nav_agent == null:
+		return
+	_nav_agent.max_speed = move_speed
+	_nav_agent.path_desired_distance = 0.2
+	_nav_agent.target_desired_distance = 0.25
+	_nav_agent.avoidance_enabled = true
+	_nav_agent.radius = 0.32
+	_nav_agent.height = 1.0
+
+func _can_use_navigation() -> bool:
+	if _nav_agent == null:
+		return false
+	return _nav_agent.get_navigation_map().is_valid()
