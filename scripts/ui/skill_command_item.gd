@@ -39,6 +39,7 @@ func apply_entry(entry: Dictionary) -> void:
 		texture = load(icon_path) as Texture2D
 	_icon.texture = texture
 	_icon.visible = texture != null
+	_icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH
 
 	_fallback_glyph.visible = texture == null
 	_fallback_glyph.text = label.substr(0, 1).to_upper() if label != "" else "?"

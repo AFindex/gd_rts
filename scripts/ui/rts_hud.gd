@@ -140,9 +140,9 @@ func _apply_default_hud() -> void:
 		"command_hint": "No active command card.",
 		"command_entries": [],
 		"notifications": [
-			"B: Place Barracks",
-			"R: Queue Worker (Base)",
-			"T: Queue Soldier (Barracks)"
+			"B: Build Menu",
+			"R: Train Worker / T: Train Soldier",
+			"A: Attack / S: Stop"
 		]
 	})
 

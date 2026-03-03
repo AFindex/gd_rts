@@ -4,11 +4,16 @@ const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 
 @export var move_speed: float = 6.0
 @export var is_worker: bool = false
+@export var team_id: int = 1
+@export var max_health: float = 100.0
 @export var gather_range: float = 1.8
 @export var dropoff_range: float = 2.4
 @export var carry_capacity: int = 24
 @export var gather_amount: int = 4
 @export var gather_interval: float = 0.55
+@export var attack_range: float = 2.4
+@export var attack_damage: float = 12.0
+@export var attack_cooldown: float = 0.8
 
 @onready var _selection_ring: MeshInstance3D = $SelectionRing
 @onready var _sprite: Sprite3D = $Sprite3D
@@ -18,25 +23,32 @@ enum UnitMode {
 	MOVE,
 	GATHER_RESOURCE,
 	RETURN_RESOURCE,
+	ATTACK,
 }
 
 var _mode: UnitMode = UnitMode.IDLE
+var _health: float = 100.0
 var _has_target: bool = false
 var _target_position: Vector3 = Vector3.ZERO
 var _gather_target: Node3D = null
 var _dropoff_target: Node3D = null
 var _gather_timer: float = 0.0
 var _carried_amount: int = 0
+var _attack_target: Node3D = null
+var _attack_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("selectable_unit")
 	_selection_ring.visible = false
 	_apply_runtime_config_for_role()
+	_health = max_health
 	_apply_role_visual()
 
 func _physics_process(delta: float) -> void:
 	if _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE:
 		_process_worker_cycle(delta)
+	elif _mode == UnitMode.ATTACK:
+		_process_attack_cycle(delta)
 	_apply_movement()
 
 func is_worker_unit() -> bool:
@@ -60,8 +72,24 @@ func get_mode_label() -> String:
 			return "Gathering"
 		UnitMode.RETURN_RESOURCE:
 			return "Returning"
+		UnitMode.ATTACK:
+			return "Attacking"
 		_:
 			return "Idle"
+
+func get_team_id() -> int:
+	return team_id
+
+func is_alive() -> bool:
+	return _health > 0.0
+
+func get_health_ratio() -> float:
+	if max_health <= 0.0:
+		return 0.0
+	return clampf(_health / max_health, 0.0, 1.0)
+
+func get_health_points() -> float:
+	return _health
 
 func get_carry_fill_ratio() -> float:
 	if carry_capacity <= 0:
@@ -74,12 +102,15 @@ func has_cargo() -> bool:
 func set_worker_role(worker: bool) -> void:
 	is_worker = worker
 	_apply_runtime_config_for_role()
+	_health = max_health
 	_apply_role_visual()
 
 func command_move(target: Vector3) -> void:
 	_mode = UnitMode.MOVE
 	_gather_target = null
 	_dropoff_target = null
+	_attack_target = null
+	_attack_timer = 0.0
 	_gather_timer = 0.0
 	_carried_amount = 0
 	_move_to(target)
@@ -94,6 +125,8 @@ func command_gather(resource_node: Node3D, dropoff_node: Node3D) -> void:
 		return
 	_gather_target = resource_node
 	_dropoff_target = dropoff_node
+	_attack_target = null
+	_attack_timer = 0.0
 	_gather_timer = 0.0
 	_mode = UnitMode.GATHER_RESOURCE
 	_move_to(_gather_target.global_position)
@@ -105,6 +138,8 @@ func command_return_to_dropoff(dropoff_node: Node3D) -> void:
 		return
 	_dropoff_target = dropoff_node
 	_gather_target = null
+	_attack_target = null
+	_attack_timer = 0.0
 	_gather_timer = 0.0
 	_mode = UnitMode.RETURN_RESOURCE
 	_move_to(_dropoff_target.global_position)
@@ -115,7 +150,33 @@ func command_stop() -> void:
 	velocity = Vector3.ZERO
 	_gather_target = null
 	_dropoff_target = null
+	_attack_target = null
+	_attack_timer = 0.0
 	_gather_timer = 0.0
+
+func command_attack(target_node: Node3D) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	if is_worker:
+		return false
+	if attack_damage <= 0.0 or attack_range <= 0.0:
+		return false
+	if not _target_is_enemy(target_node):
+		return false
+	_attack_target = target_node
+	_attack_timer = 0.0
+	_gather_target = null
+	_dropoff_target = null
+	_mode = UnitMode.ATTACK
+	_move_to(target_node.global_position)
+	return true
+
+func apply_damage(amount: float, _source: Node = null) -> void:
+	if amount <= 0.0 or not is_alive():
+		return
+	_health = maxf(0.0, _health - amount)
+	if _health <= 0.0:
+		_die()
 
 func set_selected(selected: bool) -> void:
 	_selection_ring.visible = selected
@@ -166,6 +227,30 @@ func _process_worker_cycle(delta: float) -> void:
 				_stop_worker_cycle(false)
 		elif not _has_target:
 			_move_to(_dropoff_target.global_position)
+
+func _process_attack_cycle(delta: float) -> void:
+	if _attack_target == null or not is_instance_valid(_attack_target):
+		command_stop()
+		return
+	if not _target_is_enemy(_attack_target):
+		command_stop()
+		return
+	if _attack_target.has_method("is_alive") and not bool(_attack_target.call("is_alive")):
+		command_stop()
+		return
+
+	var target_position: Vector3 = _attack_target.global_position
+	if _is_near(target_position, attack_range):
+		_has_target = false
+		velocity = Vector3.ZERO
+		_attack_timer += delta
+		var cooldown: float = maxf(0.05, attack_cooldown)
+		if _attack_timer >= cooldown:
+			_attack_timer = 0.0
+			if _attack_target != null and _attack_target.has_method("apply_damage"):
+				_attack_target.call("apply_damage", attack_damage, self )
+	else:
+		_move_to(target_position)
 
 func _switch_to_return_mode() -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
@@ -230,17 +315,37 @@ func _is_near(target_position: Vector3, distance_limit: float) -> bool:
 func _apply_role_visual() -> void:
 	if _sprite == null:
 		return
+	var unit_color: Color
 	if is_worker:
-		_sprite.modulate = Color(0.45, 1.0, 0.45, 1.0)
+		unit_color = Color(0.45, 1.0, 0.45, 1.0)
 	else:
-		_sprite.modulate = Color(1.0, 0.5, 0.5, 1.0)
+		unit_color = Color(1.0, 0.5, 0.5, 1.0)
+	if team_id != 1:
+		unit_color = Color(0.45, 0.72, 1.0, 1.0)
+	_sprite.modulate = unit_color
+	_sprite.scale = Vector3.ONE * 8 # Temp: Scale up for better visibility
 
 func _apply_runtime_config_for_role() -> void:
 	var unit_kind: String = "worker" if is_worker else "soldier"
 	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+	max_health = float(unit_def.get("max_health", max_health))
 	move_speed = float(unit_def.get("move_speed", move_speed))
 	gather_range = float(unit_def.get("gather_range", gather_range))
 	dropoff_range = float(unit_def.get("dropoff_range", dropoff_range))
 	carry_capacity = int(unit_def.get("carry_capacity", carry_capacity))
 	gather_amount = int(unit_def.get("gather_amount", gather_amount))
 	gather_interval = float(unit_def.get("gather_interval", gather_interval))
+	attack_damage = float(unit_def.get("attack_damage", attack_damage))
+	attack_range = float(unit_def.get("attack_range", attack_range))
+	attack_cooldown = float(unit_def.get("attack_cooldown", attack_cooldown))
+
+func _target_is_enemy(target_node: Node) -> bool:
+	if target_node == null:
+		return false
+	if not target_node.has_method("get_team_id"):
+		return false
+	return int(target_node.call("get_team_id")) != team_id
+
+func _die() -> void:
+	_selection_ring.visible = false
+	queue_free()

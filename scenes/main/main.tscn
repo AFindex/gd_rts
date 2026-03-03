@@ -36,10 +36,25 @@ is_worker = true
 [node name="SoldierA" parent="Units" unique_id=464306290 instance=ExtResource("3_unit")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, -2)
 
+[node name="EnemySoldierA" parent="Units" unique_id=948310221 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0, -2)
+team_id = 2
+
 [node name="Buildings" type="Node3D" parent="." unique_id=582541461]
 
 [node name="MainBase" parent="Buildings" unique_id=973704050 instance=ExtResource("4_building")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0)
+
+[node name="EnemyBarracks" parent="Buildings" unique_id=774522024 instance=ExtResource("4_building")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 18, 0, 2)
+building_kind = "barracks"
+team_id = 2
+is_resource_dropoff = false
+can_queue_worker = false
+can_queue_soldier = true
+worker_build_time = 0.0
+soldier_build_time = 4.0
+spawn_offset = Vector3(3.6, 0, 0)
 
 [node name="Resources" type="Node3D" parent="." unique_id=1852819292]
 

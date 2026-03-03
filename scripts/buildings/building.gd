@@ -5,6 +5,8 @@ const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 signal production_finished(unit_kind: String, spawn_position: Vector3)
 
 @export var building_kind: String = "base"
+@export var team_id: int = 1
+@export var max_health: float = 1200.0
 @export var is_resource_dropoff: bool = true
 @export var can_queue_worker: bool = true
 @export var can_queue_soldier: bool = false
@@ -18,10 +20,12 @@ signal production_finished(unit_kind: String, spawn_position: Vector3)
 var _queue_unit_kinds: Array[String] = []
 var _queue_build_times: Array[float] = []
 var _production_timer: float = 0.0
+var _health: float = 1200.0
 
 func _ready() -> void:
 	add_to_group("selectable_building")
 	_apply_building_config(building_kind)
+	_health = max_health
 	_refresh_dropoff_group()
 	_apply_building_visual()
 	_selection_ring.visible = false
@@ -44,6 +48,27 @@ func _process(delta: float) -> void:
 
 func set_selected(selected: bool) -> void:
 	_selection_ring.visible = selected
+
+func get_team_id() -> int:
+	return team_id
+
+func is_alive() -> bool:
+	return _health > 0.0
+
+func get_health_ratio() -> float:
+	if max_health <= 0.0:
+		return 0.0
+	return clampf(_health / max_health, 0.0, 1.0)
+
+func get_health_points() -> float:
+	return _health
+
+func apply_damage(amount: float, _source: Node = null) -> void:
+	if amount <= 0.0 or not is_alive():
+		return
+	_health = maxf(0.0, _health - amount)
+	if _health <= 0.0:
+		_die()
 
 func can_queue_worker_unit() -> bool:
 	return can_queue_worker
@@ -123,12 +148,17 @@ func _get_spawn_position() -> Vector3:
 func _apply_building_visual() -> void:
 	if _sprite == null:
 		return
+	var building_color: Color
 	if building_kind == "barracks":
-		_sprite.modulate = Color(1.0, 0.6, 0.25, 1.0)
+		building_color = Color(1.0, 0.6, 0.25, 1.0)
 		_sprite.scale = Vector3(1.3, 1.3, 1.3)
 	else:
-		_sprite.modulate = Color(0.95, 0.95, 1.0, 1.0)
+		building_color = Color(0.95, 0.95, 1.0, 1.0)
 		_sprite.scale = Vector3(1.45, 1.45, 1.45)
+	if team_id != 1:
+		building_color = Color(0.55, 0.75, 1.0, 1.0)
+	_sprite.modulate = building_color
+	_sprite.scale = Vector3.ONE * 8 # Temp: Scale up for better visibility
 
 func _format_unit_kind(unit_kind: String) -> String:
 	if unit_kind == "worker":
@@ -142,6 +172,7 @@ func _apply_building_config(kind: String) -> void:
 	if building_def.is_empty():
 		return
 	building_kind = kind
+	max_health = float(building_def.get("max_health", max_health))
 	is_resource_dropoff = bool(building_def.get("is_resource_dropoff", is_resource_dropoff))
 	can_queue_worker = bool(building_def.get("can_queue_worker", can_queue_worker))
 	can_queue_soldier = bool(building_def.get("can_queue_soldier", can_queue_soldier))
@@ -150,3 +181,7 @@ func _apply_building_config(kind: String) -> void:
 	var configured_spawn_offset: Variant = building_def.get("spawn_offset", spawn_offset)
 	if configured_spawn_offset is Vector3:
 		spawn_offset = configured_spawn_offset as Vector3
+
+func _die() -> void:
+	_selection_ring.visible = false
+	queue_free()
