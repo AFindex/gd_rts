@@ -15,9 +15,10 @@ script = ExtResource("1_script")
 [node name="NotificationPanel" type="PanelContainer" parent="." unique_id=1560147914]
 layout_mode = 0
 offset_left = 14.0
-offset_top = 160.0
-offset_right = 356.0
-offset_bottom = 520.0
+offset_top = 46.0
+offset_right = 279.395
+offset_bottom = 315.31
+scale = Vector2(0.857, 1)
 
 [node name="NotificationList" type="VBoxContainer" parent="NotificationPanel" unique_id=180120513]
 layout_mode = 2
@@ -39,13 +40,15 @@ text = "T: Queue Soldier (Barracks)"
 autowrap_mode = 3
 
 [node name="TopBar" type="PanelContainer" parent="." unique_id=1440881544]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -772.0
 offset_top = 12.0
 offset_right = -12.0
-offset_bottom = 96.0
+offset_bottom = 71.405
+grow_horizontal = 0
 
 [node name="TopBarRow" type="HBoxContainer" parent="TopBar" unique_id=1245825834]
 layout_mode = 2

@@ -61,6 +61,42 @@ func _process(delta: float) -> void:
 		_hint_refresh_accum = 0.0
 		_refresh_hint_label()
 
+func _input(event: InputEvent) -> void:
+	if _camera == null:
+		return
+
+	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
+	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_LEFT:
+		if mouse_button.pressed:
+			if _placing_building:
+				return
+			if _pick_ui_control(mouse_button.position) != null:
+				return
+			_dragging = true
+			_drag_start = mouse_button.position
+			if _selection_overlay != null and _selection_overlay.has_method("begin_drag"):
+				_selection_overlay.call("begin_drag", _drag_start)
+		else:
+			if not _dragging:
+				return
+			var drag_end: Vector2 = mouse_button.position
+			var drag_distance: float = _drag_start.distance_to(drag_end)
+			var additive: bool = Input.is_key_pressed(KEY_SHIFT)
+			if drag_distance < 8.0:
+				_select_single(drag_end, additive)
+			else:
+				_select_by_rect(_drag_start, drag_end, additive)
+			_dragging = false
+			if _selection_overlay != null and _selection_overlay.has_method("end_drag"):
+				_selection_overlay.call("end_drag")
+			_refresh_hint_label()
+		return
+
+	var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
+	if mouse_motion != null and _dragging:
+		if _selection_overlay != null and _selection_overlay.has_method("update_drag"):
+			_selection_overlay.call("update_drag", mouse_motion.position)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if _camera == null:
 		return
@@ -89,33 +125,23 @@ func _unhandled_input(event: InputEvent) -> void:
 			_try_place_building(mouse_button.position)
 			return
 
-	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_LEFT:
-		if mouse_button.pressed:
-			_dragging = true
-			_drag_start = mouse_button.position
-			if _selection_overlay != null and _selection_overlay.has_method("begin_drag"):
-				_selection_overlay.call("begin_drag", _drag_start)
-		else:
-			if _dragging:
-				var drag_end: Vector2 = mouse_button.position
-				var drag_distance: float = _drag_start.distance_to(drag_end)
-				var additive: bool = Input.is_key_pressed(KEY_SHIFT)
-				if drag_distance < 8.0:
-					_select_single(drag_end, additive)
-				else:
-					_select_by_rect(_drag_start, drag_end, additive)
-			_dragging = false
-			if _selection_overlay != null and _selection_overlay.has_method("end_drag"):
-				_selection_overlay.call("end_drag")
-			_refresh_hint_label()
-
-	var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
-	if mouse_motion != null and _dragging:
-		if _selection_overlay != null and _selection_overlay.has_method("update_drag"):
-			_selection_overlay.call("update_drag", mouse_motion.position)
-
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_RIGHT and mouse_button.pressed:
 		_issue_context_command(mouse_button.position)
+
+func _pick_ui_control(screen_pos: Vector2) -> Control:
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return null
+
+	if viewport.has_method("gui_pick"):
+		return viewport.call("gui_pick", screen_pos) as Control
+
+	if viewport.has_method("gui_get_hovered_control"):
+		var hovered: Control = viewport.call("gui_get_hovered_control") as Control
+		if hovered != null and hovered.get_global_rect().has_point(screen_pos):
+			return hovered
+
+	return null
 
 func add_minerals(amount: int) -> void:
 	if amount <= 0:

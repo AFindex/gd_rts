@@ -7,7 +7,7 @@
 [ext_resource type="Script" uid="uid://bkc7ubvlugcob" path="res://scripts/core/rts_camera.gd" id="5_camera"]
 [ext_resource type="Script" uid="uid://b5mrac0tlceun" path="res://scripts/ui/selection_overlay.gd" id="6_overlay"]
 [ext_resource type="PackedScene" path="res://scenes/world/resource_node.tscn" id="7_resource_node"]
-[ext_resource type="PackedScene" path="res://scenes/ui/rts_hud.tscn" id="8_hud"]
+[ext_resource type="PackedScene" uid="uid://rru2owkiha5t" path="res://scenes/ui/rts_hud.tscn" id="8_hud"]
 
 [node name="Main" type="Node3D" unique_id=1580196605]
 script = ExtResource("1_game_manager")
@@ -65,5 +65,3 @@ anchors_preset = 0
 script = ExtResource("6_overlay")
 
 [node name="RTSHud" parent="UI" unique_id=259587837 instance=ExtResource("8_hud")]
-layout_mode = 3
-anchors_preset = 15
