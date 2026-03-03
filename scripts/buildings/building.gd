@@ -13,6 +13,9 @@ signal production_finished(unit_kind: String, spawn_position: Vector3)
 @export var worker_build_time: float = 2.8
 @export var soldier_build_time: float = 4.6
 @export var spawn_offset: Vector3 = Vector3(3.2, 0.0, 0.0)
+@export var attack_range: float = 0.0
+@export var attack_damage: float = 0.0
+@export var attack_cooldown: float = 1.0
 
 @onready var _selection_ring: MeshInstance3D = $SelectionRing
 @onready var _sprite: Sprite3D = $Sprite3D
@@ -21,6 +24,8 @@ var _queue_unit_kinds: Array[String] = []
 var _queue_build_times: Array[float] = []
 var _production_timer: float = 0.0
 var _health: float = 1200.0
+var _attack_target: Node3D = null
+var _attack_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("selectable_building")
@@ -33,18 +38,18 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _queue_unit_kinds.is_empty():
 		_production_timer = 0.0
-		return
+	else:
+		_production_timer += delta
+		var current_build_time: float = _queue_build_times[0]
+		if _production_timer >= current_build_time:
+			_production_timer = 0.0
+			var unit_kind: String = _queue_unit_kinds[0]
+			_queue_unit_kinds.remove_at(0)
+			_queue_build_times.remove_at(0)
+			emit_signal("production_finished", unit_kind, _get_spawn_position())
 
-	_production_timer += delta
-	var current_build_time: float = _queue_build_times[0]
-	if _production_timer < current_build_time:
-		return
-
-	_production_timer = 0.0
-	var unit_kind: String = _queue_unit_kinds[0]
-	_queue_unit_kinds.remove_at(0)
-	_queue_build_times.remove_at(0)
-	emit_signal("production_finished", unit_kind, _get_spawn_position())
+	if building_kind == "tower":
+		_process_tower_combat(delta)
 
 func set_selected(selected: bool) -> void:
 	_selection_ring.visible = selected
@@ -131,6 +136,20 @@ func configure_as_barracks() -> void:
 	_queue_unit_kinds.clear()
 	_queue_build_times.clear()
 	_production_timer = 0.0
+	_attack_target = null
+	_attack_timer = 0.0
+	_health = max_health
+	_refresh_dropoff_group()
+	_apply_building_visual()
+
+func configure_as_tower() -> void:
+	_apply_building_config("tower")
+	_queue_unit_kinds.clear()
+	_queue_build_times.clear()
+	_production_timer = 0.0
+	_attack_target = null
+	_attack_timer = 0.0
+	_health = max_health
 	_refresh_dropoff_group()
 	_apply_building_visual()
 
@@ -152,6 +171,9 @@ func _apply_building_visual() -> void:
 	if building_kind == "barracks":
 		building_color = Color(1.0, 0.6, 0.25, 1.0)
 		_sprite.scale = Vector3(1.3, 1.3, 1.3)
+	elif building_kind == "tower":
+		building_color = Color(0.95, 0.72, 0.3, 1.0)
+		_sprite.scale = Vector3(1.15, 1.15, 1.15)
 	else:
 		building_color = Color(0.95, 0.95, 1.0, 1.0)
 		_sprite.scale = Vector3(1.45, 1.45, 1.45)
@@ -173,6 +195,9 @@ func _apply_building_config(kind: String) -> void:
 		return
 	building_kind = kind
 	max_health = float(building_def.get("max_health", max_health))
+	attack_range = float(building_def.get("attack_range", attack_range))
+	attack_damage = float(building_def.get("attack_damage", attack_damage))
+	attack_cooldown = float(building_def.get("attack_cooldown", attack_cooldown))
 	is_resource_dropoff = bool(building_def.get("is_resource_dropoff", is_resource_dropoff))
 	can_queue_worker = bool(building_def.get("can_queue_worker", can_queue_worker))
 	can_queue_soldier = bool(building_def.get("can_queue_soldier", can_queue_soldier))
@@ -182,6 +207,69 @@ func _apply_building_config(kind: String) -> void:
 	if configured_spawn_offset is Vector3:
 		spawn_offset = configured_spawn_offset as Vector3
 
+func _process_tower_combat(delta: float) -> void:
+	if not is_alive() or attack_damage <= 0.0 or attack_range <= 0.0:
+		return
+
+	if _attack_target == null or not _is_valid_enemy_target(_attack_target) or not _is_target_in_range(_attack_target):
+		_attack_target = _acquire_tower_target()
+		_attack_timer = 0.0
+	if _attack_target == null:
+		return
+
+	_attack_timer += delta
+	var cooldown: float = maxf(0.05, attack_cooldown)
+	if _attack_timer < cooldown:
+		return
+	_attack_timer = 0.0
+	if _attack_target.has_method("apply_damage"):
+		_attack_target.call("apply_damage", attack_damage, self)
+
+func _acquire_tower_target() -> Node3D:
+	var range_sq: float = attack_range * attack_range
+	var unit_target: Node3D = _find_nearest_enemy_in_group("selectable_unit", range_sq)
+	if unit_target != null:
+		return unit_target
+	return _find_nearest_enemy_in_group("selectable_building", range_sq)
+
+func _find_nearest_enemy_in_group(group_name: String, range_sq: float) -> Node3D:
+	var nearest: Node3D = null
+	var best_distance_sq: float = range_sq
+	var nodes: Array[Node] = get_tree().get_nodes_in_group(group_name)
+	for node in nodes:
+		var target: Node3D = node as Node3D
+		if not _is_valid_enemy_target(target):
+			continue
+		var distance_sq: float = _flat_distance_sq(global_position, target.global_position)
+		if distance_sq > range_sq:
+			continue
+		if nearest == null or distance_sq < best_distance_sq:
+			nearest = target
+			best_distance_sq = distance_sq
+	return nearest
+
+func _is_valid_enemy_target(node: Node3D) -> bool:
+	if node == null or not is_instance_valid(node) or node == self:
+		return false
+	if not node.has_method("get_team_id"):
+		return false
+	if int(node.call("get_team_id")) == team_id:
+		return false
+	if node.has_method("is_alive") and not bool(node.call("is_alive")):
+		return false
+	return true
+
+func _is_target_in_range(target: Node3D) -> bool:
+	if target == null:
+		return false
+	return _flat_distance_sq(global_position, target.global_position) <= attack_range * attack_range
+
+func _flat_distance_sq(a: Vector3, b: Vector3) -> float:
+	var delta: Vector3 = b - a
+	delta.y = 0.0
+	return delta.length_squared()
+
 func _die() -> void:
 	_selection_ring.visible = false
+	_attack_target = null
 	queue_free()

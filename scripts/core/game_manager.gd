@@ -378,9 +378,13 @@ func _selection_mode(selection_total: int) -> String:
 func _build_selection_hint(selected_worker_count: int, selected_soldier_count: int, selected_building_count: int, queue_size: int) -> String:
 	if _placing_building:
 		var placement_state: String = "Valid" if _placement_can_place else "Invalid"
-		return "Placing Barracks (%d): %s | LMB Confirm, RMB/ESC Cancel" % [_placing_cost, placement_state]
+		var placing_name: String = _placing_kind.capitalize()
+		var placing_def: Dictionary = RTS_CATALOG.get_building_def(_placing_kind)
+		if not placing_def.is_empty():
+			placing_name = str(placing_def.get("display_name", placing_name))
+		return "Placing %s (%d): %s | LMB Confirm, RMB/ESC Cancel" % [placing_name, _placing_cost, placement_state]
 	if _build_menu_open:
-		return "Build Menu: Q Barracks (%d), W Tower (%d, disabled), ESC Back" % [_barracks_cost, _tower_cost]
+		return "Build Menu: Q Barracks (%d), W Tower (%d), ESC Back" % [_barracks_cost, _tower_cost]
 	if _pending_target_skill != "":
 		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
 		var skill_label: String = str(skill_info.get("label", _pending_target_skill.capitalize()))
@@ -438,9 +442,9 @@ func _build_command_entries() -> Array[Dictionary]:
 				"disabled_reason": _barracks_block_reason()
 			}))
 			entries.append(_command_entry("build_tower", {
-				"enabled": false,
+				"enabled": _can_start_tower_build(),
 				"cost_text": str(_tower_cost),
-				"disabled_reason": "Tower scene is not implemented yet."
+				"disabled_reason": _tower_block_reason()
 			}))
 			entries.append(_command_entry("close_menu"))
 			return entries
@@ -498,7 +502,7 @@ func _build_notifications() -> Array[String]:
 		var state: String = "valid" if _placement_can_place else "invalid"
 		lines[0] = "Placement %s | Cost: %d Minerals" % [state, _placing_cost]
 	elif _build_menu_open:
-		lines[0] = "Build menu active | Q: Barracks | W: Tower (disabled) | ESC: Back"
+		lines[0] = "Build menu active | Q: Barracks | W: Tower | ESC: Back"
 	elif _pending_target_skill != "":
 		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
 		lines[0] = "Targeting: %s" % str(skill_info.get("label", _pending_target_skill))
@@ -587,10 +591,22 @@ func _can_start_barracks_build() -> bool:
 		return false
 	return _minerals >= _barracks_cost
 
+func _can_start_tower_build() -> bool:
+	if not _selected_units.is_empty() and not _selection_has_worker():
+		return false
+	return _minerals >= _tower_cost
+
 func _barracks_block_reason() -> String:
 	if not _selected_units.is_empty() and not _selection_has_worker():
 		return "Requires at least one worker in selection."
 	if _minerals < _barracks_cost:
+		return "Not enough minerals."
+	return ""
+
+func _tower_block_reason() -> String:
+	if not _selected_units.is_empty() and not _selection_has_worker():
+		return "Requires at least one worker in selection."
+	if _minerals < _tower_cost:
 		return "Not enough minerals."
 	return ""
 
@@ -668,9 +684,10 @@ func _execute_command(command_id: String) -> void:
 			_build_menu_open = false
 			_start_building_placement("barracks")
 		"build_tower":
+			if not _can_start_tower_build():
+				return
 			_build_menu_open = false
-			_refresh_hint_label()
-			return
+			_start_building_placement("tower")
 		"placement_confirm":
 			_confirm_building_placement()
 		"placement_cancel":
@@ -962,13 +979,21 @@ func _nearest_dropoff(from_position: Vector3) -> Node3D:
 	return nearest
 
 func _start_building_placement(kind: String) -> void:
-	if kind != "barracks":
+	var build_cost: int = 0
+	match kind:
+		"barracks":
+			build_cost = _barracks_cost
+		"tower":
+			build_cost = _tower_cost
+		_:
+			return
+	if build_cost <= 0:
 		return
 	_placing_building = true
 	_pending_target_skill = ""
 	_build_menu_open = false
 	_placing_kind = kind
-	_placing_cost = _barracks_cost
+	_placing_cost = build_cost
 	_placement_preview.visible = true
 	_update_placement_preview()
 	_refresh_hint_label()
@@ -1048,6 +1073,8 @@ func _confirm_building_placement() -> void:
 	building.global_position = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
 	if _placing_kind == "barracks" and building.has_method("configure_as_barracks"):
 		building.call("configure_as_barracks")
+	elif _placing_kind == "tower" and building.has_method("configure_as_tower"):
+		building.call("configure_as_tower")
 
 	_register_building(building)
 	_cancel_building_placement()
