@@ -134,7 +134,7 @@ text = "Help"
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -300.0
+offset_top = -230.0
 
 [node name="BottomRow" type="HBoxContainer" parent="BottomHUD"]
 anchor_right = 1.0
@@ -147,7 +147,7 @@ theme_override_constants/separation = 8
 
 [node name="SelectionPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 22.0
+size_flags_stretch_ratio = 21.0
 
 [node name="SelectionContent" type="VBoxContainer" parent="BottomHUD/BottomRow/SelectionPanel"]
 anchor_right = 1.0
@@ -175,7 +175,7 @@ text = "Warp"
 
 [node name="MinimapPanel" type="PanelContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent"]
 size_flags_vertical = 3
-custom_minimum_size = Vector2(0, 168)
+custom_minimum_size = Vector2(0, 132)
 
 [node name="MinimapPlaceholder" type="CenterContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel"]
 anchor_right = 1.0
@@ -197,7 +197,7 @@ text = "Terrain"
 
 [node name="QueuePanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 40.0
+size_flags_stretch_ratio = 45.0
 
 [node name="QueueContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel"]
 anchor_right = 1.0
@@ -218,7 +218,7 @@ theme_override_constants/separation = 6
 
 [node name="SingleStatusRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.2
+size_flags_stretch_ratio = 0.95
 
 [node name="SingleStatusContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot"]
 anchor_right = 1.0
@@ -252,7 +252,7 @@ value = 0.0
 
 [node name="SingleDetailRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.45
+size_flags_stretch_ratio = 1.7
 
 [node name="SingleDetailContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot"]
 anchor_right = 1.0
@@ -276,7 +276,7 @@ text = "Armor Type: --"
 [node name="ProductionQueueRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
 visible = false
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.45
+size_flags_stretch_ratio = 1.7
 
 [node name="ProductionContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot"]
 anchor_right = 1.0
@@ -333,7 +333,7 @@ text = ">"
 
 [node name="PortraitPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 8.0
+size_flags_stretch_ratio = 9.0
 
 [node name="PortraitContent" type="VBoxContainer" parent="BottomHUD/BottomRow/PortraitPanel"]
 anchor_right = 1.0
@@ -372,7 +372,7 @@ autowrap_mode = 3
 
 [node name="CommandPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 30.0
+size_flags_stretch_ratio = 25.0
 
 [node name="CommandContent" type="VBoxContainer" parent="BottomHUD/BottomRow/CommandPanel"]
 anchor_right = 1.0

@@ -3,16 +3,21 @@ extends Control
 const COMMAND_SLOTS: int = 15
 const MULTI_SLOTS: int = 24
 const QUEUE_SLOTS: int = 5
+const HUD_HEIGHT_RATIO: float = 0.30
+const HUD_MIN_HEIGHT: float = 180.0
+const HUD_MAX_HEIGHT: float = 360.0
 
 @onready var _top_bar: PanelContainer = $TopBar
 @onready var _resource_panel: PanelContainer = $TopBar/TopBarRow/ResourcePanel
 @onready var _center_top: PanelContainer = $TopBar/TopBarRow/CenterTop
 @onready var _system_panel: PanelContainer = $TopBar/TopBarRow/SystemPanel
 @onready var _bottom_hud: PanelContainer = $BottomHUD
+@onready var _bottom_row: HBoxContainer = $BottomHUD/BottomRow
 @onready var _selection_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel
 @onready var _queue_panel: PanelContainer = $BottomHUD/BottomRow/QueuePanel
 @onready var _portrait_panel: PanelContainer = $BottomHUD/BottomRow/PortraitPanel
 @onready var _command_panel: PanelContainer = $BottomHUD/BottomRow/CommandPanel
+@onready var _minimap_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel
 @onready var _notification_panel: PanelContainer = $NotificationPanel
 
 @onready var _minerals_value: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/MineralsValue
@@ -55,6 +60,13 @@ var _queue_slot_labels: Array[Label] = []
 var _notification_labels: Array[Label] = []
 
 func _ready() -> void:
+	var viewport: Viewport = get_viewport()
+	if viewport != null and not viewport.size_changed.is_connected(_on_viewport_size_changed):
+		viewport.size_changed.connect(_on_viewport_size_changed)
+
+	_queue_panel.size_flags_vertical = Control.SIZE_SHRINK_END
+	_portrait_panel.size_flags_vertical = Control.SIZE_SHRINK_END
+
 	_setup_static_styles()
 	_collect_notification_labels()
 	_build_queue_slot_labels()
@@ -62,6 +74,10 @@ func _ready() -> void:
 	_build_matrix_cells()
 	_apply_default_hud()
 	_apply_fixed_button_theme()
+	_apply_responsive_layout()
+
+func _on_viewport_size_changed() -> void:
+	_apply_responsive_layout()
 
 func _process(delta: float) -> void:
 	_elapsed_seconds += delta
@@ -177,7 +193,7 @@ func _build_queue_slot_labels() -> void:
 	for i in QUEUE_SLOTS:
 		var slot_panel: PanelContainer = PanelContainer.new()
 		slot_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		slot_panel.custom_minimum_size = Vector2(0.0, 28.0)
+		slot_panel.custom_minimum_size = Vector2(0.0, 24.0)
 		slot_panel.add_theme_stylebox_override("panel", _build_stylebox(Color(0.05, 0.12, 0.2, 0.9), Color(0.16, 0.38, 0.54, 0.95), 1, 4))
 
 		var label: Label = Label.new()
@@ -195,7 +211,7 @@ func _build_command_buttons() -> void:
 
 	for i in COMMAND_SLOTS:
 		var button: Button = Button.new()
-		button.custom_minimum_size = Vector2(0.0, 72.0)
+		button.custom_minimum_size = Vector2(0.0, 56.0)
 		button.disabled = true
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.text = "--"
@@ -211,7 +227,7 @@ func _build_matrix_cells() -> void:
 
 	for i in MULTI_SLOTS:
 		var cell: PanelContainer = PanelContainer.new()
-		cell.custom_minimum_size = Vector2(70.0, 70.0)
+		cell.custom_minimum_size = Vector2(58.0, 58.0)
 		cell.add_theme_stylebox_override("panel", _matrix_style("empty"))
 
 		var label: Label = Label.new()
@@ -230,6 +246,58 @@ func _collect_notification_labels() -> void:
 		var label: Label = child as Label
 		if label != null:
 			_notification_labels.append(label)
+
+func _apply_responsive_layout() -> void:
+	var viewport_size: Vector2 = get_viewport_rect().size
+	if viewport_size.y <= 0.0:
+		return
+
+	var hud_height: float = clampf(viewport_size.y * HUD_HEIGHT_RATIO, HUD_MIN_HEIGHT, HUD_MAX_HEIGHT)
+	_bottom_hud.offset_top = -hud_height
+
+	var command_button_height: float = round(clampf(hud_height * 0.2, 40.0, 72.0))
+	var recessed_delta: float = command_button_height * 2.0
+	var recessed_height: float = maxi(96.0, hud_height - recessed_delta)
+	_queue_panel.custom_minimum_size = Vector2(0.0, recessed_height)
+	_portrait_panel.custom_minimum_size = Vector2(0.0, recessed_height)
+
+	var inner_padding: float = round(clampf(hud_height * 0.028, 6.0, 10.0))
+	_bottom_row.offset_left = inner_padding
+	_bottom_row.offset_top = inner_padding
+	_bottom_row.offset_right = -inner_padding
+	_bottom_row.offset_bottom = -inner_padding
+
+	var minimap_height: float = round(clampf(hud_height * 0.58, 104.0, 210.0))
+	_minimap_panel.custom_minimum_size = Vector2(0.0, minimap_height)
+
+	for button in _command_buttons:
+		button.custom_minimum_size = Vector2(0.0, command_button_height)
+
+	var matrix_cell_size: float = round(clampf(hud_height * 0.19, 44.0, 70.0))
+	for panel in _matrix_panels:
+		panel.custom_minimum_size = Vector2(matrix_cell_size, matrix_cell_size)
+
+	var queue_slot_height: float = round(clampf(hud_height * 0.1, 22.0, 34.0))
+	for child in _queue_slots.get_children():
+		var slot_panel: Control = child as Control
+		if slot_panel != null:
+			slot_panel.custom_minimum_size = Vector2(0.0, queue_slot_height)
+
+	var grid_gap: int = int(round(clampf(hud_height * 0.022, 4.0, 8.0)))
+	_command_grid.add_theme_constant_override("h_separation", grid_gap)
+	_command_grid.add_theme_constant_override("v_separation", grid_gap)
+	_matrix_grid.add_theme_constant_override("h_separation", grid_gap)
+	_matrix_grid.add_theme_constant_override("v_separation", grid_gap)
+
+	var top_bar_width: float = round(clampf(viewport_size.x * 0.395, 420.0, 760.0))
+	var top_bar_height: float = round(clampf(viewport_size.y * 0.078, 64.0, 84.0))
+	_top_bar.offset_left = -12.0 - top_bar_width
+	_top_bar.offset_bottom = 12.0 + top_bar_height
+
+	var notification_top: float = round(clampf(viewport_size.y * 0.22, 120.0, 210.0))
+	var notification_height: float = round(clampf(viewport_size.y * 0.5, 220.0, 380.0))
+	_notification_panel.offset_top = notification_top
+	_notification_panel.offset_bottom = notification_top + notification_height
 
 func _apply_queue_preview(queue_preview: Array[String]) -> void:
 	for i in _queue_slot_labels.size():
