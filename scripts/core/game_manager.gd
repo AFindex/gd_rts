@@ -2,6 +2,7 @@ extends Node3D
 
 const UNIT_SCENE: PackedScene = preload("res://scenes/units/unit.tscn")
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
+const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 
 const BARRACKS_COST: int = 160
 const WORKER_COST: int = 50
@@ -29,6 +30,9 @@ var _selected_units: Array[Node] = []
 var _selected_buildings: Array[Node] = []
 
 var _minerals: int = 220
+var _worker_cost: int = WORKER_COST
+var _soldier_cost: int = SOLDIER_COST
+var _barracks_cost: int = BARRACKS_COST
 
 var _placing_building: bool = false
 var _placing_kind: String = ""
@@ -37,6 +41,8 @@ var _placement_current_position: Vector3 = Vector3.ZERO
 var _placement_can_place: bool = false
 var _placement_preview: MeshInstance3D
 var _placement_preview_material: StandardMaterial3D
+
+var _pending_target_skill: String = ""
 
 var _hint_refresh_accum: float = 0.0
 
@@ -47,10 +53,27 @@ func _ready() -> void:
 	_buildings_root = get_node_or_null(buildings_root_path) as Node3D
 	_selection_overlay = get_node_or_null(selection_overlay_path) as Control
 	_hud = get_node_or_null(hud_path) as Control
+	_apply_runtime_config()
+	_connect_hud_signals()
 	_create_placement_preview()
 	_register_existing_buildings()
 	_refresh_resource_label()
 	_refresh_hint_label()
+
+func _apply_runtime_config() -> void:
+	var worker_def: Dictionary = RTS_CATALOG.get_unit_def("worker")
+	var soldier_def: Dictionary = RTS_CATALOG.get_unit_def("soldier")
+	var barracks_def: Dictionary = RTS_CATALOG.get_building_def("barracks")
+	_worker_cost = int(worker_def.get("cost", WORKER_COST))
+	_soldier_cost = int(soldier_def.get("cost", SOLDIER_COST))
+	_barracks_cost = int(barracks_def.get("cost", BARRACKS_COST))
+
+func _connect_hud_signals() -> void:
+	if _hud == null or not _hud.has_signal("command_pressed"):
+		return
+	var callback: Callable = Callable(self, "_on_hud_command_pressed")
+	if not _hud.is_connected("command_pressed", callback):
+		_hud.connect("command_pressed", callback)
 
 func _process(delta: float) -> void:
 	if _placing_building:
@@ -68,6 +91,13 @@ func _input(event: InputEvent) -> void:
 	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_LEFT:
 		if mouse_button.pressed:
+			if _pending_target_skill != "":
+				if _pick_ui_control(mouse_button.position) != null:
+					return
+				if _try_execute_pending_target_skill(mouse_button.position):
+					_pending_target_skill = ""
+				_refresh_hint_label()
+				return
 			if _placing_building:
 				return
 			if _pick_ui_control(mouse_button.position) != null:
@@ -103,29 +133,42 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	var key_event: InputEventKey = event as InputEventKey
 	if key_event != null and key_event.pressed and not key_event.echo:
-		if key_event.keycode == KEY_B:
-			_start_building_placement("barracks")
-			return
-		if key_event.keycode == KEY_ESCAPE and _placing_building:
-			_cancel_building_placement()
-			return
-		if key_event.keycode == KEY_R:
-			_queue_worker_from_selection()
-			return
-		if key_event.keycode == KEY_T:
-			_queue_soldier_from_selection()
-			return
+		match key_event.keycode:
+			KEY_B:
+				_execute_command("build_barracks")
+				return
+			KEY_ESCAPE:
+				if _placing_building:
+					_execute_command("placement_cancel")
+					return
+				if _pending_target_skill != "":
+					_pending_target_skill = ""
+					_refresh_hint_label()
+					return
+			KEY_R:
+				_execute_command("train_worker")
+				return
+			KEY_T:
+				_execute_command("train_soldier")
+				return
+			KEY_S:
+				_execute_command("stop")
+				return
 
 	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
 	if _placing_building and mouse_button != null:
 		if mouse_button.button_index == MOUSE_BUTTON_RIGHT and mouse_button.pressed:
-			_cancel_building_placement()
+			_execute_command("placement_cancel")
 			return
 		if mouse_button.button_index == MOUSE_BUTTON_LEFT and mouse_button.pressed:
 			_try_place_building(mouse_button.position)
 			return
 
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_RIGHT and mouse_button.pressed:
+		if _pending_target_skill != "":
+			_pending_target_skill = ""
+			_refresh_hint_label()
+			return
 		_issue_context_command(mouse_button.position)
 
 func _pick_ui_control(screen_pos: Vector2) -> Control:
@@ -310,6 +353,15 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 	if _placing_building:
 		var placement_state: String = "Valid" if _placement_can_place else "Invalid"
 		return "Placing Barracks (%d): %s | LMB Confirm, RMB/ESC Cancel" % [_placing_cost, placement_state]
+	if _pending_target_skill != "":
+		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
+		var skill_label: String = str(skill_info.get("label", _pending_target_skill.capitalize()))
+		var target_mode: String = str(skill_info.get("target_mode", "none"))
+		if target_mode == "resource":
+			return "Targeting %s | Left Click Resource | RMB/ESC Cancel" % skill_label
+		if target_mode == "ground":
+			return "Targeting %s | Left Click Ground | RMB/ESC Cancel" % skill_label
+		return "Targeting %s | RMB/ESC Cancel" % skill_label
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return "No selection | B: Build Barracks | Left drag: Box Select | RMB: Move/Gather"
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
@@ -325,18 +377,23 @@ func _build_subgroup_text(mode: String, selection_total: int) -> String:
 
 func _build_command_hint() -> String:
 	if _placing_building:
-		return "Placement Mode: Confirm valid position with LMB."
+		return "Placement mode active. Use mouse or command card to confirm/cancel."
+	if _pending_target_skill != "":
+		return "Targeted skill armed. Left click world target, RMB/ESC to cancel."
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
-		return "Training panel follows selected building capabilities."
+		return "Click command cards or use hotkeys for production/build commands."
 	if not _selected_units.is_empty():
-		return "RMB for move / gather context command."
+		return "RMB context command or click move/gather/stop in command card."
 	return "Select something to open context commands."
 
 func _build_command_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	if _placing_building:
-		entries.append(_command_entry("Confirm Barracks", "LMB", _placement_can_place and _minerals >= _placing_cost))
-		entries.append(_command_entry("Cancel Placement", "ESC", true))
+		entries.append(_command_entry("placement_confirm", {
+			"enabled": _placement_can_place and _minerals >= _placing_cost,
+			"cost_text": str(_placing_cost)
+		}))
+		entries.append(_command_entry("placement_cancel"))
 		return entries
 
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
@@ -345,39 +402,70 @@ func _build_command_entries() -> Array[Dictionary]:
 			var can_train_worker: bool = bool(selected_building.call("can_queue_worker_unit")) if selected_building.has_method("can_queue_worker_unit") else false
 			var can_train_soldier: bool = bool(selected_building.call("can_queue_soldier_unit")) if selected_building.has_method("can_queue_soldier_unit") else false
 			if can_train_worker:
-				entries.append(_command_entry("Train Worker (50)", "R", _minerals >= WORKER_COST))
+				entries.append(_command_entry("train_worker", {
+					"enabled": _minerals >= _worker_cost,
+					"cost_text": str(_worker_cost)
+				}))
 			if can_train_soldier:
-				entries.append(_command_entry("Train Soldier (70)", "T", _minerals >= SOLDIER_COST))
-		entries.append(_command_entry("Build Barracks", "B", _minerals >= BARRACKS_COST))
+				entries.append(_command_entry("train_soldier", {
+					"enabled": _minerals >= _soldier_cost,
+					"cost_text": str(_soldier_cost)
+				}))
+		entries.append(_command_entry("build_barracks", {
+			"enabled": _minerals >= _barracks_cost,
+			"cost_text": str(_barracks_cost)
+		}))
 		return entries
 
 	if not _selected_units.is_empty():
-		entries.append(_command_entry("Move", "RMB", true))
+		entries.append(_command_entry("move"))
 		if _selection_has_worker():
-			entries.append(_command_entry("Gather", "RMB", true))
-		entries.append(_command_entry("Build Barracks", "B", _minerals >= BARRACKS_COST))
+			entries.append(_command_entry("gather"))
+			var has_worker_cargo: bool = _selection_has_worker_cargo()
+			entries.append(_command_entry("return_resource", {
+				"enabled": has_worker_cargo,
+				"disabled_reason": "" if has_worker_cargo else "Selected workers are not carrying minerals."
+			}))
+			entries.append(_command_entry("build_barracks", {
+				"enabled": _minerals >= _barracks_cost,
+				"cost_text": str(_barracks_cost)
+			}))
+		else:
+			entries.append(_command_entry("build_barracks", {
+				"enabled": false,
+				"cost_text": str(_barracks_cost),
+				"disabled_reason": "Requires at least one worker in selection."
+			}))
+		entries.append(_command_entry("stop"))
+		if _selection_has_combat_unit():
+			entries.append(_command_entry("attack", {
+				"enabled": false,
+				"disabled_reason": "Combat system will be enabled in next phase."
+			}))
 		return entries
 
-	entries.append(_command_entry("Build Barracks", "B", _minerals >= BARRACKS_COST))
-	entries.append(_command_entry("Menu", "F10", true))
+	entries.append(_command_entry("build_barracks", {
+		"enabled": _minerals >= _barracks_cost,
+		"cost_text": str(_barracks_cost)
+	}))
+	entries.append(_command_entry("menu"))
 	return entries
 
-func _command_entry(label: String, hotkey: String, enabled: bool) -> Dictionary:
-	return {
-		"label": label,
-		"hotkey": hotkey,
-		"enabled": enabled
-	}
+func _command_entry(skill_id: String, overrides: Dictionary = {}) -> Dictionary:
+	return RTS_CATALOG.make_command_entry(skill_id, overrides)
 
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
-		"B: Place Barracks (160)",
-		"R: Queue Worker (Base) / T: Queue Soldier (Barracks)",
-		"Shift + Left Click: Additive Selection"
+		"B: Build Barracks (%d)" % _barracks_cost,
+		"R: Train Worker (%d) | T: Train Soldier (%d) | S: Stop" % [_worker_cost, _soldier_cost],
+		"Shift + Left Click: Additive Selection | Command cards are clickable"
 	]
 	if _placing_building:
 		var state: String = "valid" if _placement_can_place else "invalid"
 		lines[0] = "Placement %s | Cost: %d Minerals" % [state, _placing_cost]
+	elif _pending_target_skill != "":
+		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
+		lines[0] = "Targeting: %s" % str(skill_info.get("label", _pending_target_skill))
 	return lines
 
 func _build_multi_roles() -> Array[String]:
@@ -419,6 +507,77 @@ func _selection_has_worker() -> bool:
 		if selected_unit.has_method("is_worker_unit") and bool(selected_unit.call("is_worker_unit")):
 			return true
 	return false
+
+func _selection_has_worker_cargo() -> bool:
+	for selected_unit in _selected_units:
+		if selected_unit == null:
+			continue
+		if not selected_unit.has_method("is_worker_unit"):
+			continue
+		if not bool(selected_unit.call("is_worker_unit")):
+			continue
+		if selected_unit.has_method("has_cargo") and bool(selected_unit.call("has_cargo")):
+			return true
+	return false
+
+func _selection_has_combat_unit() -> bool:
+	for selected_unit in _selected_units:
+		if selected_unit == null:
+			continue
+		if selected_unit.has_method("is_worker_unit") and not bool(selected_unit.call("is_worker_unit")):
+			return true
+	return false
+
+func _on_hud_command_pressed(command_id: String) -> void:
+	_execute_command(command_id)
+
+func _execute_command(command_id: String) -> void:
+	match command_id:
+		"build_barracks":
+			if not _selected_units.is_empty() and not _selection_has_worker():
+				return
+			_start_building_placement("barracks")
+		"placement_confirm":
+			_confirm_building_placement()
+		"placement_cancel":
+			_cancel_building_placement()
+		"train_worker":
+			_queue_worker_from_selection()
+		"train_soldier":
+			_queue_soldier_from_selection()
+		"move", "gather", "attack":
+			_begin_target_skill(command_id)
+		"return_resource":
+			_issue_return_command()
+		"stop":
+			_issue_stop_command()
+		"menu":
+			pass
+		_:
+			return
+	_refresh_hint_label()
+
+func _begin_target_skill(skill_id: String) -> void:
+	if _selected_units.is_empty():
+		return
+	_pending_target_skill = skill_id
+
+func _try_execute_pending_target_skill(screen_pos: Vector2) -> bool:
+	match _pending_target_skill:
+		"move":
+			_issue_move_command(screen_pos)
+			return true
+		"gather":
+			var ray_result: Dictionary = _raycast_from_screen(screen_pos)
+			if ray_result.is_empty():
+				return false
+			var collider: Node = ray_result.get("collider") as Node
+			if collider == null or not collider.is_in_group("resource_node"):
+				return false
+			_issue_gather_command(collider as Node3D, screen_pos)
+			return true
+		_:
+			return false
 
 func _issue_context_command(screen_pos: Vector2) -> void:
 	if _selected_units.is_empty():
@@ -488,14 +647,14 @@ func _queue_worker_from_selection() -> void:
 			can_queue = bool(can_queue_value)
 		if not can_queue:
 			continue
-		if not try_spend_minerals(WORKER_COST):
+		if not try_spend_minerals(_worker_cost):
 			break
 		if node.has_method("queue_worker"):
 			var queued_value: Variant = node.call("queue_worker")
 			if bool(queued_value):
 				queued_count += 1
 			else:
-				add_minerals(WORKER_COST)
+				add_minerals(_worker_cost)
 
 	if queued_count > 0:
 		_refresh_hint_label()
@@ -511,14 +670,14 @@ func _queue_soldier_from_selection() -> void:
 			can_queue = bool(can_queue_value)
 		if not can_queue:
 			continue
-		if not try_spend_minerals(SOLDIER_COST):
+		if not try_spend_minerals(_soldier_cost):
 			break
 		if node.has_method("queue_soldier"):
 			var queued_value: Variant = node.call("queue_soldier")
 			if bool(queued_value):
 				queued_count += 1
 			else:
-				add_minerals(SOLDIER_COST)
+				add_minerals(_soldier_cost)
 
 	if queued_count > 0:
 		_refresh_hint_label()
@@ -572,6 +731,30 @@ func _issue_move_command(screen_pos: Vector2) -> void:
 		elif unit.has_method("move_to"):
 			unit.call("move_to", target_point + offset)
 
+func _issue_stop_command() -> void:
+	for unit_node in _selected_units:
+		if unit_node == null:
+			continue
+		if unit_node.has_method("command_stop"):
+			unit_node.call("command_stop")
+
+func _issue_return_command() -> void:
+	for unit_node in _selected_units:
+		if unit_node == null:
+			continue
+		if not unit_node.has_method("is_worker_unit"):
+			continue
+		if not bool(unit_node.call("is_worker_unit")):
+			continue
+		var unit_3d: Node3D = unit_node as Node3D
+		if unit_3d == null:
+			continue
+		var dropoff: Node3D = _nearest_dropoff(unit_3d.global_position)
+		if dropoff == null:
+			continue
+		if unit_node.has_method("command_return_to_dropoff"):
+			unit_node.call("command_return_to_dropoff", dropoff)
+
 func _nearest_dropoff(from_position: Vector3) -> Node3D:
 	var nearest: Node3D = null
 	var best_distance_sq: float = INF
@@ -590,8 +773,9 @@ func _start_building_placement(kind: String) -> void:
 	if kind != "barracks":
 		return
 	_placing_building = true
+	_pending_target_skill = ""
 	_placing_kind = kind
-	_placing_cost = BARRACKS_COST
+	_placing_cost = _barracks_cost
 	_placement_preview.visible = true
 	_update_placement_preview()
 	_refresh_hint_label()
@@ -649,6 +833,9 @@ func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
 
 func _try_place_building(screen_pos: Vector2) -> void:
 	_update_placement_preview_from_screen(screen_pos)
+	_confirm_building_placement()
+
+func _confirm_building_placement() -> void:
 	if not _placement_can_place:
 		return
 	if not try_spend_minerals(_placing_cost):
@@ -721,7 +908,10 @@ func _spawn_unit(unit_kind: String, spawn_position: Vector3) -> void:
 		return
 
 	var is_worker: bool = unit_kind == "worker"
-	unit.set("is_worker", is_worker)
+	if unit.has_method("set_worker_role"):
+		unit.call("set_worker_role", is_worker)
+	else:
+		unit.set("is_worker", is_worker)
 	_units_root.add_child(unit)
 	unit.global_position = _find_open_spawn_position(spawn_position)
 

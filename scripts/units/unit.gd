@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+
 @export var move_speed: float = 6.0
 @export var is_worker: bool = false
 @export var gather_range: float = 1.8
@@ -29,6 +31,7 @@ var _carried_amount: int = 0
 func _ready() -> void:
 	add_to_group("selectable_unit")
 	_selection_ring.visible = false
+	_apply_runtime_config_for_role()
 	_apply_role_visual()
 
 func _physics_process(delta: float) -> void:
@@ -40,10 +43,14 @@ func is_worker_unit() -> bool:
 	return is_worker
 
 func get_unit_display_name() -> String:
-	return "Worker" if is_worker else "Soldier"
+	var unit_kind: String = "worker" if is_worker else "soldier"
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+	return str(unit_def.get("display_name", "Worker" if is_worker else "Soldier"))
 
 func get_unit_role_tag() -> String:
-	return "W" if is_worker else "S"
+	var unit_kind: String = "worker" if is_worker else "soldier"
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+	return str(unit_def.get("role_tag", "W" if is_worker else "S"))
 
 func get_mode_label() -> String:
 	match _mode:
@@ -61,8 +68,12 @@ func get_carry_fill_ratio() -> float:
 		return 0.0
 	return clampf(float(_carried_amount) / float(carry_capacity), 0.0, 1.0)
 
+func has_cargo() -> bool:
+	return _carried_amount > 0
+
 func set_worker_role(worker: bool) -> void:
 	is_worker = worker
+	_apply_runtime_config_for_role()
 	_apply_role_visual()
 
 func command_move(target: Vector3) -> void:
@@ -87,15 +98,33 @@ func command_gather(resource_node: Node3D, dropoff_node: Node3D) -> void:
 	_mode = UnitMode.GATHER_RESOURCE
 	_move_to(_gather_target.global_position)
 
+func command_return_to_dropoff(dropoff_node: Node3D) -> void:
+	if not is_worker:
+		return
+	if dropoff_node == null or not is_instance_valid(dropoff_node):
+		return
+	_dropoff_target = dropoff_node
+	_gather_target = null
+	_gather_timer = 0.0
+	_mode = UnitMode.RETURN_RESOURCE
+	_move_to(_dropoff_target.global_position)
+
+func command_stop() -> void:
+	_mode = UnitMode.IDLE
+	_has_target = false
+	velocity = Vector3.ZERO
+	_gather_target = null
+	_dropoff_target = null
+	_gather_timer = 0.0
+
 func set_selected(selected: bool) -> void:
 	_selection_ring.visible = selected
 
 func _process_worker_cycle(delta: float) -> void:
-	if _gather_target == null or not is_instance_valid(_gather_target):
-		_stop_worker_cycle(false)
-		return
-
 	if _mode == UnitMode.GATHER_RESOURCE:
+		if _gather_target == null or not is_instance_valid(_gather_target):
+			_stop_worker_cycle(false)
+			return
 		if _carried_amount >= carry_capacity:
 			_switch_to_return_mode()
 			return
@@ -205,3 +234,13 @@ func _apply_role_visual() -> void:
 		_sprite.modulate = Color(0.45, 1.0, 0.45, 1.0)
 	else:
 		_sprite.modulate = Color(1.0, 0.5, 0.5, 1.0)
+
+func _apply_runtime_config_for_role() -> void:
+	var unit_kind: String = "worker" if is_worker else "soldier"
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+	move_speed = float(unit_def.get("move_speed", move_speed))
+	gather_range = float(unit_def.get("gather_range", gather_range))
+	dropoff_range = float(unit_def.get("dropoff_range", dropoff_range))
+	carry_capacity = int(unit_def.get("carry_capacity", carry_capacity))
+	gather_amount = int(unit_def.get("gather_amount", gather_amount))
+	gather_interval = float(unit_def.get("gather_interval", gather_interval))

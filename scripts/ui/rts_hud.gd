@@ -1,8 +1,11 @@
 extends Control
 
+signal command_pressed(command_id: String)
+
 const COMMAND_SLOTS: int = 15
 const MULTI_SLOTS: int = 24
 const QUEUE_SLOTS: int = 5
+const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_item.tscn")
 
 @onready var _top_bar: PanelContainer = $TopBar
 @onready var _resource_panel: PanelContainer = $TopBar/TopBarRow/ResourcePanel
@@ -49,7 +52,7 @@ const QUEUE_SLOTS: int = 5
 @onready var _notification_list: VBoxContainer = $NotificationPanel/NotificationList
 
 var _elapsed_seconds: float = 0.0
-var _command_buttons: Array[Button] = []
+var _command_items: Array[Control] = []
 var _matrix_panels: Array[PanelContainer] = []
 var _matrix_labels: Array[Label] = []
 var _queue_slot_labels: Array[Label] = []
@@ -61,7 +64,7 @@ func _ready() -> void:
 	_apply_bottom_helper_mouse_filters()
 	_collect_notification_labels()
 	_build_queue_slot_labels()
-	_build_command_buttons()
+	_build_command_items()
 	_build_matrix_cells()
 	_apply_default_hud()
 	_apply_fixed_button_theme()
@@ -190,20 +193,19 @@ func _build_queue_slot_labels() -> void:
 		_queue_slots.add_child(slot_panel)
 		_queue_slot_labels.append(label)
 
-func _build_command_buttons() -> void:
-	_command_buttons.clear()
+func _build_command_items() -> void:
+	_command_items.clear()
 	for child in _command_grid.get_children():
 		child.queue_free()
 
 	for i in COMMAND_SLOTS:
-		var button: Button = Button.new()
-		button.custom_minimum_size = Vector2(56.0, 56.0)
-		button.disabled = true
-		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		button.text = "--"
-		_apply_button_style(button)
-		_command_grid.add_child(button)
-		_command_buttons.append(button)
+		var item: Control = COMMAND_ITEM_SCENE.instantiate() as Control
+		if item == null:
+			continue
+		if item.has_signal("pressed"):
+			item.connect("pressed", Callable(self, "_on_command_item_pressed"))
+		_command_grid.add_child(item)
+		_command_items.append(item)
 
 func _build_matrix_cells() -> void:
 	_matrix_panels.clear()
@@ -255,21 +257,17 @@ func _apply_command_entries(entries_variant: Variant) -> void:
 	if entries_variant is Array:
 		entries = entries_variant
 
-	for i in _command_buttons.size():
-		var button: Button = _command_buttons[i]
+	for i in _command_items.size():
+		var item: Control = _command_items[i]
 		if i < entries.size() and entries[i] is Dictionary:
-			var entry: Dictionary = entries[i]
-			var label: String = str(entry.get("label", ""))
-			var hotkey: String = str(entry.get("hotkey", ""))
-			var enabled: bool = bool(entry.get("enabled", true))
-			var rendered: String = label
-			if hotkey != "":
-				rendered = "[%s]\n%s" % [hotkey, label]
-			button.text = rendered
-			button.disabled = not enabled
+			if item.has_method("apply_entry"):
+				item.call("apply_entry", entries[i])
 		else:
-			button.text = "--"
-			button.disabled = true
+			if item.has_method("clear_slot"):
+				item.call("clear_slot")
+
+func _on_command_item_pressed(command_id: String) -> void:
+	emit_signal("command_pressed", command_id)
 
 func _apply_notifications(notifications: Array[String]) -> void:
 	for i in _notification_labels.size():
