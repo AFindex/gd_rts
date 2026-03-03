@@ -71,6 +71,9 @@ func get_unit_kind() -> String:
 func get_skill_ids() -> Array[String]:
 	return RTS_CATALOG.get_unit_skill_ids(get_unit_kind())
 
+func get_build_skill_ids() -> Array[String]:
+	return RTS_CATALOG.get_unit_build_skill_ids(get_unit_kind())
+
 func get_mode_label() -> String:
 	match _mode:
 		UnitMode.MOVE:

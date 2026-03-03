@@ -1,7 +1,7 @@
 [gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/resource_node.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://icon.svg" id="2_texture"]
+[ext_resource type="Texture2D" path="res://icon_build_tmp.png" id="2_texture"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_1"]
 radius = 1.2

@@ -4,10 +4,8 @@ const UNIT_SCENE: PackedScene = preload("res://scenes/units/unit.tscn")
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 
-const BARRACKS_COST: int = 160
 const WORKER_COST: int = 50
 const SOLDIER_COST: int = 70
-const TOWER_COST: int = 120
 const SUPPLY_CAP: int = 40
 const HUD_MULTI_MAX: int = 24
 const BUILDING_BLOCK_RADIUS: float = 3.8
@@ -34,8 +32,6 @@ var _selected_buildings: Array[Node] = []
 var _minerals: int = 220
 var _worker_cost: int = WORKER_COST
 var _soldier_cost: int = SOLDIER_COST
-var _barracks_cost: int = BARRACKS_COST
-var _tower_cost: int = TOWER_COST
 
 var _placing_building: bool = false
 var _placing_kind: String = ""
@@ -67,12 +63,8 @@ func _ready() -> void:
 func _apply_runtime_config() -> void:
 	var worker_def: Dictionary = RTS_CATALOG.get_unit_def("worker")
 	var soldier_def: Dictionary = RTS_CATALOG.get_unit_def("soldier")
-	var barracks_def: Dictionary = RTS_CATALOG.get_building_def("barracks")
-	var tower_def: Dictionary = RTS_CATALOG.get_building_def("tower")
 	_worker_cost = int(worker_def.get("cost", WORKER_COST))
 	_soldier_cost = int(soldier_def.get("cost", SOLDIER_COST))
-	_barracks_cost = int(barracks_def.get("cost", BARRACKS_COST))
-	_tower_cost = int(tower_def.get("cost", TOWER_COST))
 
 func _connect_hud_signals() -> void:
 	if _hud == null or not _hud.has_signal("command_pressed"):
@@ -143,14 +135,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_B:
 				_execute_command("build_menu")
 				return
-			KEY_Q:
-				if _build_menu_open:
-					_execute_command("build_barracks")
-					return
-			KEY_W:
-				if _build_menu_open:
-					_execute_command("build_tower")
-					return
 			KEY_A:
 				_execute_command("attack")
 				return
@@ -174,6 +158,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_S:
 				_execute_command("stop")
 				return
+
+		if _build_menu_open and _try_execute_build_hotkey(key_event.keycode):
+			return
 
 	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
 	if _placing_building and mouse_button != null:
@@ -205,6 +192,17 @@ func _pick_ui_control(screen_pos: Vector2) -> Control:
 			return hovered
 
 	return null
+
+func _try_execute_build_hotkey(keycode: int) -> bool:
+	for skill_id in _build_menu_skill_ids():
+		var skill_def: Dictionary = RTS_CATALOG.get_skill_def(skill_id)
+		var hotkey: String = str(skill_def.get("hotkey", "")).strip_edges().to_upper()
+		if hotkey.length() != 1:
+			continue
+		if keycode == hotkey.unicode_at(0):
+			_execute_command(skill_id)
+			return true
+	return false
 
 func add_minerals(amount: int) -> void:
 	if amount <= 0:
@@ -386,7 +384,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 			placing_name = str(placing_def.get("display_name", placing_name))
 		return "Placing %s (%d): %s | LMB Confirm, RMB/ESC Cancel" % [placing_name, _placing_cost, placement_state]
 	if _build_menu_open:
-		return "Build Menu: Q Barracks (%d), W Tower (%d), ESC Back" % [_barracks_cost, _tower_cost]
+		return _build_menu_hint_text()
 	if _pending_target_skill != "":
 		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
 		var skill_label: String = str(skill_info.get("label", _pending_target_skill.capitalize()))
@@ -399,7 +397,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 			return "Targeting %s | Left Click Enemy Unit/Building | RMB/ESC Cancel" % skill_label
 		return "Targeting %s | RMB/ESC Cancel" % skill_label
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
-		return "No selection | Select workers to open Build Menu | Left drag: Box Select"
+		return "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
 	return "Selected -> Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
@@ -424,6 +422,22 @@ func _build_command_hint() -> String:
 		return "RMB context command or click move/gather/stop in command card."
 	return "Select something to open context commands."
 
+func _build_menu_hint_text() -> String:
+	var parts: Array[String] = []
+	for skill_id in _build_menu_skill_ids():
+		var skill_def: Dictionary = RTS_CATALOG.get_skill_def(skill_id)
+		var label: String = str(skill_def.get("label", skill_id.capitalize()))
+		var hotkey: String = str(skill_def.get("hotkey", "")).strip_edges().to_upper()
+		var building_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
+		var cost: int = _building_cost(building_kind)
+		var text: String = "%s (%d)" % [label, cost]
+		if hotkey != "":
+			text = "%s %s (%d)" % [hotkey, label, cost]
+		parts.append(text)
+	if parts.is_empty():
+		return "Build Menu: No available build options | ESC Back"
+	return "Build Menu: %s | ESC Back" % ", ".join(parts)
+
 func _build_command_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	if _placing_building:
@@ -438,8 +452,8 @@ func _build_command_entries() -> Array[Dictionary]:
 		if not _can_open_build_menu():
 			_build_menu_open = false
 		else:
-			entries.append(_build_menu_command_entry("build_barracks"))
-			entries.append(_build_menu_command_entry("build_tower"))
+			for skill_id in _build_menu_skill_ids():
+				entries.append(_build_menu_command_entry(skill_id))
 			entries.append(_command_entry("close_menu"))
 			return entries
 
@@ -460,25 +474,61 @@ func _command_entry(skill_id: String, overrides: Dictionary = {}) -> Dictionary:
 	return RTS_CATALOG.make_command_entry(skill_id, overrides)
 
 func _build_menu_command_entry(command_id: String) -> Dictionary:
-	var cost: int = 0
-	var enabled: bool = false
-	var reason: String = ""
-	match command_id:
-		"build_barracks":
-			cost = _barracks_cost
-			enabled = _can_start_barracks_build()
-			reason = _barracks_block_reason()
-		"build_tower":
-			cost = _tower_cost
-			enabled = _can_start_tower_build()
-			reason = _tower_block_reason()
-		_:
-			return _command_entry(command_id)
+	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(command_id)
+	if build_kind == "":
+		return _command_entry(command_id)
+	var cost: int = _building_cost(build_kind)
+	var enabled: bool = _can_start_build_skill(command_id)
+	var reason: String = _build_skill_block_reason(command_id)
 	return _command_entry(command_id, {
 		"enabled": enabled,
 		"cost_text": str(cost),
 		"disabled_reason": reason
 	})
+
+func _build_menu_skill_ids() -> Array[String]:
+	var skill_ids: Array[String] = []
+	if not _can_open_build_menu():
+		return skill_ids
+
+	if not _selected_units.is_empty():
+		for selected_unit in _selected_units:
+			if selected_unit == null or not is_instance_valid(selected_unit):
+				continue
+			if not _is_player_owned(selected_unit):
+				continue
+			var raw_skills: Variant = []
+			if selected_unit.has_method("get_build_skill_ids"):
+				raw_skills = selected_unit.call("get_build_skill_ids")
+			elif selected_unit.has_method("get_unit_kind"):
+				raw_skills = RTS_CATALOG.get_unit_build_skill_ids(str(selected_unit.call("get_unit_kind")))
+			_append_unique_skill_ids(skill_ids, raw_skills)
+		return _sanitize_build_skill_ids(skill_ids)
+
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		var raw_building_skills: Variant = []
+		if selected_building.has_method("get_build_skill_ids"):
+			raw_building_skills = selected_building.call("get_build_skill_ids")
+		else:
+			var building_kind: String = str(selected_building.get("building_kind"))
+			raw_building_skills = RTS_CATALOG.get_building_build_skill_ids(building_kind)
+		_append_unique_skill_ids(skill_ids, raw_building_skills)
+	return _sanitize_build_skill_ids(skill_ids)
+
+func _sanitize_build_skill_ids(skill_ids: Array[String]) -> Array[String]:
+	var result: Array[String] = []
+	for skill_id in skill_ids:
+		var building_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
+		if building_kind == "":
+			continue
+		if _building_cost(building_kind) <= 0:
+			continue
+		result.append(skill_id)
+	return result
 
 func _selection_skill_ids() -> Array[String]:
 	var skill_ids: Array[String] = []
@@ -558,7 +608,7 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
-		"B: Build Menu | Q: Barracks (%d) | W: Tower (%d)" % [_barracks_cost, _tower_cost],
+		"B: Build Menu | Open build options from selected builder",
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack | S: Stop" % [_worker_cost, _soldier_cost],
 		"Shift + Left Click: Additive Selection | Command cards are clickable"
 	]
@@ -566,7 +616,7 @@ func _build_notifications() -> Array[String]:
 		var state: String = "valid" if _placement_can_place else "invalid"
 		lines[0] = "Placement %s | Cost: %d Minerals" % [state, _placing_cost]
 	elif _build_menu_open:
-		lines[0] = "Build menu active | Q: Barracks | W: Tower | ESC: Back"
+		lines[0] = _build_menu_hint_text()
 	elif _pending_target_skill != "":
 		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
 		lines[0] = "Targeting: %s" % str(skill_info.get("label", _pending_target_skill))
@@ -672,7 +722,7 @@ func _build_menu_disabled_reason() -> String:
 	if _placing_building:
 		return "Finish or cancel current placement first."
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
-		return "Select a worker to open build commands."
+		return "Select a worker or builder building to open build commands."
 	if not _selected_units.is_empty() and not _selection_has_worker():
 		return "Requires at least one worker in selection."
 	if _selected_units.is_empty() and not _selected_buildings.is_empty() and not _building_selection_has_skill("build_menu"):
@@ -700,27 +750,25 @@ func _building_selection_has_skill(skill_id: String) -> bool:
 				return true
 	return false
 
-func _can_start_barracks_build() -> bool:
-	if not _can_open_build_menu():
-		return false
-	return _minerals >= _barracks_cost
+func _building_cost(building_kind: String) -> int:
+	if building_kind == "":
+		return 0
+	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
+	return int(building_def.get("cost", 0))
 
-func _can_start_tower_build() -> bool:
-	if not _can_open_build_menu():
-		return false
-	return _minerals >= _tower_cost
+func _can_start_build_skill(skill_id: String) -> bool:
+	return _build_skill_block_reason(skill_id) == ""
 
-func _barracks_block_reason() -> String:
+func _build_skill_block_reason(skill_id: String) -> String:
 	if not _can_open_build_menu():
 		return _build_menu_disabled_reason()
-	if _minerals < _barracks_cost:
-		return "Not enough minerals."
-	return ""
-
-func _tower_block_reason() -> String:
-	if not _can_open_build_menu():
-		return _build_menu_disabled_reason()
-	if _minerals < _tower_cost:
+	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
+	if build_kind == "":
+		return "Unknown build skill."
+	var build_cost: int = _building_cost(build_kind)
+	if build_cost <= 0:
+		return "Invalid build cost."
+	if _minerals < build_cost:
 		return "Not enough minerals."
 	return ""
 
@@ -891,16 +939,6 @@ func _execute_command(command_id: String) -> void:
 			_build_menu_open = false
 			_refresh_hint_label()
 			return
-		"build_barracks":
-			if not _can_start_barracks_build():
-				return
-			_build_menu_open = false
-			_start_building_placement("barracks")
-		"build_tower":
-			if not _can_start_tower_build():
-				return
-			_build_menu_open = false
-			_start_building_placement("tower")
 		"placement_confirm":
 			_confirm_building_placement()
 		"placement_cancel":
@@ -918,7 +956,13 @@ func _execute_command(command_id: String) -> void:
 		"menu":
 			pass
 		_:
-			return
+			var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(command_id)
+			if build_kind == "":
+				return
+			if not _can_start_build_skill(command_id):
+				return
+			_build_menu_open = false
+			_start_building_placement(build_kind)
 	_refresh_hint_label()
 
 func _begin_target_skill(skill_id: String) -> void:
@@ -1196,14 +1240,7 @@ func _nearest_dropoff(from_position: Vector3) -> Node3D:
 	return nearest
 
 func _start_building_placement(kind: String) -> void:
-	var build_cost: int = 0
-	match kind:
-		"barracks":
-			build_cost = _barracks_cost
-		"tower":
-			build_cost = _tower_cost
-		_:
-			return
+	var build_cost: int = _building_cost(kind)
 	if build_cost <= 0:
 		return
 	_placing_building = true
@@ -1288,7 +1325,9 @@ func _confirm_building_placement() -> void:
 		add_child(building)
 
 	building.global_position = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
-	if _placing_kind == "barracks" and building.has_method("configure_as_barracks"):
+	if building.has_method("configure_by_kind"):
+		building.call("configure_by_kind", _placing_kind)
+	elif _placing_kind == "barracks" and building.has_method("configure_as_barracks"):
 		building.call("configure_as_barracks")
 	elif _placing_kind == "tower" and building.has_method("configure_as_tower"):
 		building.call("configure_as_tower")

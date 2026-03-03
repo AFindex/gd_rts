@@ -149,8 +149,11 @@ func get_building_role_tag() -> String:
 func get_skill_ids() -> Array[String]:
 	return RTS_CATALOG.get_building_skill_ids(building_kind)
 
-func configure_as_barracks() -> void:
-	_apply_building_config("barracks")
+func get_build_skill_ids() -> Array[String]:
+	return RTS_CATALOG.get_building_build_skill_ids(building_kind)
+
+func configure_by_kind(kind: String) -> void:
+	_apply_building_config(kind)
 	_queue_unit_kinds.clear()
 	_queue_build_times.clear()
 	_production_timer = 0.0
@@ -160,16 +163,11 @@ func configure_as_barracks() -> void:
 	_refresh_dropoff_group()
 	_apply_building_visual()
 
+func configure_as_barracks() -> void:
+	configure_by_kind("barracks")
+
 func configure_as_tower() -> void:
-	_apply_building_config("tower")
-	_queue_unit_kinds.clear()
-	_queue_build_times.clear()
-	_production_timer = 0.0
-	_attack_target = null
-	_attack_timer = 0.0
-	_health = max_health
-	_refresh_dropoff_group()
-	_apply_building_visual()
+	configure_by_kind("tower")
 
 func _refresh_dropoff_group() -> void:
 	if is_resource_dropoff:

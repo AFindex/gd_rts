@@ -20,7 +20,8 @@ const UNIT_DEFS: Dictionary = {
 		"attack_damage": 0.0,
 		"attack_range": 0.0,
 		"attack_cooldown": 0.0,
-		"skills": ["move", "gather", "return_resource", "build_menu", "stop"]
+		"skills": ["move", "gather", "return_resource", "build_menu", "stop"],
+		"build_skills": ["build_barracks", "build_tower"]
 	},
 	"soldier": {
 		"display_name": "Soldier",
@@ -32,7 +33,8 @@ const UNIT_DEFS: Dictionary = {
 		"attack_damage": 12.0,
 		"attack_range": 2.4,
 		"attack_cooldown": 0.8,
-		"skills": ["move", "attack", "stop"]
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
 	}
 }
 
@@ -51,7 +53,8 @@ const BUILDING_DEFS: Dictionary = {
 		"soldier_build_time": 0.0,
 		"queue_limit": 6,
 		"spawn_offset": Vector3(3.2, 0.0, 0.0),
-		"skills": ["train_worker", "build_menu"]
+		"skills": ["train_worker", "build_menu"],
+		"build_skills": ["build_barracks", "build_tower"]
 	},
 	"barracks": {
 		"display_name": "Barracks",
@@ -68,7 +71,8 @@ const BUILDING_DEFS: Dictionary = {
 		"soldier_build_time": 4.0,
 		"queue_limit": 8,
 		"spawn_offset": Vector3(3.6, 0.0, 0.0),
-		"skills": ["train_soldier"]
+		"skills": ["train_soldier"],
+		"build_skills": []
 	},
 	"tower": {
 		"display_name": "Tower",
@@ -85,7 +89,8 @@ const BUILDING_DEFS: Dictionary = {
 		"soldier_build_time": 0.0,
 		"queue_limit": 0,
 		"spawn_offset": Vector3(2.8, 0.0, 0.0),
-		"skills": []
+		"skills": [],
+		"build_skills": []
 	}
 }
 
@@ -211,6 +216,14 @@ static func get_unit_skill_ids(unit_kind: String) -> Array[String]:
 static func get_building_skill_ids(building_kind: String) -> Array[String]:
 	var building_def: Dictionary = get_building_def(building_kind)
 	return _normalize_skill_ids(building_def.get("skills", []))
+
+static func get_unit_build_skill_ids(unit_kind: String) -> Array[String]:
+	var unit_def: Dictionary = get_unit_def(unit_kind)
+	return _normalize_skill_ids(unit_def.get("build_skills", []))
+
+static func get_building_build_skill_ids(building_kind: String) -> Array[String]:
+	var building_def: Dictionary = get_building_def(building_kind)
+	return _normalize_skill_ids(building_def.get("build_skills", []))
 
 static func get_skill_def(skill_id: String) -> Dictionary:
 	var value: Variant = SKILL_DEFS.get(skill_id, {})
