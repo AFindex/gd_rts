@@ -11,18 +11,23 @@ const HUD_MULTI_MAX: int = 24
 const BUILDING_BLOCK_RADIUS: float = 3.8
 const RESOURCE_BLOCK_RADIUS: float = 3.2
 const PLAYER_TEAM_ID: int = 1
+const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
 
 @export var camera_path: NodePath
 @export var units_root_path: NodePath
 @export var buildings_root_path: NodePath
 @export var selection_overlay_path: NodePath
 @export var hud_path: NodePath
+@export var nav_region_path: NodePath = NodePath("World/NavRegion")
+@export var nav_rebake_on_runtime: bool = true
+@export var nav_rebake_on_thread: bool = true
 
 var _camera: Camera3D
 var _units_root: Node3D
 var _buildings_root: Node3D
 var _selection_overlay: Control
 var _hud: Control
+var _nav_region: NavigationRegion3D
 
 var _dragging: bool = false
 var _drag_start: Vector2 = Vector2.ZERO
@@ -51,6 +56,8 @@ var _match_rule_defs: Array[Dictionary] = []
 var _match_check_accum: float = 0.0
 var _match_outcome_rule_id: String = ""
 var _match_notice: String = ""
+var _nav_rebake_in_progress: bool = false
+var _nav_rebake_pending: bool = false
 
 func _ready() -> void:
 	add_to_group("game_manager")
@@ -59,10 +66,14 @@ func _ready() -> void:
 	_buildings_root = get_node_or_null(buildings_root_path) as Node3D
 	_selection_overlay = get_node_or_null(selection_overlay_path) as Control
 	_hud = get_node_or_null(hud_path) as Control
+	_nav_region = get_node_or_null(nav_region_path) as NavigationRegion3D
 	_apply_runtime_config()
 	_connect_hud_signals()
 	_create_placement_preview()
+	_setup_runtime_navigation_baking()
 	_register_existing_buildings()
+	_register_existing_resources()
+	_request_navmesh_rebake("startup")
 	_refresh_resource_label()
 	_refresh_hint_label()
 
@@ -1421,6 +1432,7 @@ func _confirm_building_placement() -> void:
 		building.call("configure_as_tower")
 
 	_register_building(building)
+	_request_navmesh_rebake("building_placed")
 	_cancel_building_placement()
 
 func _is_build_spot_valid(world_pos: Vector3) -> bool:
@@ -1450,14 +1462,68 @@ func _register_existing_buildings() -> void:
 	for node in building_nodes:
 		_register_building(node)
 
+func _register_existing_resources() -> void:
+	var resource_nodes: Array[Node] = get_tree().get_nodes_in_group("resource_node")
+	for node in resource_nodes:
+		_track_navigation_dynamic_node(node)
+
 func _register_building(building_node: Node) -> void:
 	if building_node == null:
 		return
+	_track_navigation_dynamic_node(building_node)
 	if not building_node.has_signal("production_finished"):
 		return
 	var callback: Callable = Callable(self, "_on_building_production_finished").bind(building_node)
 	if not building_node.is_connected("production_finished", callback):
 		building_node.connect("production_finished", callback)
+
+func _track_navigation_dynamic_node(nav_node: Node) -> void:
+	if nav_node == null:
+		return
+	var callback: Callable = Callable(self, "_on_navigation_dynamic_node_exited").bind(nav_node)
+	if not nav_node.is_connected("tree_exited", callback):
+		nav_node.connect("tree_exited", callback)
+
+func _on_navigation_dynamic_node_exited(_node: Node) -> void:
+	_request_navmesh_rebake("dynamic_obstacle_removed")
+
+func _setup_runtime_navigation_baking() -> void:
+	if not nav_rebake_on_runtime:
+		return
+	if _nav_region == null:
+		return
+	if not is_in_group(str(NAV_SOURCE_GROUP)):
+		add_to_group(str(NAV_SOURCE_GROUP))
+	var nav_mesh: NavigationMesh = _nav_region.navigation_mesh
+	if nav_mesh == null:
+		nav_mesh = NavigationMesh.new()
+		_nav_region.navigation_mesh = nav_mesh
+	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nav_mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
+	nav_mesh.geometry_source_group_name = NAV_SOURCE_GROUP
+	var callback: Callable = Callable(self, "_on_nav_region_bake_finished")
+	if not _nav_region.is_connected("bake_finished", callback):
+		_nav_region.connect("bake_finished", callback)
+
+func _request_navmesh_rebake(_reason: String = "") -> void:
+	if not nav_rebake_on_runtime:
+		return
+	if _nav_region == null:
+		return
+	if _nav_region.navigation_mesh == null:
+		return
+	if _nav_rebake_in_progress or _nav_region.is_baking():
+		_nav_rebake_pending = true
+		return
+	_nav_rebake_in_progress = true
+	_nav_region.bake_navigation_mesh(nav_rebake_on_thread)
+
+func _on_nav_region_bake_finished() -> void:
+	_nav_rebake_in_progress = false
+	if not _nav_rebake_pending:
+		return
+	_nav_rebake_pending = false
+	_request_navmesh_rebake("queued")
 
 func _on_building_production_finished(unit_kind: String, spawn_position: Vector3, source_building: Node = null) -> void:
 	_spawn_unit(unit_kind, spawn_position, source_building)

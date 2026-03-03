@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65
 
 @export var move_speed: float = 6.0
 @export var is_worker: bool = false
@@ -14,6 +15,8 @@ const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 @export var attack_range: float = 2.4
 @export var attack_damage: float = 12.0
 @export var attack_cooldown: float = 0.8
+@export var debug_nav_log: bool = true
+@export var debug_nav_log_interval: float = 0.8
 
 @onready var _selection_ring: MeshInstance3D = $SelectionRing
 @onready var _sprite: Sprite3D = $Sprite3D
@@ -40,6 +43,11 @@ var _attack_timer: float = 0.0
 var _base_tint: Color = Color.WHITE
 var _nav_target_cached: Vector3 = Vector3.ZERO
 var _has_nav_target_cached: bool = false
+var _safe_velocity: Vector3 = Vector3.ZERO
+var _has_safe_velocity: bool = false
+var _safe_velocity_frame: int = -1
+var _stuck_log_accum: float = 0.0
+var _last_desired_velocity: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	add_to_group("selectable_unit")
@@ -54,7 +62,7 @@ func _physics_process(delta: float) -> void:
 		_process_worker_cycle(delta)
 	elif _mode == UnitMode.ATTACK:
 		_process_attack_cycle(delta)
-	_apply_movement()
+	_apply_movement(delta)
 
 func is_worker_unit() -> bool:
 	return is_worker
@@ -166,7 +174,7 @@ func command_stop() -> void:
 	_attack_target = null
 	_attack_timer = 0.0
 	_gather_timer = 0.0
-	_has_nav_target_cached = false
+	_reset_navigation_motion()
 
 func command_attack(target_node: Node3D) -> bool:
 	if target_node == null or not is_instance_valid(target_node):
@@ -283,6 +291,7 @@ func _stop_worker_cycle(reset_carry: bool) -> void:
 	_gather_target = null
 	_dropoff_target = null
 	_gather_timer = 0.0
+	_reset_navigation_motion()
 	if reset_carry:
 		_carried_amount = 0
 
@@ -301,17 +310,19 @@ func _deposit_to_game_manager(amount: int) -> void:
 	if game_manager != null and game_manager.has_method("add_minerals"):
 		game_manager.call("add_minerals", amount)
 
-func _apply_movement() -> void:
+func _apply_movement(delta: float) -> void:
 	if not _has_target:
 		velocity = Vector3.ZERO
 		move_and_slide()
 		return
 
 	var move_target: Vector3 = _target_position
+	var nav_finished: bool = false
 	if _can_use_navigation():
-		if _nav_agent.is_navigation_finished():
+		nav_finished = _nav_agent.is_navigation_finished()
+		if nav_finished:
 			_has_target = false
-			_has_nav_target_cached = false
+			_reset_navigation_motion()
 			velocity = Vector3.ZERO
 			move_and_slide()
 			return
@@ -320,20 +331,60 @@ func _apply_movement() -> void:
 	var to_target: Vector3 = move_target - global_position
 	to_target.y = 0.0
 	if to_target.length() <= 0.1:
-		if not _can_use_navigation() or _nav_agent.is_navigation_finished():
+		if _can_use_navigation() and not _nav_agent.is_navigation_finished():
+			var to_final_target: Vector3 = _target_position - global_position
+			to_final_target.y = 0.0
+			if to_final_target.length() > 0.18:
+				if debug_nav_log:
+					_log_nav_state("next_point_same_as_current", move_target, to_final_target.normalized() * move_speed, nav_finished, to_final_target.length())
+				to_target = to_final_target
+			else:
+				_has_target = false
+				_reset_navigation_motion()
+				velocity = Vector3.ZERO
+				move_and_slide()
+				return
+		else:
 			_has_target = false
-			_has_nav_target_cached = false
-		velocity = Vector3.ZERO
-		move_and_slide()
-		return
+			_reset_navigation_motion()
+			velocity = Vector3.ZERO
+			move_and_slide()
+			return
 
 	var direction: Vector3 = to_target.normalized()
-	velocity = direction * move_speed
+	var desired_velocity: Vector3 = direction * move_speed
+	_last_desired_velocity = desired_velocity
+	if _can_use_navigation() and _nav_agent.avoidance_enabled:
+		_nav_agent.set_velocity(desired_velocity)
+		var current_physics_frame: int = Engine.get_physics_frames()
+		var has_recent_safe_velocity: bool = _has_safe_velocity and _safe_velocity_frame >= current_physics_frame - 2
+		if has_recent_safe_velocity and _safe_velocity.length_squared() > 0.0004:
+			velocity = _safe_velocity
+		else:
+			velocity = desired_velocity
+	else:
+		velocity = desired_velocity
+	velocity.y = 0.0
+
+	# Stuck diagnostics: target exists, distance still large, but final velocity stays near zero.
+	if debug_nav_log:
+		var target_distance: float = to_target.length()
+		if target_distance > 0.45 and velocity.length_squared() < 0.0025:
+			_stuck_log_accum += delta
+			if _stuck_log_accum >= maxf(0.2, debug_nav_log_interval):
+				_stuck_log_accum = 0.0
+				_log_nav_state("stuck", move_target, desired_velocity, nav_finished, target_distance)
+		else:
+			_stuck_log_accum = 0.0
 	move_and_slide()
 
 func _move_to(target: Vector3) -> void:
 	_target_position = Vector3(target.x, global_position.y, target.z)
 	_has_target = true
+	_has_safe_velocity = false
+	_last_desired_velocity = Vector3.ZERO
+	if debug_nav_log:
+		_log_nav_state("move_to", _target_position, Vector3.ZERO, false, global_position.distance_to(_target_position))
 	if _can_use_navigation():
 		if not _has_nav_target_cached or _nav_target_cached.distance_to(_target_position) > 0.25:
 			_nav_agent.target_position = _target_position
@@ -423,13 +474,59 @@ func _setup_navigation_agent() -> void:
 	if _nav_agent == null:
 		return
 	_nav_agent.max_speed = move_speed
-	_nav_agent.path_desired_distance = 0.2
-	_nav_agent.target_desired_distance = 0.25
+	# Nav path points are often elevated by ~0.5 on baked meshes; keep tolerance above that
+	# so waypoint progression does not stall when XZ is aligned but Y differs.
+	_nav_agent.path_desired_distance = NAV_VERTICAL_POINT_TOLERANCE
+	_nav_agent.target_desired_distance = NAV_VERTICAL_POINT_TOLERANCE
 	_nav_agent.avoidance_enabled = true
 	_nav_agent.radius = 0.32
 	_nav_agent.height = 1.0
+	var callback: Callable = Callable(self, "_on_nav_velocity_computed")
+	if not _nav_agent.is_connected("velocity_computed", callback):
+		_nav_agent.connect("velocity_computed", callback)
 
 func _can_use_navigation() -> bool:
 	if _nav_agent == null:
 		return false
 	return _nav_agent.get_navigation_map().is_valid()
+
+func _on_nav_velocity_computed(safe_velocity: Vector3) -> void:
+	_safe_velocity = safe_velocity
+	_safe_velocity.y = 0.0
+	_has_safe_velocity = true
+	_safe_velocity_frame = Engine.get_physics_frames()
+	if debug_nav_log and _has_target and _safe_velocity.length_squared() < 0.0004:
+		_log_nav_state("safe_velocity_zero", _target_position, _last_desired_velocity, _nav_agent.is_navigation_finished(), global_position.distance_to(_target_position))
+
+func _reset_navigation_motion() -> void:
+	_has_nav_target_cached = false
+	_has_safe_velocity = false
+	_safe_velocity = Vector3.ZERO
+	_safe_velocity_frame = -1
+	_stuck_log_accum = 0.0
+	_last_desired_velocity = Vector3.ZERO
+	if _nav_agent != null and _nav_agent.avoidance_enabled:
+		_nav_agent.set_velocity_forced(Vector3.ZERO)
+
+func _log_nav_state(tag: String, move_target: Vector3, desired_velocity: Vector3, nav_finished: bool, target_distance: float) -> void:
+	var map_valid: bool = _can_use_navigation()
+	var safe_speed: float = _safe_velocity.length()
+	var final_speed: float = velocity.length()
+	print(
+		"[NAV][%s][%s][team=%d] tag=%s mode=%s dist=%.2f desired=%.2f safe=%.2f final=%.2f nav_finished=%s map_valid=%s pos=(%.2f,%.2f,%.2f) next=(%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f)" % [
+			name,
+			get_unit_kind(),
+			team_id,
+			tag,
+			get_mode_label(),
+			target_distance,
+			desired_velocity.length(),
+			safe_speed,
+			final_speed,
+			str(nav_finished),
+			str(map_valid),
+			global_position.x, global_position.y, global_position.z,
+			move_target.x, move_target.y, move_target.z,
+			_target_position.x, _target_position.y, _target_position.z
+		]
+	)
