@@ -6,6 +6,8 @@ const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tsc
 const BARRACKS_COST: int = 160
 const WORKER_COST: int = 50
 const SOLDIER_COST: int = 70
+const SUPPLY_CAP: int = 40
+const HUD_MULTI_MAX: int = 24
 const BUILDING_BLOCK_RADIUS: float = 3.8
 const RESOURCE_BLOCK_RADIUS: float = 3.2
 
@@ -13,15 +15,13 @@ const RESOURCE_BLOCK_RADIUS: float = 3.2
 @export var units_root_path: NodePath
 @export var buildings_root_path: NodePath
 @export var selection_overlay_path: NodePath
-@export var resource_label_path: NodePath
-@export var hint_label_path: NodePath
+@export var hud_path: NodePath
 
 var _camera: Camera3D
 var _units_root: Node3D
 var _buildings_root: Node3D
 var _selection_overlay: Control
-var _resource_label: Label
-var _hint_label: Label
+var _hud: Control
 
 var _dragging: bool = false
 var _drag_start: Vector2 = Vector2.ZERO
@@ -46,8 +46,7 @@ func _ready() -> void:
 	_units_root = get_node_or_null(units_root_path) as Node3D
 	_buildings_root = get_node_or_null(buildings_root_path) as Node3D
 	_selection_overlay = get_node_or_null(selection_overlay_path) as Control
-	_resource_label = get_node_or_null(resource_label_path) as Label
-	_hint_label = get_node_or_null(hint_label_path) as Label
+	_hud = get_node_or_null(hud_path) as Control
 	_create_placement_preview()
 	_register_existing_buildings()
 	_refresh_resource_label()
@@ -137,28 +136,263 @@ func get_minerals() -> int:
 	return _minerals
 
 func _refresh_resource_label() -> void:
-	if _resource_label != null:
-		_resource_label.text = "Minerals: %d" % _minerals
+	_push_hud_update()
 
 func _refresh_hint_label() -> void:
-	if _hint_label == null:
+	_push_hud_update()
+
+func _push_hud_update() -> void:
+	if _hud == null or not _hud.has_method("update_hud"):
 		return
+	_hud.call("update_hud", _build_hud_snapshot())
 
-	var lines: Array[String] = []
-	lines.append("B Place Barracks(160) | R Queue Worker(50) | T Queue Soldier(70) | ESC Cancel")
-	lines.append("Selected: Units %d / Buildings %d" % [_selected_units.size(), _selected_buildings.size()])
+func _build_hud_snapshot() -> Dictionary:
+	var selected_worker_count: int = 0
+	var selected_soldier_count: int = 0
+	for selected_unit in _selected_units:
+		if selected_unit == null:
+			continue
+		var is_worker: bool = false
+		if selected_unit.has_method("is_worker_unit"):
+			is_worker = bool(selected_unit.call("is_worker_unit"))
+		if is_worker:
+			selected_worker_count += 1
+		else:
+			selected_soldier_count += 1
 
+	var selected_building_count: int = _selected_buildings.size()
+	var selection_total: int = _selected_units.size() + selected_building_count
+	var mode: String = _selection_mode(selection_total)
+
+	var single_title: String = "No Selection"
+	var single_detail: String = "Select a unit or building to inspect details."
+	var single_armor: String = "Armor Type: --"
+	var status_health: float = 1.0
+	var status_shield: float = 0.0
+	var status_energy: float = 0.0
+
+	var show_production: bool = false
+	var queue_size: int = 0
+	var queue_progress: float = 0.0
+	var queue_preview: Array[String] = []
+
+	var portrait_title: String = "No Selection"
+	var portrait_subtitle: String = "-"
+	var portrait_glyph: String = "?"
+	var multi_roles: Array[String] = []
+
+	if mode == "single":
+		if _selected_units.size() == 1 and _selected_units[0] != null:
+			var unit: Node = _selected_units[0]
+			var unit_name: String = "Unit"
+			if unit.has_method("get_unit_display_name"):
+				unit_name = str(unit.call("get_unit_display_name"))
+			single_title = unit_name
+
+			var unit_state: String = "Idle"
+			if unit.has_method("get_mode_label"):
+				unit_state = str(unit.call("get_mode_label"))
+			var unit_role: String = "Soldier"
+			var is_worker: bool = false
+			if unit.has_method("is_worker_unit"):
+				is_worker = bool(unit.call("is_worker_unit"))
+			if is_worker:
+				unit_role = "Worker"
+				status_energy = float(unit.call("get_carry_fill_ratio")) if unit.has_method("get_carry_fill_ratio") else 0.0
+			single_detail = "Role: %s\nState: %s" % [unit_role, unit_state]
+			single_armor = "Armor Type: Light"
+
+			portrait_title = unit_name
+			portrait_subtitle = unit_state
+			portrait_glyph = "W" if is_worker else "S"
+		elif _selected_buildings.size() == 1 and _selected_buildings[0] != null:
+			var building: Node = _selected_buildings[0]
+			var building_name: String = "Building"
+			if building.has_method("get_building_display_name"):
+				building_name = str(building.call("get_building_display_name"))
+			single_title = building_name
+			single_armor = "Armor Type: Structure"
+
+			var can_train_worker: bool = bool(building.call("can_queue_worker_unit")) if building.has_method("can_queue_worker_unit") else false
+			var can_train_soldier: bool = bool(building.call("can_queue_soldier_unit")) if building.has_method("can_queue_soldier_unit") else false
+			single_detail = "Train Worker: %s\nTrain Soldier: %s" % [
+				"Yes" if can_train_worker else "No",
+				"Yes" if can_train_soldier else "No"
+			]
+
+			queue_size = int(building.call("get_queue_size")) if building.has_method("get_queue_size") else 0
+			queue_progress = float(building.call("get_production_progress")) if building.has_method("get_production_progress") else 0.0
+			if building.has_method("get_queue_preview"):
+				var preview_variant: Variant = building.call("get_queue_preview", 5)
+				if preview_variant is Array:
+					for item in preview_variant:
+						queue_preview.append(str(item))
+			show_production = queue_size > 0
+
+			portrait_title = building_name
+			portrait_subtitle = "Queue %d" % queue_size
+			if building.has_method("get_building_role_tag"):
+				portrait_glyph = str(building.call("get_building_role_tag")).substr(0, 1)
+			else:
+				portrait_glyph = "B"
+	elif mode == "multi":
+		multi_roles = _build_multi_roles()
+		portrait_title = "%d Selected" % selection_total
+		portrait_subtitle = "W %d  S %d  B %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
+		portrait_glyph = "%d" % selection_total
+
+	var total_units: int = _count_total_units()
+	var top_legacy_text: String = "M: %d   G: 0   Supply: %d/%d" % [_minerals, total_units, SUPPLY_CAP]
+
+	return {
+		"minerals": _minerals,
+		"gas": 0,
+		"supply_used": total_units,
+		"supply_cap": SUPPLY_CAP,
+		"top_legacy_text": top_legacy_text,
+		"mode": mode,
+		"selection_hint": _build_selection_hint(selected_worker_count, selected_soldier_count, selected_building_count, queue_size),
+		"single_title": single_title,
+		"single_detail": single_detail,
+		"single_armor": single_armor,
+		"status_health": status_health,
+		"status_shield": status_shield,
+		"status_energy": status_energy,
+		"show_production": show_production,
+		"queue_size": queue_size,
+		"queue_progress": queue_progress,
+		"queue_preview": queue_preview,
+		"multi_roles": multi_roles,
+		"matrix_page_text": "Page 1/1",
+		"portrait_glyph": portrait_glyph,
+		"portrait_title": portrait_title,
+		"portrait_subtitle": portrait_subtitle,
+		"subgroup_text": _build_subgroup_text(mode, selection_total),
+		"command_hint": _build_command_hint(),
+		"command_entries": _build_command_entries(),
+		"notifications": _build_notifications()
+	}
+
+func _selection_mode(selection_total: int) -> String:
+	if selection_total <= 0:
+		return "none"
+	if selection_total == 1:
+		return "single"
+	return "multi"
+
+func _build_selection_hint(selected_worker_count: int, selected_soldier_count: int, selected_building_count: int, queue_size: int) -> String:
 	if _placing_building:
-		var place_state: String = "Valid" if _placement_can_place else "Invalid"
-		lines.append("Mode: Barracks placement (%d) - %s" % [_placing_cost, place_state])
-	elif _selected_buildings.size() == 1:
-		var selected_building: Node = _selected_buildings[0]
-		if selected_building != null and selected_building.has_method("get_queue_size"):
-			var queue_size_value: Variant = selected_building.call("get_queue_size")
-			var queue_size: int = int(queue_size_value)
-			lines.append("Building queue: %d" % queue_size)
+		var placement_state: String = "Valid" if _placement_can_place else "Invalid"
+		return "Placing Barracks (%d): %s | LMB Confirm, RMB/ESC Cancel" % [_placing_cost, placement_state]
+	if _selected_units.is_empty() and _selected_buildings.is_empty():
+		return "No selection | B: Build Barracks | Left drag: Box Select | RMB: Move/Gather"
+	if _selected_buildings.size() == 1 and _selected_units.is_empty():
+		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
+	return "Selected -> Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
 
-	_hint_label.text = "\n".join(lines)
+func _build_subgroup_text(mode: String, selection_total: int) -> String:
+	if mode == "multi":
+		return "Subgroup: %d Units" % selection_total
+	if mode == "single":
+		return "Subgroup: Single"
+	return "Subgroup: None"
+
+func _build_command_hint() -> String:
+	if _placing_building:
+		return "Placement Mode: Confirm valid position with LMB."
+	if _selected_buildings.size() == 1 and _selected_units.is_empty():
+		return "Training panel follows selected building capabilities."
+	if not _selected_units.is_empty():
+		return "RMB for move / gather context command."
+	return "Select something to open context commands."
+
+func _build_command_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	if _placing_building:
+		entries.append(_command_entry("Confirm Barracks", "LMB", _placement_can_place and _minerals >= _placing_cost))
+		entries.append(_command_entry("Cancel Placement", "ESC", true))
+		return entries
+
+	if _selected_buildings.size() == 1 and _selected_units.is_empty():
+		var selected_building: Node = _selected_buildings[0]
+		if selected_building != null:
+			var can_train_worker: bool = bool(selected_building.call("can_queue_worker_unit")) if selected_building.has_method("can_queue_worker_unit") else false
+			var can_train_soldier: bool = bool(selected_building.call("can_queue_soldier_unit")) if selected_building.has_method("can_queue_soldier_unit") else false
+			if can_train_worker:
+				entries.append(_command_entry("Train Worker (50)", "R", _minerals >= WORKER_COST))
+			if can_train_soldier:
+				entries.append(_command_entry("Train Soldier (70)", "T", _minerals >= SOLDIER_COST))
+		entries.append(_command_entry("Build Barracks", "B", _minerals >= BARRACKS_COST))
+		return entries
+
+	if not _selected_units.is_empty():
+		entries.append(_command_entry("Move", "RMB", true))
+		if _selection_has_worker():
+			entries.append(_command_entry("Gather", "RMB", true))
+		entries.append(_command_entry("Build Barracks", "B", _minerals >= BARRACKS_COST))
+		return entries
+
+	entries.append(_command_entry("Build Barracks", "B", _minerals >= BARRACKS_COST))
+	entries.append(_command_entry("Menu", "F10", true))
+	return entries
+
+func _command_entry(label: String, hotkey: String, enabled: bool) -> Dictionary:
+	return {
+		"label": label,
+		"hotkey": hotkey,
+		"enabled": enabled
+	}
+
+func _build_notifications() -> Array[String]:
+	var lines: Array[String] = [
+		"B: Place Barracks (160)",
+		"R: Queue Worker (Base) / T: Queue Soldier (Barracks)",
+		"Shift + Left Click: Additive Selection"
+	]
+	if _placing_building:
+		var state: String = "valid" if _placement_can_place else "invalid"
+		lines[0] = "Placement %s | Cost: %d Minerals" % [state, _placing_cost]
+	return lines
+
+func _build_multi_roles() -> Array[String]:
+	var roles: Array[String] = []
+	for selected_unit in _selected_units:
+		if selected_unit == null:
+			continue
+		var role_tag: String = "U"
+		if selected_unit.has_method("get_unit_role_tag"):
+			role_tag = str(selected_unit.call("get_unit_role_tag"))
+		roles.append(role_tag)
+		if roles.size() >= HUD_MULTI_MAX:
+			return roles
+
+	for selected_building in _selected_buildings:
+		if selected_building == null:
+			continue
+		var role: String = "Building"
+		if selected_building.has_method("get_building_role_tag"):
+			role = str(selected_building.call("get_building_role_tag"))
+		roles.append(role)
+		if roles.size() >= HUD_MULTI_MAX:
+			return roles
+
+	return roles
+
+func _count_total_units() -> int:
+	var count: int = 0
+	var units: Array[Node] = get_tree().get_nodes_in_group("selectable_unit")
+	for unit_node in units:
+		if unit_node != null:
+			count += 1
+	return count
+
+func _selection_has_worker() -> bool:
+	for selected_unit in _selected_units:
+		if selected_unit == null:
+			continue
+		if selected_unit.has_method("is_worker_unit") and bool(selected_unit.call("is_worker_unit")):
+			return true
+	return false
 
 func _issue_context_command(screen_pos: Vector2) -> void:
 	if _selected_units.is_empty():

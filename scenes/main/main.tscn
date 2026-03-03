@@ -1,82 +1,69 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene format=3 uid="uid://m2r1nu68hqnd"]
 
-[ext_resource type="Script" path="res://scripts/core/game_manager.gd" id="1_game_manager"]
+[ext_resource type="Script" uid="uid://dywk6nwletk5m" path="res://scripts/core/game_manager.gd" id="1_game_manager"]
 [ext_resource type="PackedScene" path="res://scenes/world/world.tscn" id="2_world"]
 [ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="3_unit"]
 [ext_resource type="PackedScene" path="res://scenes/buildings/building.tscn" id="4_building"]
-[ext_resource type="Script" path="res://scripts/core/rts_camera.gd" id="5_camera"]
-[ext_resource type="Script" path="res://scripts/ui/selection_overlay.gd" id="6_overlay"]
+[ext_resource type="Script" uid="uid://bkc7ubvlugcob" path="res://scripts/core/rts_camera.gd" id="5_camera"]
+[ext_resource type="Script" uid="uid://b5mrac0tlceun" path="res://scripts/ui/selection_overlay.gd" id="6_overlay"]
 [ext_resource type="PackedScene" path="res://scenes/world/resource_node.tscn" id="7_resource_node"]
+[ext_resource type="PackedScene" path="res://scenes/ui/rts_hud.tscn" id="8_hud"]
 
-[node name="Main" type="Node3D"]
+[node name="Main" type="Node3D" unique_id=1580196605]
 script = ExtResource("1_game_manager")
 camera_path = NodePath("RTSCamera")
 units_root_path = NodePath("Units")
 buildings_root_path = NodePath("Buildings")
 selection_overlay_path = NodePath("UI/SelectionOverlay")
-resource_label_path = NodePath("UI/ResourceLabel")
-hint_label_path = NodePath("UI/HintLabel")
+hud_path = NodePath("UI/RTSHud")
 
-[node name="World" parent="." instance=ExtResource("2_world")]
+[node name="World" parent="." unique_id=273804721 instance=ExtResource("2_world")]
 
-[node name="Units" type="Node3D" parent="."]
+[node name="Units" type="Node3D" parent="." unique_id=994489330]
 
-[node name="WorkerA" parent="Units" instance=ExtResource("3_unit")]
-position = Vector3(-6, 0, -2)
+[node name="WorkerA" parent="Units" unique_id=1421386730 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, -2)
 is_worker = true
 
-[node name="WorkerB" parent="Units" instance=ExtResource("3_unit")]
-position = Vector3(-4, 0, -1)
+[node name="WorkerB" parent="Units" unique_id=386843675 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, -1)
 is_worker = true
 
-[node name="WorkerC" parent="Units" instance=ExtResource("3_unit")]
-position = Vector3(-5, 0, 1)
+[node name="WorkerC" parent="Units" unique_id=1424136254 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 1)
 is_worker = true
 
-[node name="SoldierA" parent="Units" instance=ExtResource("3_unit")]
-position = Vector3(-2, 0, -2)
+[node name="SoldierA" parent="Units" unique_id=464306290 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, -2)
 
-[node name="Buildings" type="Node3D" parent="."]
+[node name="Buildings" type="Node3D" parent="." unique_id=582541461]
 
-[node name="MainBase" parent="Buildings" instance=ExtResource("4_building")]
-position = Vector3(8, 0, 0)
-building_kind = "base"
-is_resource_dropoff = true
-can_queue_worker = true
-can_queue_soldier = false
-worker_build_time = 2.8
+[node name="MainBase" parent="Buildings" unique_id=973704050 instance=ExtResource("4_building")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0)
 
-[node name="Resources" type="Node3D" parent="."]
+[node name="Resources" type="Node3D" parent="." unique_id=1852819292]
 
-[node name="MineralFieldA" parent="Resources" instance=ExtResource("7_resource_node")]
-position = Vector3(-8, 0, 7)
+[node name="MineralFieldA" parent="Resources" unique_id=1320932976 instance=ExtResource("7_resource_node")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 7)
 
-[node name="MineralFieldB" parent="Resources" instance=ExtResource("7_resource_node")]
-position = Vector3(-10, 0, 10)
+[node name="MineralFieldB" parent="Resources" unique_id=1285716064 instance=ExtResource("7_resource_node")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0, 10)
 total_minerals = 1200
 max_visual_minerals = 1200
 
-[node name="RTSCamera" type="Camera3D" parent="."]
-script = ExtResource("5_camera")
-position = Vector3(0, 30, 24)
+[node name="RTSCamera" type="Camera3D" parent="." unique_id=1809562840]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 24)
 current = true
 far = 2000.0
+script = ExtResource("5_camera")
 
-[node name="UI" type="CanvasLayer" parent="."]
+[node name="UI" type="CanvasLayer" parent="." unique_id=294111542]
 
-[node name="ResourceLabel" type="Label" parent="UI"]
-offset_left = 16.0
-offset_top = 12.0
-offset_right = 320.0
-offset_bottom = 42.0
-text = "Minerals: 0"
-
-[node name="HintLabel" type="Label" parent="UI"]
-offset_left = 16.0
-offset_top = 46.0
-offset_right = 900.0
-offset_bottom = 120.0
-text = ""
-
-[node name="SelectionOverlay" type="Control" parent="UI"]
+[node name="SelectionOverlay" type="Control" parent="UI" unique_id=1207666565]
+layout_mode = 3
+anchors_preset = 0
 script = ExtResource("6_overlay")
+
+[node name="RTSHud" parent="UI" unique_id=259587837 instance=ExtResource("8_hud")]
+layout_mode = 3
+anchors_preset = 15

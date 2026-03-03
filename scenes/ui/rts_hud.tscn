@@ -1,0 +1,397 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/rts_hud.gd" id="1_script"]
+
+[node name="RTSHud" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_script")
+
+[node name="NotificationPanel" type="PanelContainer" parent="."]
+offset_left = 14.0
+offset_top = 160.0
+offset_right = 356.0
+offset_bottom = 520.0
+
+[node name="NotificationList" type="VBoxContainer" parent="NotificationPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+theme_override_constants/separation = 10
+
+[node name="NotificationA" type="Label" parent="NotificationPanel/NotificationList"]
+text = "B: Place Barracks"
+autowrap_mode = 3
+
+[node name="NotificationB" type="Label" parent="NotificationPanel/NotificationList"]
+text = "R: Queue Worker (Base)"
+autowrap_mode = 3
+
+[node name="NotificationC" type="Label" parent="NotificationPanel/NotificationList"]
+text = "T: Queue Soldier (Barracks)"
+autowrap_mode = 3
+
+[node name="TopBar" type="PanelContainer" parent="."]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -772.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 96.0
+
+[node name="TopBarRow" type="HBoxContainer" parent="TopBar"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 8
+
+[node name="ResourcePanel" type="PanelContainer" parent="TopBar/TopBarRow"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 7.4
+
+[node name="ResourceContent" type="VBoxContainer" parent="TopBar/TopBarRow/ResourcePanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 8.0
+offset_right = -10.0
+offset_bottom = -8.0
+theme_override_constants/separation = 4
+
+[node name="ResourceTopRow" type="HBoxContainer" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent"]
+theme_override_constants/separation = 8
+
+[node name="MineralsLabel" type="Label" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow"]
+text = "MIN"
+
+[node name="MineralsValue" type="Label" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow"]
+text = "0"
+
+[node name="GasLabel" type="Label" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow"]
+text = "GAS"
+
+[node name="GasValue" type="Label" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow"]
+text = "0"
+
+[node name="SupplyLabel" type="Label" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow"]
+text = "SUP"
+
+[node name="SupplyValue" type="Label" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow"]
+text = "0 / 40"
+
+[node name="LegacyInfoText" type="Label" parent="TopBar/TopBarRow/ResourcePanel/ResourceContent"]
+text = "M: 0   G: 0   Supply: 0/40"
+
+[node name="CenterTop" type="PanelContainer" parent="TopBar/TopBarRow"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.2
+
+[node name="CenterTopContent" type="VBoxContainer" parent="TopBar/TopBarRow/CenterTop"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+
+[node name="TimeText" type="Label" parent="TopBar/TopBarRow/CenterTop/CenterTopContent"]
+text = "00:00"
+horizontal_alignment = 1
+
+[node name="MissionText" type="Label" parent="TopBar/TopBarRow/CenterTop/CenterTopContent"]
+visible = false
+text = "Mission"
+horizontal_alignment = 1
+
+[node name="SystemPanel" type="PanelContainer" parent="TopBar/TopBarRow"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.4
+
+[node name="SystemButtons" type="VBoxContainer" parent="TopBar/TopBarRow/SystemPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 4
+
+[node name="MenuButton" type="Button" parent="TopBar/TopBarRow/SystemPanel/SystemButtons"]
+text = "Menu (F10)"
+
+[node name="HelpButton" type="Button" parent="TopBar/TopBarRow/SystemPanel/SystemButtons"]
+visible = false
+text = "Help"
+
+[node name="BottomHUD" type="PanelContainer" parent="."]
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -300.0
+
+[node name="BottomRow" type="HBoxContainer" parent="BottomHUD"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 8
+
+[node name="SelectionPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 22.0
+
+[node name="SelectionContent" type="VBoxContainer" parent="BottomHUD/BottomRow/SelectionPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 6
+
+[node name="GlobalButtonRow" type="HBoxContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent"]
+theme_override_constants/separation = 4
+
+[node name="IdleWorkerButton" type="Button" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/GlobalButtonRow"]
+size_flags_horizontal = 3
+text = "Idle"
+
+[node name="ArmyButton" type="Button" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/GlobalButtonRow"]
+size_flags_horizontal = 3
+text = "Army (F2)"
+
+[node name="WarpButton" type="Button" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/GlobalButtonRow"]
+size_flags_horizontal = 3
+text = "Warp"
+
+[node name="MinimapPanel" type="PanelContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent"]
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 168)
+
+[node name="MinimapPlaceholder" type="CenterContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="MinimapText" type="Label" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel/MinimapPlaceholder"]
+text = "Minimap"
+
+[node name="BottomButtonRow" type="HBoxContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent"]
+theme_override_constants/separation = 4
+
+[node name="PingButton" type="Button" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/BottomButtonRow"]
+size_flags_horizontal = 3
+text = "Ping"
+
+[node name="TerrainButton" type="Button" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/BottomButtonRow"]
+size_flags_horizontal = 3
+text = "Terrain"
+
+[node name="QueuePanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 40.0
+
+[node name="QueueContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 6
+
+[node name="SelectionHintText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent"]
+text = "No selection."
+autowrap_mode = 3
+
+[node name="SingleContainer" type="HBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent"]
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+
+[node name="SingleStatusRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.2
+
+[node name="SingleStatusContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 3
+
+[node name="SingleNameText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+text = "No Selection"
+
+[node name="HealthLabel" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+text = "Health"
+
+[node name="HealthBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+value = 100.0
+
+[node name="ShieldLabel" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+text = "Shield"
+
+[node name="ShieldBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+value = 0.0
+
+[node name="EnergyLabel" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+text = "Energy"
+
+[node name="EnergyBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+value = 0.0
+
+[node name="SingleDetailRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.45
+
+[node name="SingleDetailContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 4
+
+[node name="SingleDetailTitle" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
+text = "Details"
+
+[node name="SingleDetailText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
+text = "-"
+autowrap_mode = 3
+
+[node name="ArmorTypeText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
+text = "Armor Type: --"
+
+[node name="ProductionQueueRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
+visible = false
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.45
+
+[node name="ProductionContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 4
+
+[node name="QueueSummaryText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
+text = "Queue Size: 0"
+
+[node name="QueueProgressBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
+value = 0.0
+
+[node name="QueueSlots" type="HBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
+theme_override_constants/separation = 4
+
+[node name="MultiMatrixRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent"]
+visible = false
+size_flags_vertical = 3
+
+[node name="MultiMatrixContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 6
+
+[node name="MatrixGrid" type="GridContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
+columns = 8
+size_flags_vertical = 3
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+
+[node name="MatrixFooter" type="HBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
+theme_override_constants/separation = 6
+
+[node name="PrevPageButton" type="Button" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
+disabled = true
+text = "<"
+
+[node name="MatrixPageText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
+size_flags_horizontal = 3
+text = "Page 1/1"
+horizontal_alignment = 1
+
+[node name="NextPageButton" type="Button" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
+disabled = true
+text = ">"
+
+[node name="PortraitPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 8.0
+
+[node name="PortraitContent" type="VBoxContainer" parent="BottomHUD/BottomRow/PortraitPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 6
+
+[node name="PortraitTitle" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+text = "Portrait"
+horizontal_alignment = 1
+
+[node name="PortraitViewport" type="PanelContainer" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+size_flags_vertical = 3
+
+[node name="PortraitCenter" type="CenterContainer" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent/PortraitViewport"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="PortraitGlyph" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter"]
+text = "?"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PortraitNameText" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+text = "No Selection"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="PortraitRoleText" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+text = "-"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="CommandPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 30.0
+
+[node name="CommandContent" type="VBoxContainer" parent="BottomHUD/BottomRow/CommandPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 6
+
+[node name="SubgroupText" type="Label" parent="BottomHUD/BottomRow/CommandPanel/CommandContent"]
+text = "Subgroup -"
+
+[node name="CommandGrid" type="GridContainer" parent="BottomHUD/BottomRow/CommandPanel/CommandContent"]
+columns = 5
+size_flags_vertical = 3
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+
+[node name="CommandHintText" type="Label" parent="BottomHUD/BottomRow/CommandPanel/CommandContent"]
+text = "No active command card."
+autowrap_mode = 3

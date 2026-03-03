@@ -39,6 +39,28 @@ func _physics_process(delta: float) -> void:
 func is_worker_unit() -> bool:
 	return is_worker
 
+func get_unit_display_name() -> String:
+	return "Worker" if is_worker else "Soldier"
+
+func get_unit_role_tag() -> String:
+	return "W" if is_worker else "S"
+
+func get_mode_label() -> String:
+	match _mode:
+		UnitMode.MOVE:
+			return "Moving"
+		UnitMode.GATHER_RESOURCE:
+			return "Gathering"
+		UnitMode.RETURN_RESOURCE:
+			return "Returning"
+		_:
+			return "Idle"
+
+func get_carry_fill_ratio() -> float:
+	if carry_capacity <= 0:
+		return 0.0
+	return clampf(float(_carried_amount) / float(carry_capacity), 0.0, 1.0)
+
 func set_worker_role(worker: bool) -> void:
 	is_worker = worker
 	_apply_role_visual()

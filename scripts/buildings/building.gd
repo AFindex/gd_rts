@@ -65,6 +65,41 @@ func queue_soldier() -> bool:
 func get_queue_size() -> int:
 	return _queue_unit_kinds.size()
 
+func has_active_queue() -> bool:
+	return not _queue_unit_kinds.is_empty()
+
+func get_production_progress() -> float:
+	if _queue_unit_kinds.is_empty():
+		return 0.0
+	var current_build_time: float = _queue_build_times[0]
+	if current_build_time <= 0.0:
+		return 1.0
+	return clampf(_production_timer / current_build_time, 0.0, 1.0)
+
+func get_primary_queue_kind() -> String:
+	if _queue_unit_kinds.is_empty():
+		return ""
+	return _queue_unit_kinds[0]
+
+func get_queue_preview(max_items: int = 5) -> Array[String]:
+	var preview: Array[String] = []
+	if max_items <= 0:
+		return preview
+	var max_count: int = mini(max_items, _queue_unit_kinds.size())
+	for i in max_count:
+		preview.append(_format_unit_kind(_queue_unit_kinds[i]))
+	return preview
+
+func get_building_display_name() -> String:
+	if building_kind == "barracks":
+		return "Barracks"
+	return "Main Base"
+
+func get_building_role_tag() -> String:
+	if building_kind == "barracks":
+		return "Barracks"
+	return "Base"
+
 func configure_as_barracks() -> void:
 	building_kind = "barracks"
 	is_resource_dropoff = false
@@ -99,3 +134,10 @@ func _apply_building_visual() -> void:
 	else:
 		_sprite.modulate = Color(0.95, 0.95, 1.0, 1.0)
 		_sprite.scale = Vector3(1.45, 1.45, 1.45)
+
+func _format_unit_kind(unit_kind: String) -> String:
+	if unit_kind == "worker":
+		return "Worker"
+	if unit_kind == "soldier":
+		return "Soldier"
+	return unit_kind.capitalize()

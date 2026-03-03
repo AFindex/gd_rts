@@ -30,5 +30,6 @@
         "tab.activeBorder": "#d8f615",
         "titleBar.border": "#b5d008"
     },
-    "peacock.color": "#b5d008"
+    "peacock.color": "#b5d008",
+    "godotTools.editorPath.godot4": "d:\\Godot\\Godot_v4.6.1-stable_win64.exe\\Godot_v4.6.1-stable_win64.exe"
 }
