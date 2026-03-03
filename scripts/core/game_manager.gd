@@ -28,6 +28,8 @@ const FEEDBACK_TONE_SAMPLE_RATE: int = 22050
 const CONTROL_GROUP_COUNT: int = 10
 const CONTROL_GROUP_DOUBLE_TAP_WINDOW: float = 0.3
 const SELECTION_DOUBLE_CLICK_WINDOW: float = 0.3
+const CONTROL_GROUP_MARKER_GROUP: StringName = &"control_group_marker"
+const CONTROL_GROUP_MARKER_DURATION: float = 0.9
 
 enum InputState {
 	IDLE,
@@ -101,6 +103,7 @@ var _control_groups: Dictionary = {}
 var _last_selected_group_id: int = -1
 var _last_selected_group_time: float = -100.0
 var _active_subgroup_index: int = -1
+var _multi_matrix_page_index: int = 0
 var _last_click_unit_kind: String = ""
 var _last_click_time_sec: float = -100.0
 var _ui_notice_text: String = ""
@@ -147,11 +150,16 @@ func _apply_runtime_config() -> void:
 		_unlocked_techs[tech_id] = true
 
 func _connect_hud_signals() -> void:
-	if _hud == null or not _hud.has_signal("command_pressed"):
+	if _hud == null:
 		return
-	var callback: Callable = Callable(self, "_on_hud_command_pressed")
-	if not _hud.is_connected("command_pressed", callback):
-		_hud.connect("command_pressed", callback)
+	if _hud.has_signal("command_pressed"):
+		var callback: Callable = Callable(self, "_on_hud_command_pressed")
+		if not _hud.is_connected("command_pressed", callback):
+			_hud.connect("command_pressed", callback)
+	if _hud.has_signal("multi_role_cell_pressed"):
+		var subgroup_callback: Callable = Callable(self, "_on_hud_multi_role_cell_pressed")
+		if not _hud.is_connected("multi_role_cell_pressed", subgroup_callback):
+			_hud.connect("multi_role_cell_pressed", subgroup_callback)
 
 func _process(delta: float) -> void:
 	_drain_execution_queue()
@@ -319,6 +327,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key_event.keycode == KEY_TAB and key_event.ctrl_pressed:
 			_cycle_unit_subgroup()
 			_refresh_hint_label()
+			return
+		if key_event.keycode == KEY_PAGEUP:
+			if _cycle_multi_matrix_page(-1):
+				_refresh_hint_label()
+			return
+		if key_event.keycode == KEY_PAGEDOWN:
+			if _cycle_multi_matrix_page(1):
+				_refresh_hint_label()
 			return
 
 		match key_event.keycode:
@@ -503,6 +519,7 @@ func _assign_control_group_from_selection(group_id: int, append: bool) -> void:
 	next_entry["unit_paths"] = unit_paths
 	next_entry["building_paths"] = building_paths
 	_control_groups[group_id] = next_entry
+	_show_control_group_assignment_feedback(group_id, append)
 
 	var total_count: int = unit_paths.size() + building_paths.size()
 	if append:
@@ -596,6 +613,63 @@ func _focus_camera_on_current_selection() -> void:
 		cam_pos.x = clampf(cam_pos.x, -half_size.x, half_size.x)
 		cam_pos.z = clampf(cam_pos.z, -half_size.y, half_size.y)
 	_camera.global_position = cam_pos
+
+func _show_control_group_assignment_feedback(group_id: int, append: bool) -> void:
+	for selected_unit in _selected_units:
+		var unit_3d: Node3D = selected_unit as Node3D
+		_spawn_control_group_marker(unit_3d, group_id, append)
+	for selected_building in _selected_buildings:
+		var building_3d: Node3D = selected_building as Node3D
+		_spawn_control_group_marker(building_3d, group_id, append)
+
+func _spawn_control_group_marker(target_node: Node3D, group_id: int, append: bool) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	_clear_control_group_marker_children(target_node)
+	var marker_root: Node3D = Node3D.new()
+	marker_root.name = "ControlGroupMarker"
+	marker_root.add_to_group(str(CONTROL_GROUP_MARKER_GROUP))
+	var is_building: bool = target_node.is_in_group("selectable_building")
+	marker_root.position = Vector3(0.0, 2.35 if is_building else 1.35, 0.0)
+	target_node.add_child(marker_root)
+
+	var ring: MeshInstance3D = MeshInstance3D.new()
+	var ring_mesh: CylinderMesh = CylinderMesh.new()
+	ring_mesh.top_radius = 0.34
+	ring_mesh.bottom_radius = 0.34
+	ring_mesh.height = 0.06
+	ring.mesh = ring_mesh
+	var ring_material: StandardMaterial3D = StandardMaterial3D.new()
+	ring_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ring_material.albedo_color = Color(0.32, 0.68, 0.98, 0.82) if append else Color(0.98, 0.9, 0.35, 0.82)
+	ring.material_override = ring_material
+	marker_root.add_child(ring)
+
+	var number_label: Label3D = Label3D.new()
+	number_label.text = str(group_id)
+	number_label.position = Vector3(0.0, 0.32, 0.0)
+	number_label.font_size = 42
+	number_label.modulate = Color(1.0, 1.0, 1.0, 0.98)
+	marker_root.add_child(number_label)
+
+	var timer: Timer = Timer.new()
+	timer.one_shot = true
+	timer.wait_time = CONTROL_GROUP_MARKER_DURATION
+	marker_root.add_child(timer)
+	timer.timeout.connect(Callable(marker_root, "queue_free"))
+	timer.start()
+	return true
+
+func _clear_control_group_marker_children(target_node: Node3D) -> void:
+	if target_node == null or not is_instance_valid(target_node):
+		return
+	for child in target_node.get_children():
+		var child_node: Node = child as Node
+		if child_node == null or not is_instance_valid(child_node):
+			continue
+		if child_node.is_in_group(str(CONTROL_GROUP_MARKER_GROUP)):
+			child_node.queue_free()
 
 func _is_queue_input_active() -> bool:
 	return Input.is_key_pressed(KEY_SHIFT)
@@ -1245,6 +1319,8 @@ func _build_hud_snapshot() -> Dictionary:
 	var portrait_subtitle: String = "-"
 	var portrait_glyph: String = "?"
 	var multi_roles: Array[String] = []
+	var multi_role_kinds: Array[String] = []
+	var matrix_page_text: String = "Page 1/1"
 
 	if mode == "single":
 		if _selected_units.size() == 1 and _selected_units[0] != null:
@@ -1307,9 +1383,21 @@ func _build_hud_snapshot() -> Dictionary:
 			else:
 				portrait_glyph = "B"
 	elif mode == "multi":
-		multi_roles = _build_multi_roles()
+		var page_snapshot: Dictionary = _build_multi_role_page_snapshot(_active_subgroup_kind())
+		var roles_value: Variant = page_snapshot.get("roles", [])
+		if roles_value is Array:
+			for role_value in roles_value:
+				multi_roles.append(str(role_value))
+		var kinds_value: Variant = page_snapshot.get("kinds", [])
+		if kinds_value is Array:
+			for kind_value in kinds_value:
+				multi_role_kinds.append(str(kind_value))
+		matrix_page_text = str(page_snapshot.get("page_text", "Page 1/1"))
 		portrait_title = "%d Selected" % selection_total
 		portrait_subtitle = "W %d  S %d  B %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
+		var active_subgroup_kind: String = _active_subgroup_kind()
+		if active_subgroup_kind != "":
+			portrait_subtitle += " | Active %s" % _subgroup_kind_label(active_subgroup_kind)
 		portrait_glyph = "%d" % selection_total
 
 	var total_units: int = _count_total_units()
@@ -1337,7 +1425,8 @@ func _build_hud_snapshot() -> Dictionary:
 		"queue_progress": queue_progress,
 		"queue_preview": queue_preview,
 		"multi_roles": multi_roles,
-		"matrix_page_text": "Page 1/1",
+		"multi_role_kinds": multi_role_kinds,
+		"matrix_page_text": matrix_page_text,
 		"portrait_glyph": portrait_glyph,
 		"portrait_title": portrait_title,
 		"portrait_subtitle": portrait_subtitle,
@@ -1402,14 +1491,15 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 	return "Selected -> Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
 
 func _build_subgroup_text(mode: String, selection_total: int) -> String:
+	var page_suffix: String = _multi_matrix_page_suffix()
 	if mode == "multi":
 		var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
 		if subgroup_keys.size() > 1:
 			var active_kind: String = _active_subgroup_kind()
 			if active_kind != "":
-				return "Subgroup: %s (%d/%d) | Ctrl+Tab cycle" % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size()]
-			return "Subgroup: All (%d types) | Ctrl+Tab cycle" % subgroup_keys.size()
-		return "Subgroup: %d Units" % selection_total
+				return "Subgroup: %s (%d/%d) | Ctrl+Tab/Click Matrix%s" % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size(), page_suffix]
+			return "Subgroup: All (%d types) | Ctrl+Tab/Click Matrix%s" % [subgroup_keys.size(), page_suffix]
+		return "Subgroup: %d Units%s" % [selection_total, page_suffix]
 	if mode == "single":
 		return "Subgroup: Single"
 	return "Subgroup: None"
@@ -1418,9 +1508,11 @@ func _refresh_subgroup_state(reset_to_all: bool = false) -> void:
 	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
 	if subgroup_keys.size() <= 1:
 		_active_subgroup_index = -1
+		_multi_matrix_page_index = 0
 		return
 	if reset_to_all:
 		_active_subgroup_index = -1
+		_multi_matrix_page_index = 0
 		return
 	if _active_subgroup_index >= subgroup_keys.size():
 		_active_subgroup_index = -1
@@ -1437,8 +1529,38 @@ func _cycle_unit_subgroup() -> bool:
 	else:
 		_active_subgroup_index = (_active_subgroup_index + 1) % subgroup_keys.size()
 	var active_kind: String = _active_subgroup_kind()
+	_focus_multi_matrix_page_for_subgroup(active_kind)
 	_set_ui_notice("Subgroup active: %s (%d/%d)." % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size()])
 	_play_feedback_tone("follow")
+	return true
+
+func _multi_matrix_page_suffix() -> String:
+	var page_count: int = _multi_role_page_count()
+	if page_count <= 1:
+		return ""
+	var page_index: int = clampi(_multi_matrix_page_index, 0, page_count - 1)
+	return " | Page %d/%d PgUp/PgDn" % [page_index + 1, page_count]
+
+func _cycle_multi_matrix_page(step: int) -> bool:
+	if step == 0:
+		return false
+	var selection_total: int = _selected_units.size() + _selected_buildings.size()
+	if _selection_mode(selection_total) != "multi":
+		return false
+	var page_count: int = _multi_role_page_count()
+	if page_count <= 1:
+		_multi_matrix_page_index = 0
+		_set_ui_notice("Selection matrix has only one page.")
+		_play_feedback_tone("error")
+		return true
+	_multi_matrix_page_index += step
+	while _multi_matrix_page_index < 0:
+		_multi_matrix_page_index += page_count
+	while _multi_matrix_page_index >= page_count:
+		_multi_matrix_page_index -= page_count
+	_set_ui_notice("Selection matrix page %d/%d." % [_multi_matrix_page_index + 1, page_count], 1.1)
+	_play_feedback_tone("ground")
+	_push_hud_update()
 	return true
 
 func _active_subgroup_kind() -> String:
@@ -1570,7 +1692,7 @@ func _build_command_hint() -> String:
 	if not _selected_units.is_empty():
 		var active_kind: String = _active_subgroup_kind()
 		if active_kind != "":
-			return "Subgroup active: %s | Ctrl+Tab cycle | Commands apply to active subgroup only." % _subgroup_kind_label(active_kind)
+			return "Subgroup active: %s | Ctrl+Tab or click matrix cell | Commands apply to active subgroup only." % _subgroup_kind_label(active_kind)
 		return "RMB context command or click move/gather/stop in command card."
 	return "Select something to open context commands."
 
@@ -1790,9 +1912,11 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
-		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Ctrl+Tab: Cycle Subgroup" % [_worker_cost, _soldier_cost],
+		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Ctrl+Tab/Click Matrix: Subgroup" % [_worker_cost, _soldier_cost],
 		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus"
 	]
+	if _multi_role_page_count() > 1:
+		lines[2] += " | PgUp/PgDn Selection Page"
 	if _queue_reject_feedback_timer > 0.0:
 		lines[0] = "Queue full: max 32 commands per unit."
 	if _rally_reject_feedback_timer > 0.0:
@@ -1819,8 +1943,8 @@ func _build_notifications() -> Array[String]:
 		lines[1] = "Unlocked Tech: %d | Active Research: %d" % [_unlocked_techs.size(), _active_research.size()]
 	return lines
 
-func _build_multi_roles() -> Array[String]:
-	var roles: Array[String] = []
+func _build_multi_role_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
 	for selected_unit in _selected_units:
 		if selected_unit == null or not is_instance_valid(selected_unit):
 			continue
@@ -1829,9 +1953,10 @@ func _build_multi_roles() -> Array[String]:
 		var role_tag: String = "U"
 		if selected_unit.has_method("get_unit_role_tag"):
 			role_tag = str(selected_unit.call("get_unit_role_tag"))
-		roles.append(role_tag)
-		if roles.size() >= HUD_MULTI_MAX:
-			return roles
+		entries.append({
+			"role": role_tag,
+			"kind": _unit_kind_id(selected_unit)
+		})
 
 	for selected_building in _selected_buildings:
 		if selected_building == null or not is_instance_valid(selected_building):
@@ -1841,11 +1966,60 @@ func _build_multi_roles() -> Array[String]:
 		var role: String = "Building"
 		if selected_building.has_method("get_building_role_tag"):
 			role = str(selected_building.call("get_building_role_tag"))
-		roles.append(role)
-		if roles.size() >= HUD_MULTI_MAX:
-			return roles
+		entries.append({
+			"role": role,
+			"kind": "building"
+		})
+	return entries
 
-	return roles
+func _multi_role_page_count() -> int:
+	var total_entries: int = _build_multi_role_entries().size()
+	if total_entries <= 0:
+		return 1
+	return maxi(1, int(ceil(float(total_entries) / float(HUD_MULTI_MAX))))
+
+func _focus_multi_matrix_page_for_subgroup(subgroup_kind: String) -> void:
+	if subgroup_kind == "":
+		return
+	var entries: Array[Dictionary] = _build_multi_role_entries()
+	for i in entries.size():
+		var entry: Dictionary = entries[i]
+		if str(entry.get("kind", "")) != subgroup_kind:
+			continue
+		_multi_matrix_page_index = i / HUD_MULTI_MAX
+		return
+
+func _build_multi_role_page_snapshot(active_subgroup_kind: String = "") -> Dictionary:
+	var entries: Array[Dictionary] = _build_multi_role_entries()
+
+	var total_entries: int = entries.size()
+	var page_count: int = 1
+	if total_entries > 0:
+		page_count = maxi(1, int(ceil(float(total_entries) / float(HUD_MULTI_MAX))))
+	_multi_matrix_page_index = clampi(_multi_matrix_page_index, 0, page_count - 1)
+	var start_index: int = _multi_matrix_page_index * HUD_MULTI_MAX
+	var end_index: int = mini(total_entries, start_index + HUD_MULTI_MAX)
+	var roles: Array[String] = []
+	var kinds: Array[String] = []
+	for i in range(start_index, end_index):
+		var entry: Dictionary = entries[i]
+		roles.append(str(entry.get("role", "")))
+		kinds.append(str(entry.get("kind", "")))
+
+	var page_text: String = "Page %d/%d" % [_multi_matrix_page_index + 1, page_count]
+	if total_entries > 0:
+		page_text += " (%d-%d/%d)" % [start_index + 1, end_index, total_entries]
+	if page_count > 1:
+		page_text += " | PgUp/PgDn"
+	if active_subgroup_kind != "":
+		page_text += " | Active %s" % _subgroup_kind_label(active_subgroup_kind)
+	return {
+		"roles": roles,
+		"kinds": kinds,
+		"page_text": page_text,
+		"total_entries": total_entries,
+		"page_count": page_count
+	}
 
 func _count_total_units() -> int:
 	var count: int = 0
@@ -2284,6 +2458,27 @@ func _prune_invalid_selection() -> void:
 
 func _on_hud_command_pressed(command_id: String) -> void:
 	_execute_command(command_id)
+
+func _on_hud_multi_role_cell_pressed(role_kind: String) -> void:
+	var normalized_kind: String = role_kind.strip_edges().to_lower()
+	if normalized_kind == "":
+		return
+	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
+	if subgroup_keys.is_empty():
+		return
+	var target_index: int = subgroup_keys.find(normalized_kind)
+	if target_index < 0:
+		return
+	if _active_subgroup_kind() == normalized_kind:
+		_active_subgroup_index = -1
+		_set_ui_notice("Subgroup active: All.")
+		_play_feedback_tone("ground")
+	else:
+		_active_subgroup_index = target_index
+		_focus_multi_matrix_page_for_subgroup(normalized_kind)
+		_set_ui_notice("Subgroup active: %s (HUD)." % _subgroup_kind_label(normalized_kind))
+		_play_feedback_tone("follow")
+	_refresh_hint_label()
 
 func _execute_command(command_id: String) -> void:
 	_prune_invalid_selection()
@@ -3322,5 +3517,6 @@ func _clear_selection() -> void:
 	_selected_units.clear()
 	_selected_buildings.clear()
 	_active_subgroup_index = -1
+	_multi_matrix_page_index = 0
 	_build_menu_open = false
 	_pending_target_skill = ""

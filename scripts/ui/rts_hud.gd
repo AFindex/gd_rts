@@ -1,6 +1,7 @@
 extends Control
 
 signal command_pressed(command_id: String)
+signal multi_role_cell_pressed(role_kind: String)
 
 const COMMAND_SLOTS: int = 15
 const MULTI_SLOTS: int = 24
@@ -57,6 +58,7 @@ var _matrix_panels: Array[PanelContainer] = []
 var _matrix_labels: Array[Label] = []
 var _queue_slot_labels: Array[Label] = []
 var _notification_labels: Array[Label] = []
+var _current_multi_role_kinds: Array[String] = []
 
 func _ready() -> void:
 	_setup_static_styles()
@@ -108,6 +110,7 @@ func update_hud(snapshot: Dictionary) -> void:
 
 	_apply_multi_roles(
 		_to_string_array(snapshot.get("multi_roles", [])),
+		_to_string_array(snapshot.get("multi_role_kinds", [])),
 		str(snapshot.get("active_subgroup_kind", ""))
 	)
 	_matrix_page_text.text = str(snapshot.get("matrix_page_text", "Page 1/1"))
@@ -220,6 +223,8 @@ func _build_matrix_cells() -> void:
 		var cell: PanelContainer = PanelContainer.new()
 		cell.custom_minimum_size = Vector2(50.0, 50.0)
 		cell.add_theme_stylebox_override("panel", _matrix_style("empty"))
+		cell.mouse_filter = Control.MOUSE_FILTER_STOP
+		cell.gui_input.connect(Callable(self, "_on_matrix_cell_gui_input").bind(i))
 
 		var label: Label = Label.new()
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -245,20 +250,40 @@ func _apply_queue_preview(queue_preview: Array[String]) -> void:
 			value = queue_preview[i]
 		_queue_slot_labels[i].text = value
 
-func _apply_multi_roles(multi_roles: Array[String], active_subgroup_kind: String = "") -> void:
+func _apply_multi_roles(multi_roles: Array[String], multi_role_kinds: Array[String], active_subgroup_kind: String = "") -> void:
+	_current_multi_role_kinds = multi_role_kinds.duplicate()
 	for i in _matrix_labels.size():
 		if i < multi_roles.size():
 			var role: String = multi_roles[i]
 			_matrix_labels[i].text = role
-			var highlighted: bool = _role_matches_subgroup(role, active_subgroup_kind)
+			var role_kind: String = ""
+			if i < multi_role_kinds.size():
+				role_kind = multi_role_kinds[i]
+			var highlighted: bool = _role_matches_subgroup(role, role_kind, active_subgroup_kind)
 			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style_with_highlight(role, highlighted))
 		else:
 			_matrix_labels[i].text = "--"
 			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style("empty"))
 
-func _role_matches_subgroup(role: String, subgroup_kind: String) -> bool:
+func _on_matrix_cell_gui_input(event: InputEvent, index: int) -> void:
+	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
+	if mouse_button == null:
+		return
+	if mouse_button.button_index != MOUSE_BUTTON_LEFT or not mouse_button.pressed:
+		return
+	if index < 0 or index >= _current_multi_role_kinds.size():
+		return
+	var role_kind: String = _current_multi_role_kinds[index]
+	if role_kind == "" or role_kind == "building":
+		return
+	emit_signal("multi_role_cell_pressed", role_kind)
+
+func _role_matches_subgroup(role: String, role_kind: String, subgroup_kind: String) -> bool:
 	if subgroup_kind == "":
 		return false
+	var kind_key: String = role_kind.to_lower().strip_edges()
+	if kind_key != "":
+		return kind_key == subgroup_kind
 	var role_key: String = role.to_lower()
 	match subgroup_kind:
 		"worker":
