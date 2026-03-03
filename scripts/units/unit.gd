@@ -43,7 +43,7 @@ var _gather_target: Node3D = null
 var _dropoff_target: Node3D = null
 var _gather_timer: float = 0.0
 var _carried_amount: int = 0
-var _attack_target: Node3D = null
+var _attack_target: Node = null
 var _attack_timer: float = 0.0
 var _attack_move_point: Vector3 = Vector3.ZERO
 var _has_attack_move_point: bool = false
@@ -302,7 +302,7 @@ func _process_combat_cycle(delta: float) -> void:
 		return
 	_retarget_timer = maxf(0.0, _retarget_timer - delta)
 
-	if not _is_valid_enemy_target(_attack_target):
+	if _attack_target == null or not is_instance_valid(_attack_target) or not _is_valid_enemy_target(_attack_target):
 		_attack_target = null
 		if _mode == UnitMode.ATTACK:
 			_mode = UnitMode.ATTACK_MOVE
@@ -320,8 +320,13 @@ func _process_combat_cycle(delta: float) -> void:
 		_attack_target = null
 		_continue_attack_move_progress()
 		return
+	var attack_target_3d: Node3D = _attack_target as Node3D
+	if attack_target_3d == null:
+		_attack_target = null
+		_continue_attack_move_progress()
+		return
 
-	var target_position: Vector3 = _attack_target.global_position
+	var target_position: Vector3 = attack_target_3d.global_position
 	if _is_near(target_position, attack_range):
 		_has_target = false
 		velocity = Vector3.ZERO
@@ -381,7 +386,11 @@ func _find_nearest_enemy_in_group(group_name: String, from_position: Vector3, ra
 	var best_distance_sq: float = range_sq
 	var candidates: Array[Node] = get_tree().get_nodes_in_group(group_name)
 	for node in candidates:
+		if node == null or not is_instance_valid(node):
+			continue
 		var target: Node3D = node as Node3D
+		if target == null:
+			continue
 		if not _is_valid_enemy_target(target):
 			continue
 		var delta: Vector3 = target.global_position - from_position
@@ -394,7 +403,7 @@ func _find_nearest_enemy_in_group(group_name: String, from_position: Vector3, ra
 			best_distance_sq = distance_sq
 	return nearest
 
-func _is_valid_enemy_target(target_node: Node) -> bool:
+func _is_valid_enemy_target(target_node) -> bool:
 	if target_node == null or not is_instance_valid(target_node):
 		return false
 	if target_node == self:
@@ -557,8 +566,10 @@ func _apply_runtime_config_for_role() -> void:
 	if _nav_agent != null:
 		_nav_agent.max_speed = move_speed
 
-func _target_is_enemy(target_node: Node) -> bool:
+func _target_is_enemy(target_node) -> bool:
 	if target_node == null:
+		return false
+	if not is_instance_valid(target_node):
 		return false
 	if not target_node.has_method("get_team_id"):
 		return false

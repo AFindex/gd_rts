@@ -25,7 +25,7 @@ var _queue_unit_kinds: Array[String] = []
 var _queue_build_times: Array[float] = []
 var _production_timer: float = 0.0
 var _health: float = 1200.0
-var _attack_target: Node3D = null
+var _attack_target: Node = null
 var _attack_timer: float = 0.0
 var _base_tint: Color = Color.WHITE
 
@@ -237,7 +237,7 @@ func _process_tower_combat(delta: float) -> void:
 	if not is_alive() or attack_damage <= 0.0 or attack_range <= 0.0:
 		return
 
-	if _attack_target == null or not _is_valid_enemy_target(_attack_target) or not _is_target_in_range(_attack_target):
+	if _attack_target == null or not is_instance_valid(_attack_target) or not _is_valid_enemy_target(_attack_target) or not _is_target_in_range(_attack_target):
 		_attack_target = _acquire_tower_target()
 		_attack_timer = 0.0
 	if _attack_target == null:
@@ -248,8 +248,9 @@ func _process_tower_combat(delta: float) -> void:
 	if _attack_timer < cooldown:
 		return
 	_attack_timer = 0.0
-	if _attack_target.has_method("apply_damage"):
-		var hit_position: Vector3 = _attack_target.global_position
+	var attack_target_3d: Node3D = _attack_target as Node3D
+	if attack_target_3d != null and _attack_target.has_method("apply_damage"):
+		var hit_position: Vector3 = attack_target_3d.global_position
 		_attack_target.call("apply_damage", attack_damage, self)
 		_spawn_attack_vfx(hit_position)
 
@@ -265,7 +266,11 @@ func _find_nearest_enemy_in_group(group_name: String, range_sq: float) -> Node3D
 	var best_distance_sq: float = range_sq
 	var nodes: Array[Node] = get_tree().get_nodes_in_group(group_name)
 	for node in nodes:
+		if node == null or not is_instance_valid(node):
+			continue
 		var target: Node3D = node as Node3D
+		if target == null:
+			continue
 		if not _is_valid_enemy_target(target):
 			continue
 		var distance_sq: float = _flat_distance_sq(global_position, target.global_position)
@@ -276,7 +281,7 @@ func _find_nearest_enemy_in_group(group_name: String, range_sq: float) -> Node3D
 			best_distance_sq = distance_sq
 	return nearest
 
-func _is_valid_enemy_target(node: Node3D) -> bool:
+func _is_valid_enemy_target(node) -> bool:
 	if node == null or not is_instance_valid(node) or node == self:
 		return false
 	if not node.has_method("get_team_id"):
@@ -287,10 +292,13 @@ func _is_valid_enemy_target(node: Node3D) -> bool:
 		return false
 	return true
 
-func _is_target_in_range(target: Node3D) -> bool:
-	if target == null:
+func _is_target_in_range(target) -> bool:
+	if target == null or not is_instance_valid(target):
 		return false
-	return _flat_distance_sq(global_position, target.global_position) <= attack_range * attack_range
+	var target_3d: Node3D = target as Node3D
+	if target_3d == null:
+		return false
+	return _flat_distance_sq(global_position, target_3d.global_position) <= attack_range * attack_range
 
 func _flat_distance_sq(a: Vector3, b: Vector3) -> float:
 	var delta: Vector3 = b - a
