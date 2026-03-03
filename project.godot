@@ -25,7 +25,7 @@ project/assembly_name="web_test_gd"
 
 [editor_plugins]
 
-enabled=PackedStringArray("godot_mcp")
+enabled=PackedStringArray("godot_mcp", "image_resizer")
 
 [physics]
 
