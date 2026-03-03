@@ -240,8 +240,9 @@ func _process_tower_combat(delta: float) -> void:
 		return
 	_attack_timer = 0.0
 	if _attack_target.has_method("apply_damage"):
+		var hit_position: Vector3 = _attack_target.global_position
 		_attack_target.call("apply_damage", attack_damage, self)
-		_spawn_attack_vfx(_attack_target.global_position)
+		_spawn_attack_vfx(hit_position)
 
 func _acquire_tower_target() -> Node3D:
 	var range_sq: float = attack_range * attack_range
@@ -293,6 +294,8 @@ func _die() -> void:
 	queue_free()
 
 func _spawn_attack_vfx(target_position: Vector3) -> void:
+	if not is_inside_tree():
+		return
 	var root: Node = get_tree().current_scene
 	var root_3d: Node3D = root as Node3D
 	if root_3d == null:
@@ -312,8 +315,8 @@ func _spawn_attack_vfx(target_position: Vector3) -> void:
 
 	var launch_pos: Vector3 = global_position + Vector3(0.0, 1.9, 0.0)
 	var hit_pos: Vector3 = target_position + Vector3(0.0, 1.0, 0.0)
-	tracer.global_position = launch_pos
 	root_3d.add_child(tracer)
+	tracer.global_position = launch_pos
 
 	var tween: Tween = create_tween()
 	tween.tween_property(tracer, "global_position", hit_pos, 0.12)
