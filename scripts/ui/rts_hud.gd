@@ -11,11 +11,13 @@ const HUD_MAX_HEIGHT: float = 360.0
 @onready var _resource_panel: PanelContainer = $TopBar/TopBarRow/ResourcePanel
 @onready var _center_top: PanelContainer = $TopBar/TopBarRow/CenterTop
 @onready var _system_panel: PanelContainer = $TopBar/TopBarRow/SystemPanel
-@onready var _bottom_hud: PanelContainer = $BottomHUD
+@onready var _bottom_hud: Control = $BottomHUD
 @onready var _bottom_row: HBoxContainer = $BottomHUD/BottomRow
 @onready var _selection_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel
-@onready var _queue_panel: PanelContainer = $BottomHUD/BottomRow/QueuePanel
-@onready var _portrait_panel: PanelContainer = $BottomHUD/BottomRow/PortraitPanel
+@onready var _queue_panel: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel
+@onready var _queue_top_spacer: Control = $BottomHUD/BottomRow/QueueColumn/QueueTopSpacer
+@onready var _portrait_panel: PanelContainer = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel
+@onready var _portrait_top_spacer: Control = $BottomHUD/BottomRow/PortraitColumn/PortraitTopSpacer
 @onready var _command_panel: PanelContainer = $BottomHUD/BottomRow/CommandPanel
 @onready var _minimap_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel
 @onready var _notification_panel: PanelContainer = $NotificationPanel
@@ -26,27 +28,27 @@ const HUD_MAX_HEIGHT: float = 360.0
 @onready var _legacy_info_text: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/LegacyInfoText
 @onready var _time_text: Label = $TopBar/TopBarRow/CenterTop/CenterTopContent/TimeText
 
-@onready var _selection_hint_text: Label = $BottomHUD/BottomRow/QueuePanel/QueueContent/SelectionHintText
-@onready var _single_container: HBoxContainer = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer
-@onready var _single_status_root: PanelContainer = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot
-@onready var _single_detail_root: PanelContainer = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot
-@onready var _production_queue_root: PanelContainer = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot
-@onready var _single_name_text: Label = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/SingleNameText
-@onready var _health_bar: ProgressBar = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/HealthBar
-@onready var _shield_bar: ProgressBar = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/ShieldBar
-@onready var _energy_bar: ProgressBar = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/EnergyBar
-@onready var _single_detail_text: Label = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent/SingleDetailText
-@onready var _armor_type_text: Label = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent/ArmorTypeText
-@onready var _queue_summary_text: Label = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent/QueueSummaryText
-@onready var _queue_progress_bar: ProgressBar = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent/QueueProgressBar
-@onready var _queue_slots: HBoxContainer = $BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent/QueueSlots
-@onready var _multi_matrix_root: PanelContainer = $BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot
-@onready var _matrix_grid: GridContainer = $BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixGrid
-@onready var _matrix_page_text: Label = $BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter/MatrixPageText
+@onready var _selection_hint_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SelectionHintText
+@onready var _single_container: HBoxContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer
+@onready var _single_status_root: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot
+@onready var _single_detail_root: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot
+@onready var _production_queue_root: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot
+@onready var _single_name_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/SingleNameText
+@onready var _health_bar: ProgressBar = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/HealthBar
+@onready var _shield_bar: ProgressBar = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/ShieldBar
+@onready var _energy_bar: ProgressBar = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/EnergyBar
+@onready var _single_detail_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent/SingleDetailText
+@onready var _armor_type_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent/ArmorTypeText
+@onready var _queue_summary_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent/QueueSummaryText
+@onready var _queue_progress_bar: ProgressBar = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent/QueueProgressBar
+@onready var _queue_slots: HBoxContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent/QueueSlots
+@onready var _multi_matrix_root: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot
+@onready var _matrix_grid: GridContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixGrid
+@onready var _matrix_page_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter/MatrixPageText
 
-@onready var _portrait_glyph: Label = $BottomHUD/BottomRow/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter/PortraitGlyph
-@onready var _portrait_name_text: Label = $BottomHUD/BottomRow/PortraitPanel/PortraitContent/PortraitNameText
-@onready var _portrait_role_text: Label = $BottomHUD/BottomRow/PortraitPanel/PortraitContent/PortraitRoleText
+@onready var _portrait_glyph: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter/PortraitGlyph
+@onready var _portrait_name_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitNameText
+@onready var _portrait_role_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitRoleText
 @onready var _subgroup_text: Label = $BottomHUD/BottomRow/CommandPanel/CommandContent/SubgroupText
 @onready var _command_grid: GridContainer = $BottomHUD/BottomRow/CommandPanel/CommandContent/CommandGrid
 @onready var _command_hint_text: Label = $BottomHUD/BottomRow/CommandPanel/CommandContent/CommandHintText
@@ -64,10 +66,11 @@ func _ready() -> void:
 	if viewport != null and not viewport.size_changed.is_connected(_on_viewport_size_changed):
 		viewport.size_changed.connect(_on_viewport_size_changed)
 
-	_queue_panel.size_flags_vertical = Control.SIZE_SHRINK_END
-	_portrait_panel.size_flags_vertical = Control.SIZE_SHRINK_END
+	_queue_top_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_portrait_top_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	_setup_static_styles()
+	_apply_bottom_helper_transparency()
 	_collect_notification_labels()
 	_build_queue_slot_labels()
 	_build_command_buttons()
@@ -158,7 +161,6 @@ func _apply_default_hud() -> void:
 
 func _setup_static_styles() -> void:
 	_style_panel(_top_bar, Color(0.03, 0.08, 0.14, 0.92), Color(0.16, 0.42, 0.58, 0.95))
-	_style_panel(_bottom_hud, Color(0.02, 0.05, 0.11, 0.94), Color(0.13, 0.32, 0.46, 0.95))
 	_style_panel(_selection_panel, Color(0.06, 0.12, 0.2, 0.88), Color(0.18, 0.42, 0.56, 0.95))
 	_style_panel(_queue_panel, Color(0.04, 0.1, 0.18, 0.9), Color(0.16, 0.38, 0.54, 0.95))
 	_style_panel(_portrait_panel, Color(0.05, 0.11, 0.18, 0.9), Color(0.16, 0.38, 0.52, 0.95))
@@ -252,14 +254,17 @@ func _apply_responsive_layout() -> void:
 	if viewport_size.y <= 0.0:
 		return
 
+	# Re-apply helper transparency in case any runtime code or theme updates override it.
+	_apply_bottom_helper_transparency()
+
 	var hud_height: float = clampf(viewport_size.y * HUD_HEIGHT_RATIO, HUD_MIN_HEIGHT, HUD_MAX_HEIGHT)
 	_bottom_hud.offset_top = -hud_height
 
 	var command_button_height: float = round(clampf(hud_height * 0.2, 40.0, 72.0))
 	var recessed_delta: float = command_button_height * 2.0
-	var recessed_height: float = maxi(96.0, hud_height - recessed_delta)
-	_queue_panel.custom_minimum_size = Vector2(0.0, recessed_height)
-	_portrait_panel.custom_minimum_size = Vector2(0.0, recessed_height)
+	var spacer_height: float = round(clampf(recessed_delta, 28.0, hud_height * 0.46))
+	_queue_top_spacer.custom_minimum_size = Vector2(0.0, spacer_height)
+	_portrait_top_spacer.custom_minimum_size = Vector2(0.0, spacer_height)
 
 	var inner_padding: float = round(clampf(hud_height * 0.028, 6.0, 10.0))
 	_bottom_row.offset_left = inner_padding
@@ -353,6 +358,27 @@ func _style_progress_bar(progress_bar: ProgressBar, fill_color: Color) -> void:
 	progress_bar.max_value = 100.0
 	progress_bar.add_theme_stylebox_override("background", _build_stylebox(Color(0.01, 0.05, 0.09, 0.85), Color(0.16, 0.36, 0.52, 0.88), 1, 3))
 	progress_bar.add_theme_stylebox_override("fill", _build_stylebox(fill_color, fill_color.darkened(0.25), 1, 3))
+
+func _apply_bottom_helper_transparency() -> void:
+	_bottom_row.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
+	for node in _bottom_hud.find_children("*", "", true, false):
+		var control: Control = node as Control
+		if control == null:
+			continue
+		if control == _selection_panel or control == _queue_panel or control == _portrait_panel or control == _command_panel:
+			control.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
+			continue
+		if _is_bottom_layout_helper(control):
+			control.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
+
+func _is_bottom_layout_helper(control: Control) -> bool:
+	return control is BoxContainer \
+		or control is GridContainer \
+		or control is CenterContainer \
+		or control.name.contains("Spacer") \
+		or control.name.ends_with("Column") \
+		or control.name.ends_with("Row") \
+		or control.name.ends_with("Content")
 
 func _apply_button_style(button: Button) -> void:
 	button.add_theme_stylebox_override("normal", _build_stylebox(Color(0.07, 0.15, 0.23, 0.95), Color(0.17, 0.41, 0.56, 0.95), 1, 5))

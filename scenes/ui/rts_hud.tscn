@@ -130,7 +130,7 @@ text = "Menu (F10)"
 visible = false
 text = "Help"
 
-[node name="BottomHUD" type="PanelContainer" parent="."]
+[node name="BottomHUD" type="Control" parent="."]
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -143,6 +143,7 @@ offset_left = 8.0
 offset_top = 8.0
 offset_right = -8.0
 offset_bottom = -8.0
+self_modulate = Color(1, 1, 1, 0)
 theme_override_constants/separation = 8
 
 [node name="SelectionPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
@@ -195,11 +196,22 @@ text = "Ping"
 size_flags_horizontal = 3
 text = "Terrain"
 
-[node name="QueuePanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
+[node name="QueueColumn" type="VBoxContainer" parent="BottomHUD/BottomRow"]
 size_flags_horizontal = 3
+size_flags_vertical = 3
 size_flags_stretch_ratio = 45.0
+self_modulate = Color(1, 1, 1, 0)
+theme_override_constants/separation = 0
 
-[node name="QueueContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel"]
+[node name="QueueTopSpacer" type="Control" parent="BottomHUD/BottomRow/QueueColumn"]
+custom_minimum_size = Vector2(0, 84)
+self_modulate = Color(1, 1, 1, 0)
+
+[node name="QueuePanel" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="QueueContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 8.0
@@ -208,19 +220,19 @@ offset_right = -8.0
 offset_bottom = -8.0
 theme_override_constants/separation = 6
 
-[node name="SelectionHintText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent"]
+[node name="SelectionHintText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent"]
 text = "No selection."
 autowrap_mode = 3
 
-[node name="SingleContainer" type="HBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent"]
+[node name="SingleContainer" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent"]
 size_flags_vertical = 3
 theme_override_constants/separation = 6
 
-[node name="SingleStatusRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
+[node name="SingleStatusRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer"]
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 0.95
 
-[node name="SingleStatusContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot"]
+[node name="SingleStatusContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 8.0
@@ -229,32 +241,32 @@ offset_right = -8.0
 offset_bottom = -8.0
 theme_override_constants/separation = 3
 
-[node name="SingleNameText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+[node name="SingleNameText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
 text = "No Selection"
 
-[node name="HealthLabel" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+[node name="HealthLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
 text = "Health"
 
-[node name="HealthBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+[node name="HealthBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
 value = 100.0
 
-[node name="ShieldLabel" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+[node name="ShieldLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
 text = "Shield"
 
-[node name="ShieldBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+[node name="ShieldBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
 value = 0.0
 
-[node name="EnergyLabel" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+[node name="EnergyLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
 text = "Energy"
 
-[node name="EnergyBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
+[node name="EnergyBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent"]
 value = 0.0
 
-[node name="SingleDetailRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
+[node name="SingleDetailRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer"]
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.7
 
-[node name="SingleDetailContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot"]
+[node name="SingleDetailContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 8.0
@@ -263,22 +275,22 @@ offset_right = -8.0
 offset_bottom = -8.0
 theme_override_constants/separation = 4
 
-[node name="SingleDetailTitle" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
+[node name="SingleDetailTitle" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
 text = "Details"
 
-[node name="SingleDetailText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
+[node name="SingleDetailText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
 text = "-"
 autowrap_mode = 3
 
-[node name="ArmorTypeText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
+[node name="ArmorTypeText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent"]
 text = "Armor Type: --"
 
-[node name="ProductionQueueRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer"]
+[node name="ProductionQueueRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer"]
 visible = false
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.7
 
-[node name="ProductionContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot"]
+[node name="ProductionContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 8.0
@@ -287,20 +299,20 @@ offset_right = -8.0
 offset_bottom = -8.0
 theme_override_constants/separation = 4
 
-[node name="QueueSummaryText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
+[node name="QueueSummaryText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
 text = "Queue Size: 0"
 
-[node name="QueueProgressBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
+[node name="QueueProgressBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
 value = 0.0
 
-[node name="QueueSlots" type="HBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
+[node name="QueueSlots" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent"]
 theme_override_constants/separation = 4
 
-[node name="MultiMatrixRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent"]
+[node name="MultiMatrixRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent"]
 visible = false
 size_flags_vertical = 3
 
-[node name="MultiMatrixContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot"]
+[node name="MultiMatrixContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 8.0
@@ -309,33 +321,44 @@ offset_right = -8.0
 offset_bottom = -8.0
 theme_override_constants/separation = 6
 
-[node name="MatrixGrid" type="GridContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
+[node name="MatrixGrid" type="GridContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
 columns = 8
 size_flags_vertical = 3
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
 
-[node name="MatrixFooter" type="HBoxContainer" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
+[node name="MatrixFooter" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
 theme_override_constants/separation = 6
 
-[node name="PrevPageButton" type="Button" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
+[node name="PrevPageButton" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
 disabled = true
 text = "<"
 
-[node name="MatrixPageText" type="Label" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
+[node name="MatrixPageText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
 size_flags_horizontal = 3
 text = "Page 1/1"
 horizontal_alignment = 1
 
-[node name="NextPageButton" type="Button" parent="BottomHUD/BottomRow/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
+[node name="NextPageButton" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter"]
 disabled = true
 text = ">"
 
-[node name="PortraitPanel" type="PanelContainer" parent="BottomHUD/BottomRow"]
+[node name="PortraitColumn" type="VBoxContainer" parent="BottomHUD/BottomRow"]
 size_flags_horizontal = 3
+size_flags_vertical = 3
 size_flags_stretch_ratio = 9.0
+self_modulate = Color(1, 1, 1, 0)
+theme_override_constants/separation = 0
 
-[node name="PortraitContent" type="VBoxContainer" parent="BottomHUD/BottomRow/PortraitPanel"]
+[node name="PortraitTopSpacer" type="Control" parent="BottomHUD/BottomRow/PortraitColumn"]
+custom_minimum_size = Vector2(0, 84)
+self_modulate = Color(1, 1, 1, 0)
+
+[node name="PortraitPanel" type="PanelContainer" parent="BottomHUD/BottomRow/PortraitColumn"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="PortraitContent" type="VBoxContainer" parent="BottomHUD/BottomRow/PortraitColumn/PortraitPanel"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 8.0
@@ -344,28 +367,28 @@ offset_right = -8.0
 offset_bottom = -8.0
 theme_override_constants/separation = 6
 
-[node name="PortraitTitle" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+[node name="PortraitTitle" type="Label" parent="BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent"]
 text = "Portrait"
 horizontal_alignment = 1
 
-[node name="PortraitViewport" type="PanelContainer" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+[node name="PortraitViewport" type="PanelContainer" parent="BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent"]
 size_flags_vertical = 3
 
-[node name="PortraitCenter" type="CenterContainer" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent/PortraitViewport"]
+[node name="PortraitCenter" type="CenterContainer" parent="BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitViewport"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="PortraitGlyph" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter"]
+[node name="PortraitGlyph" type="Label" parent="BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter"]
 text = "?"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="PortraitNameText" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+[node name="PortraitNameText" type="Label" parent="BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent"]
 text = "No Selection"
 horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="PortraitRoleText" type="Label" parent="BottomHUD/BottomRow/PortraitPanel/PortraitContent"]
+[node name="PortraitRoleText" type="Label" parent="BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent"]
 text = "-"
 horizontal_alignment = 1
 autowrap_mode = 3
@@ -395,3 +418,4 @@ theme_override_constants/v_separation = 8
 [node name="CommandHintText" type="Label" parent="BottomHUD/BottomRow/CommandPanel/CommandContent"]
 text = "No active command card."
 autowrap_mode = 3
+
