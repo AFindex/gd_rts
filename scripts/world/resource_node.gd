@@ -28,4 +28,3 @@ func _refresh_visual() -> void:
 		return
 	var ratio: float = clampf(float(total_minerals) / float(maxi(1, max_visual_minerals)), 0.25, 1.0)
 	_sprite.scale = Vector3.ONE * ratio
-	_sprite.scale = _sprite.scale * 8 # Temp: Scale up for better visibility

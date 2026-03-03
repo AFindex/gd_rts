@@ -12,6 +12,7 @@ signal production_finished(unit_kind: String, spawn_position: Vector3)
 @export var can_queue_soldier: bool = false
 @export var worker_build_time: float = 2.8
 @export var soldier_build_time: float = 4.6
+@export var queue_limit: int = 6
 @export var spawn_offset: Vector3 = Vector3(3.2, 0.0, 0.0)
 @export var attack_range: float = 0.0
 @export var attack_damage: float = 0.0
@@ -26,6 +27,7 @@ var _production_timer: float = 0.0
 var _health: float = 1200.0
 var _attack_target: Node3D = null
 var _attack_timer: float = 0.0
+var _base_tint: Color = Color.WHITE
 
 func _ready() -> void:
 	add_to_group("selectable_building")
@@ -72,24 +74,29 @@ func apply_damage(amount: float, _source: Node = null) -> void:
 	if amount <= 0.0 or not is_alive():
 		return
 	_health = maxf(0.0, _health - amount)
+	_play_hit_flash()
 	if _health <= 0.0:
 		_die()
 
 func can_queue_worker_unit() -> bool:
-	return can_queue_worker
+	if not can_queue_worker:
+		return false
+	return not is_queue_full()
 
 func can_queue_soldier_unit() -> bool:
-	return can_queue_soldier
+	if not can_queue_soldier:
+		return false
+	return not is_queue_full()
 
 func queue_worker() -> bool:
-	if not can_queue_worker:
+	if not can_queue_worker_unit():
 		return false
 	_queue_unit_kinds.append("worker")
 	_queue_build_times.append(worker_build_time)
 	return true
 
 func queue_soldier() -> bool:
-	if not can_queue_soldier:
+	if not can_queue_soldier_unit():
 		return false
 	_queue_unit_kinds.append("soldier")
 	_queue_build_times.append(soldier_build_time)
@@ -97,6 +104,14 @@ func queue_soldier() -> bool:
 
 func get_queue_size() -> int:
 	return _queue_unit_kinds.size()
+
+func get_queue_limit() -> int:
+	return queue_limit
+
+func is_queue_full() -> bool:
+	if queue_limit <= 0:
+		return true
+	return _queue_unit_kinds.size() >= queue_limit
 
 func has_active_queue() -> bool:
 	return not _queue_unit_kinds.is_empty()
@@ -130,6 +145,9 @@ func get_building_display_name() -> String:
 func get_building_role_tag() -> String:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
 	return str(building_def.get("role_tag", "Building"))
+
+func get_skill_ids() -> Array[String]:
+	return RTS_CATALOG.get_building_skill_ids(building_kind)
 
 func configure_as_barracks() -> void:
 	_apply_building_config("barracks")
@@ -179,8 +197,8 @@ func _apply_building_visual() -> void:
 		_sprite.scale = Vector3(1.45, 1.45, 1.45)
 	if team_id != 1:
 		building_color = Color(0.55, 0.75, 1.0, 1.0)
+	_base_tint = building_color
 	_sprite.modulate = building_color
-	_sprite.scale = Vector3.ONE * 8 # Temp: Scale up for better visibility
 
 func _format_unit_kind(unit_kind: String) -> String:
 	if unit_kind == "worker":
@@ -203,6 +221,7 @@ func _apply_building_config(kind: String) -> void:
 	can_queue_soldier = bool(building_def.get("can_queue_soldier", can_queue_soldier))
 	worker_build_time = float(building_def.get("worker_build_time", worker_build_time))
 	soldier_build_time = float(building_def.get("soldier_build_time", soldier_build_time))
+	queue_limit = int(building_def.get("queue_limit", queue_limit))
 	var configured_spawn_offset: Variant = building_def.get("spawn_offset", spawn_offset)
 	if configured_spawn_offset is Vector3:
 		spawn_offset = configured_spawn_offset as Vector3
@@ -224,6 +243,7 @@ func _process_tower_combat(delta: float) -> void:
 	_attack_timer = 0.0
 	if _attack_target.has_method("apply_damage"):
 		_attack_target.call("apply_damage", attack_damage, self)
+		_spawn_attack_vfx(_attack_target.global_position)
 
 func _acquire_tower_target() -> Node3D:
 	var range_sq: float = attack_range * attack_range
@@ -273,3 +293,37 @@ func _die() -> void:
 	_selection_ring.visible = false
 	_attack_target = null
 	queue_free()
+
+func _spawn_attack_vfx(target_position: Vector3) -> void:
+	var root: Node = get_tree().current_scene
+	var root_3d: Node3D = root as Node3D
+	if root_3d == null:
+		return
+
+	var tracer: MeshInstance3D = MeshInstance3D.new()
+	var mesh: SphereMesh = SphereMesh.new()
+	mesh.radius = 0.18
+	mesh.height = 0.36
+	tracer.mesh = mesh
+
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(1.0, 0.82, 0.35, 0.95) if team_id == 1 else Color(0.58, 0.8, 1.0, 0.95)
+	tracer.material_override = mat
+
+	var launch_pos: Vector3 = global_position + Vector3(0.0, 1.9, 0.0)
+	var hit_pos: Vector3 = target_position + Vector3(0.0, 1.0, 0.0)
+	tracer.global_position = launch_pos
+	root_3d.add_child(tracer)
+
+	var tween: Tween = create_tween()
+	tween.tween_property(tracer, "global_position", hit_pos, 0.12)
+	tween.tween_callback(Callable(tracer, "queue_free"))
+
+func _play_hit_flash() -> void:
+	if _sprite == null:
+		return
+	_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	var tween: Tween = create_tween()
+	tween.tween_property(_sprite, "modulate", _base_tint, 0.1)

@@ -337,12 +337,14 @@ func _build_hud_snapshot() -> Dictionary:
 		portrait_glyph = "%d" % selection_total
 
 	var total_units: int = _count_total_units()
-	var top_legacy_text: String = "M: %d   G: 0   Supply: %d/%d" % [_minerals, total_units, SUPPLY_CAP]
+	var queued_units: int = _count_total_queued_units()
+	var supply_used: int = total_units + queued_units
+	var top_legacy_text: String = "M: %d   G: 0   Supply: %d/%d" % [_minerals, supply_used, SUPPLY_CAP]
 
 	return {
 		"minerals": _minerals,
 		"gas": 0,
-		"supply_used": total_units,
+		"supply_used": supply_used,
 		"supply_cap": SUPPLY_CAP,
 		"top_legacy_text": top_legacy_text,
 		"mode": mode,
@@ -397,7 +399,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 			return "Targeting %s | Left Click Enemy Unit/Building | RMB/ESC Cancel" % skill_label
 		return "Targeting %s | RMB/ESC Cancel" % skill_label
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
-		return "No selection | B: Build Menu | Left drag: Box Select | RMB: Move/Gather"
+		return "No selection | Select workers to open Build Menu | Left drag: Box Select"
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
 	return "Selected -> Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
@@ -436,61 +438,123 @@ func _build_command_entries() -> Array[Dictionary]:
 		if not _can_open_build_menu():
 			_build_menu_open = false
 		else:
-			entries.append(_command_entry("build_barracks", {
-				"enabled": _can_start_barracks_build(),
-				"cost_text": str(_barracks_cost),
-				"disabled_reason": _barracks_block_reason()
-			}))
-			entries.append(_command_entry("build_tower", {
-				"enabled": _can_start_tower_build(),
-				"cost_text": str(_tower_cost),
-				"disabled_reason": _tower_block_reason()
-			}))
+			entries.append(_build_menu_command_entry("build_barracks"))
+			entries.append(_build_menu_command_entry("build_tower"))
 			entries.append(_command_entry("close_menu"))
 			return entries
 
-	if _selected_buildings.size() == 1 and _selected_units.is_empty():
-		var selected_building: Node = _selected_buildings[0]
-		if selected_building != null:
-			var can_train_worker: bool = bool(selected_building.call("can_queue_worker_unit")) if selected_building.has_method("can_queue_worker_unit") else false
-			var can_train_soldier: bool = bool(selected_building.call("can_queue_soldier_unit")) if selected_building.has_method("can_queue_soldier_unit") else false
-			if can_train_worker:
-				entries.append(_command_entry("train_worker", {
-					"enabled": _minerals >= _worker_cost,
-					"cost_text": str(_worker_cost)
-				}))
-			if can_train_soldier:
-				entries.append(_command_entry("train_soldier", {
-					"enabled": _minerals >= _soldier_cost,
-					"cost_text": str(_soldier_cost)
-				}))
-		entries.append(_command_entry("build_menu"))
+	var skill_ids: Array[String] = _selection_skill_ids()
+	for skill_id in skill_ids:
+		entries.append(_command_entry(skill_id, _command_overrides_for(skill_id)))
+	if not entries.is_empty():
 		return entries
 
-	if not _selected_units.is_empty():
-		entries.append(_command_entry("move"))
-		if _selection_has_worker():
-			entries.append(_command_entry("gather"))
-			var has_worker_cargo: bool = _selection_has_worker_cargo()
-			entries.append(_command_entry("return_resource", {
-				"enabled": has_worker_cargo,
-				"disabled_reason": "" if has_worker_cargo else "Selected workers are not carrying minerals."
-			}))
-		entries.append(_command_entry("build_menu", {
-			"enabled": _selection_has_worker(),
-			"disabled_reason": "" if _selection_has_worker() else "Requires at least one worker in selection."
-		}))
-		entries.append(_command_entry("stop"))
-		if _selection_has_combat_unit():
-			entries.append(_command_entry("attack"))
-		return entries
-
-	entries.append(_command_entry("build_menu"))
+	entries.append(_command_entry("build_menu", {
+		"enabled": _can_open_build_menu(),
+		"disabled_reason": _build_menu_disabled_reason()
+	}))
 	entries.append(_command_entry("menu"))
 	return entries
 
 func _command_entry(skill_id: String, overrides: Dictionary = {}) -> Dictionary:
 	return RTS_CATALOG.make_command_entry(skill_id, overrides)
+
+func _build_menu_command_entry(command_id: String) -> Dictionary:
+	var cost: int = 0
+	var enabled: bool = false
+	var reason: String = ""
+	match command_id:
+		"build_barracks":
+			cost = _barracks_cost
+			enabled = _can_start_barracks_build()
+			reason = _barracks_block_reason()
+		"build_tower":
+			cost = _tower_cost
+			enabled = _can_start_tower_build()
+			reason = _tower_block_reason()
+		_:
+			return _command_entry(command_id)
+	return _command_entry(command_id, {
+		"enabled": enabled,
+		"cost_text": str(cost),
+		"disabled_reason": reason
+	})
+
+func _selection_skill_ids() -> Array[String]:
+	var skill_ids: Array[String] = []
+	if not _selected_units.is_empty():
+		for selected_unit in _selected_units:
+			if selected_unit == null or not is_instance_valid(selected_unit):
+				continue
+			if not _is_player_owned(selected_unit):
+				continue
+			var raw_skills: Variant = []
+			if selected_unit.has_method("get_skill_ids"):
+				raw_skills = selected_unit.call("get_skill_ids")
+			elif selected_unit.has_method("is_worker_unit") and bool(selected_unit.call("is_worker_unit")):
+				raw_skills = RTS_CATALOG.get_unit_skill_ids("worker")
+			else:
+				raw_skills = RTS_CATALOG.get_unit_skill_ids("soldier")
+			_append_unique_skill_ids(skill_ids, raw_skills)
+		return skill_ids
+
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		var raw_building_skills: Variant = []
+		if selected_building.has_method("get_skill_ids"):
+			raw_building_skills = selected_building.call("get_skill_ids")
+		else:
+			var building_kind: String = str(selected_building.get("building_kind"))
+			raw_building_skills = RTS_CATALOG.get_building_skill_ids(building_kind)
+		_append_unique_skill_ids(skill_ids, raw_building_skills)
+	return skill_ids
+
+func _append_unique_skill_ids(skill_ids: Array[String], raw_skills: Variant) -> void:
+	if not (raw_skills is Array):
+		return
+	for value in raw_skills:
+		var skill_id: String = str(value)
+		if skill_id == "":
+			continue
+		if skill_ids.has(skill_id):
+			continue
+		skill_ids.append(skill_id)
+
+func _command_overrides_for(skill_id: String) -> Dictionary:
+	var overrides: Dictionary = {}
+	match skill_id:
+		"build_menu":
+			var build_menu_enabled: bool = _can_open_build_menu()
+			overrides["enabled"] = build_menu_enabled
+			overrides["disabled_reason"] = "" if build_menu_enabled else _build_menu_disabled_reason()
+		"gather":
+			var gather_enabled: bool = _selection_has_worker()
+			overrides["enabled"] = gather_enabled
+			overrides["disabled_reason"] = "" if gather_enabled else "Requires at least one worker in selection."
+		"return_resource":
+			var has_worker_cargo: bool = _selection_has_worker_cargo()
+			overrides["enabled"] = has_worker_cargo
+			overrides["disabled_reason"] = "" if has_worker_cargo else "Selected workers are not carrying minerals."
+		"attack":
+			var attack_enabled: bool = _selection_has_combat_unit()
+			overrides["enabled"] = attack_enabled
+			overrides["disabled_reason"] = "" if attack_enabled else "Requires at least one combat unit."
+		"train_worker":
+			var train_worker_enabled: bool = _can_train_worker_from_selection()
+			overrides["enabled"] = train_worker_enabled
+			overrides["cost_text"] = str(_worker_cost)
+			overrides["cooldown_ratio"] = _selected_queue_cooldown_ratio("worker")
+			overrides["disabled_reason"] = "" if train_worker_enabled else _train_worker_block_reason()
+		"train_soldier":
+			var train_soldier_enabled: bool = _can_train_soldier_from_selection()
+			overrides["enabled"] = train_soldier_enabled
+			overrides["cost_text"] = str(_soldier_cost)
+			overrides["cooldown_ratio"] = _selected_queue_cooldown_ratio("soldier")
+			overrides["disabled_reason"] = "" if train_soldier_enabled else _train_soldier_block_reason()
+	return overrides
 
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
@@ -544,6 +608,24 @@ func _count_total_units() -> int:
 			count += 1
 	return count
 
+func _count_total_queued_units() -> int:
+	var count: int = 0
+	var buildings: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
+	for building_node in buildings:
+		if building_node == null or not is_instance_valid(building_node):
+			continue
+		if not _is_player_owned(building_node):
+			continue
+		if not building_node.has_method("get_queue_size"):
+			continue
+		count += int(building_node.call("get_queue_size"))
+	return count
+
+func _has_supply_for(extra_units: int = 1) -> bool:
+	if extra_units <= 0:
+		return true
+	return _count_total_units() + _count_total_queued_units() + extra_units <= SUPPLY_CAP
+
 func _selection_has_worker() -> bool:
 	for selected_unit in _selected_units:
 		if selected_unit == null or not is_instance_valid(selected_unit):
@@ -580,35 +662,166 @@ func _selection_has_combat_unit() -> bool:
 func _can_open_build_menu() -> bool:
 	if _placing_building:
 		return false
-	if not _selected_units.is_empty():
-		return _selection_has_worker()
-	if _selected_buildings.size() == 1 and _selected_units.is_empty():
+	if _selection_has_worker():
 		return true
-	return true
+	if _selected_units.is_empty() and not _selected_buildings.is_empty():
+		return _building_selection_has_skill("build_menu")
+	return false
+
+func _build_menu_disabled_reason() -> String:
+	if _placing_building:
+		return "Finish or cancel current placement first."
+	if _selected_units.is_empty() and _selected_buildings.is_empty():
+		return "Select a worker to open build commands."
+	if not _selected_units.is_empty() and not _selection_has_worker():
+		return "Requires at least one worker in selection."
+	if _selected_units.is_empty() and not _selected_buildings.is_empty() and not _building_selection_has_skill("build_menu"):
+		return "Selected buildings cannot build structures."
+	return ""
+
+func _building_selection_has_skill(skill_id: String) -> bool:
+	if skill_id == "":
+		return false
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		var raw_skills: Variant = []
+		if selected_building.has_method("get_skill_ids"):
+			raw_skills = selected_building.call("get_skill_ids")
+		else:
+			var building_kind: String = str(selected_building.get("building_kind"))
+			raw_skills = RTS_CATALOG.get_building_skill_ids(building_kind)
+		if not (raw_skills is Array):
+			continue
+		for value in raw_skills:
+			if str(value) == skill_id:
+				return true
+	return false
 
 func _can_start_barracks_build() -> bool:
-	if not _selected_units.is_empty() and not _selection_has_worker():
+	if not _can_open_build_menu():
 		return false
 	return _minerals >= _barracks_cost
 
 func _can_start_tower_build() -> bool:
-	if not _selected_units.is_empty() and not _selection_has_worker():
+	if not _can_open_build_menu():
 		return false
 	return _minerals >= _tower_cost
 
 func _barracks_block_reason() -> String:
-	if not _selected_units.is_empty() and not _selection_has_worker():
-		return "Requires at least one worker in selection."
+	if not _can_open_build_menu():
+		return _build_menu_disabled_reason()
 	if _minerals < _barracks_cost:
 		return "Not enough minerals."
 	return ""
 
 func _tower_block_reason() -> String:
-	if not _selected_units.is_empty() and not _selection_has_worker():
-		return "Requires at least one worker in selection."
+	if not _can_open_build_menu():
+		return _build_menu_disabled_reason()
 	if _minerals < _tower_cost:
 		return "Not enough minerals."
 	return ""
+
+func _can_train_worker_from_selection() -> bool:
+	return _train_block_reason("worker", "Worker", _worker_cost) == ""
+
+func _can_train_soldier_from_selection() -> bool:
+	return _train_block_reason("soldier", "Soldier", _soldier_cost) == ""
+
+func _train_worker_block_reason() -> String:
+	return _train_block_reason("worker", "Worker", _worker_cost)
+
+func _train_soldier_block_reason() -> String:
+	return _train_block_reason("soldier", "Soldier", _soldier_cost)
+
+func _selected_queue_cooldown_ratio(unit_kind: String) -> float:
+	if _selected_buildings.size() != 1 or not _selected_units.is_empty():
+		return 0.0
+	var selected_building: Node = _selected_buildings[0]
+	if selected_building == null or not is_instance_valid(selected_building):
+		return 0.0
+	if not selected_building.has_method("get_primary_queue_kind"):
+		return 0.0
+	if not selected_building.has_method("get_production_progress"):
+		return 0.0
+	var primary_kind: String = str(selected_building.call("get_primary_queue_kind"))
+	if primary_kind != unit_kind:
+		return 0.0
+	var progress: float = clampf(float(selected_building.call("get_production_progress")), 0.0, 1.0)
+	return clampf(1.0 - progress, 0.0, 1.0)
+
+func _train_block_reason(unit_kind: String, label: String, cost: int) -> String:
+	if not _has_trainer_for_kind(unit_kind):
+		return "No selected building can train %s." % label
+	if _all_trainers_queue_full(unit_kind):
+		return "All production queues are full."
+	if _minerals < cost:
+		return "Not enough minerals."
+	if not _has_supply_for(1):
+		return "Supply is capped."
+	if not _has_available_trainer_for_kind(unit_kind):
+		return "No available trainer for %s." % label
+	return ""
+
+func _has_trainer_for_kind(unit_kind: String) -> bool:
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if _building_can_train_kind_raw(selected_building, unit_kind):
+			return true
+	return false
+
+func _has_available_trainer_for_kind(unit_kind: String) -> bool:
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if _building_can_queue_kind_now(selected_building, unit_kind):
+			return true
+	return false
+
+func _all_trainers_queue_full(unit_kind: String) -> bool:
+	var has_trainer: bool = false
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if not _building_can_train_kind_raw(selected_building, unit_kind):
+			continue
+		has_trainer = true
+		var queue_full: bool = false
+		if selected_building.has_method("is_queue_full"):
+			queue_full = bool(selected_building.call("is_queue_full"))
+		elif selected_building.has_method("get_queue_size") and selected_building.has_method("get_queue_limit"):
+			queue_full = int(selected_building.call("get_queue_size")) >= int(selected_building.call("get_queue_limit"))
+		if not queue_full:
+			return false
+	return has_trainer
+
+func _building_can_train_kind_raw(building_node: Node, unit_kind: String) -> bool:
+	match unit_kind:
+		"worker":
+			return bool(building_node.get("can_queue_worker"))
+		"soldier":
+			return bool(building_node.get("can_queue_soldier"))
+		_:
+			return false
+
+func _building_can_queue_kind_now(building_node: Node, unit_kind: String) -> bool:
+	match unit_kind:
+		"worker":
+			if building_node.has_method("can_queue_worker_unit"):
+				return bool(building_node.call("can_queue_worker_unit"))
+		"soldier":
+			if building_node.has_method("can_queue_soldier_unit"):
+				return bool(building_node.call("can_queue_soldier_unit"))
+	return false
 
 func _selection_team_id() -> int:
 	for selected_unit in _selected_units:
@@ -829,6 +1042,8 @@ func _queue_worker_from_selection() -> void:
 			can_queue = bool(can_queue_value)
 		if not can_queue:
 			continue
+		if not _has_supply_for(1):
+			break
 		if not try_spend_minerals(_worker_cost):
 			break
 		if node.has_method("queue_worker"):
@@ -854,6 +1069,8 @@ func _queue_soldier_from_selection() -> void:
 			can_queue = bool(can_queue_value)
 		if not can_queue:
 			continue
+		if not _has_supply_for(1):
+			break
 		if not try_spend_minerals(_soldier_cost):
 			break
 		if node.has_method("queue_soldier"):

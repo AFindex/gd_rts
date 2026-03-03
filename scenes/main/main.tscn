@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://b5mrac0tlceun" path="res://scripts/ui/selection_overlay.gd" id="6_overlay"]
 [ext_resource type="PackedScene" path="res://scenes/world/resource_node.tscn" id="7_resource_node"]
 [ext_resource type="PackedScene" uid="uid://rru2owkiha5t" path="res://scenes/ui/rts_hud.tscn" id="8_hud"]
+[ext_resource type="Script" path="res://scripts/core/enemy_ai_manager.gd" id="9_enemy_ai"]
 
 [node name="Main" type="Node3D" unique_id=1580196605]
 script = ExtResource("1_game_manager")
@@ -71,6 +72,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 24)
 current = true
 far = 2000.0
 script = ExtResource("5_camera")
+
+[node name="EnemyAI" type="Node" parent="." unique_id=933185015]
+script = ExtResource("9_enemy_ai")
+player_team_id = 1
+enemy_team_id = 2
+train_interval = 3.2
+wave_interval = 9.5
+min_units_for_wave = 2
+train_per_cycle = 1
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=294111542]
 

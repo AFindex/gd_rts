@@ -49,6 +49,7 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": false,
 		"worker_build_time": 2.8,
 		"soldier_build_time": 0.0,
+		"queue_limit": 6,
 		"spawn_offset": Vector3(3.2, 0.0, 0.0),
 		"skills": ["train_worker", "build_menu"]
 	},
@@ -65,6 +66,7 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": true,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 4.0,
+		"queue_limit": 8,
 		"spawn_offset": Vector3(3.6, 0.0, 0.0),
 		"skills": ["train_soldier"]
 	},
@@ -81,6 +83,7 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": false,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 0.0,
+		"queue_limit": 0,
 		"spawn_offset": Vector3(2.8, 0.0, 0.0),
 		"skills": []
 	}
@@ -134,14 +137,16 @@ const SKILL_DEFS: Dictionary = {
 		"label": "Barracks",
 		"icon_path": ICON_ROOT_BUILDINGS + "building_barracks.png",
 		"hotkey": "Q",
-		"target_mode": "placement"
+		"target_mode": "placement",
+		"building_kind": "barracks"
 	},
 	"build_tower": {
 		"id": "build_tower",
 		"label": "Tower",
 		"icon_path": ICON_ROOT_BUILDINGS + "building_tower.png",
 		"hotkey": "W",
-		"target_mode": "placement"
+		"target_mode": "placement",
+		"building_kind": "tower"
 	},
 	"close_menu": {
 		"id": "close_menu",
@@ -199,6 +204,14 @@ static func get_building_def(building_kind: String) -> Dictionary:
 		return (value as Dictionary).duplicate(true)
 	return {}
 
+static func get_unit_skill_ids(unit_kind: String) -> Array[String]:
+	var unit_def: Dictionary = get_unit_def(unit_kind)
+	return _normalize_skill_ids(unit_def.get("skills", []))
+
+static func get_building_skill_ids(building_kind: String) -> Array[String]:
+	var building_def: Dictionary = get_building_def(building_kind)
+	return _normalize_skill_ids(building_def.get("skills", []))
+
 static func get_skill_def(skill_id: String) -> Dictionary:
 	var value: Variant = SKILL_DEFS.get(skill_id, {})
 	if value is Dictionary:
@@ -222,3 +235,17 @@ static func make_command_entry(skill_id: String, overrides: Dictionary = {}) -> 
 	if not entry.has("enabled"):
 		entry["enabled"] = true
 	return entry
+
+static func get_build_kind_from_skill(skill_id: String) -> String:
+	var skill_def: Dictionary = get_skill_def(skill_id)
+	return str(skill_def.get("building_kind", ""))
+
+static func _normalize_skill_ids(raw_value: Variant) -> Array[String]:
+	var skill_ids: Array[String] = []
+	if raw_value is Array:
+		for value in raw_value:
+			var skill_id: String = str(value)
+			if skill_id == "":
+				continue
+			skill_ids.append(skill_id)
+	return skill_ids

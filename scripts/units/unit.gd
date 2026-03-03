@@ -36,6 +36,7 @@ var _gather_timer: float = 0.0
 var _carried_amount: int = 0
 var _attack_target: Node3D = null
 var _attack_timer: float = 0.0
+var _base_tint: Color = Color.WHITE
 
 func _ready() -> void:
 	add_to_group("selectable_unit")
@@ -55,14 +56,20 @@ func is_worker_unit() -> bool:
 	return is_worker
 
 func get_unit_display_name() -> String:
-	var unit_kind: String = "worker" if is_worker else "soldier"
+	var unit_kind: String = get_unit_kind()
 	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
 	return str(unit_def.get("display_name", "Worker" if is_worker else "Soldier"))
 
 func get_unit_role_tag() -> String:
-	var unit_kind: String = "worker" if is_worker else "soldier"
+	var unit_kind: String = get_unit_kind()
 	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
 	return str(unit_def.get("role_tag", "W" if is_worker else "S"))
+
+func get_unit_kind() -> String:
+	return "worker" if is_worker else "soldier"
+
+func get_skill_ids() -> Array[String]:
+	return RTS_CATALOG.get_unit_skill_ids(get_unit_kind())
 
 func get_mode_label() -> String:
 	match _mode:
@@ -112,7 +119,6 @@ func command_move(target: Vector3) -> void:
 	_attack_target = null
 	_attack_timer = 0.0
 	_gather_timer = 0.0
-	_carried_amount = 0
 	_move_to(target)
 
 func move_to(target: Vector3) -> void:
@@ -175,6 +181,7 @@ func apply_damage(amount: float, _source: Node = null) -> void:
 	if amount <= 0.0 or not is_alive():
 		return
 	_health = maxf(0.0, _health - amount)
+	_play_hit_flash()
 	if _health <= 0.0:
 		_die()
 
@@ -248,7 +255,8 @@ func _process_attack_cycle(delta: float) -> void:
 		if _attack_timer >= cooldown:
 			_attack_timer = 0.0
 			if _attack_target != null and _attack_target.has_method("apply_damage"):
-				_attack_target.call("apply_damage", attack_damage, self )
+				_attack_target.call("apply_damage", attack_damage, self)
+				_spawn_attack_vfx(_attack_target.global_position)
 	else:
 		_move_to(target_position)
 
@@ -322,11 +330,11 @@ func _apply_role_visual() -> void:
 		unit_color = Color(1.0, 0.5, 0.5, 1.0)
 	if team_id != 1:
 		unit_color = Color(0.45, 0.72, 1.0, 1.0)
+	_base_tint = unit_color
 	_sprite.modulate = unit_color
-	_sprite.scale = Vector3.ONE * 8 # Temp: Scale up for better visibility
 
 func _apply_runtime_config_for_role() -> void:
-	var unit_kind: String = "worker" if is_worker else "soldier"
+	var unit_kind: String = get_unit_kind()
 	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
 	max_health = float(unit_def.get("max_health", max_health))
 	move_speed = float(unit_def.get("move_speed", move_speed))
@@ -349,3 +357,37 @@ func _target_is_enemy(target_node: Node) -> bool:
 func _die() -> void:
 	_selection_ring.visible = false
 	queue_free()
+
+func _spawn_attack_vfx(target_position: Vector3) -> void:
+	var root: Node = get_tree().current_scene
+	var root_3d: Node3D = root as Node3D
+	if root_3d == null:
+		return
+
+	var tracer: MeshInstance3D = MeshInstance3D.new()
+	var mesh: SphereMesh = SphereMesh.new()
+	mesh.radius = 0.1
+	mesh.height = 0.2
+	tracer.mesh = mesh
+
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(1.0, 0.55, 0.45, 0.95) if team_id == 1 else Color(0.55, 0.75, 1.0, 0.95)
+	tracer.material_override = mat
+
+	var launch_pos: Vector3 = global_position + Vector3(0.0, 1.1, 0.0)
+	var hit_pos: Vector3 = target_position + Vector3(0.0, 1.0, 0.0)
+	tracer.global_position = launch_pos
+	root_3d.add_child(tracer)
+
+	var tween: Tween = create_tween()
+	tween.tween_property(tracer, "global_position", hit_pos, 0.09)
+	tween.tween_callback(Callable(tracer, "queue_free"))
+
+func _play_hit_flash() -> void:
+	if _sprite == null:
+		return
+	_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	var tween: Tween = create_tween()
+	tween.tween_property(_sprite, "modulate", _base_tint, 0.08)
