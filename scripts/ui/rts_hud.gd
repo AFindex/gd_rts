@@ -58,6 +58,7 @@ var _notification_labels: Array[Label] = []
 func _ready() -> void:
 	_setup_static_styles()
 	_apply_bottom_helper_transparency()
+	_apply_bottom_helper_mouse_filters()
 	_collect_notification_labels()
 	_build_queue_slot_labels()
 	_build_command_buttons()
@@ -298,6 +299,19 @@ func _apply_bottom_helper_transparency() -> void:
 			continue
 		if _is_bottom_layout_helper(control):
 			control.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
+
+func _apply_bottom_helper_mouse_filters() -> void:
+	_bottom_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bottom_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for node in _bottom_hud.find_children("*", "", true, false):
+		var control: Control = node as Control
+		if control == null:
+			continue
+		if control == _selection_panel or control == _queue_panel or control == _portrait_panel or control == _command_panel:
+			control.mouse_filter = Control.MOUSE_FILTER_STOP
+			continue
+		if _is_bottom_layout_helper(control):
+			control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _is_bottom_layout_helper(control: Control) -> bool:
 	return control is BoxContainer \
