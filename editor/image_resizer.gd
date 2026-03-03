@@ -10,8 +10,10 @@ extends EditorScript
 @export_file("*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.tga", "*.svg") var source_path: String = ""
 @export_file("*.png", "*.jpg", "*.jpeg", "*.webp") var output_path: String = ""
 
+@export_enum("Target Size", "Scale Ratio") var resize_mode: int = 0
 @export_range(1, 8192, 1) var target_width: int = 128
 @export_range(1, 8192, 1) var target_height: int = 128
+@export_range(0.01, 16.0, 0.01) var scale_ratio: float = 1.0
 @export var keep_aspect_ratio: bool = true
 @export_enum("Nearest", "Bilinear", "Cubic", "Trilinear", "Lanczos") var interpolation_mode: int = 1
 
@@ -62,6 +64,12 @@ func _run() -> void:
 	])
 
 func _compute_final_size(original_size: Vector2i) -> Vector2i:
+	if resize_mode == 1:
+		var ratio: float = maxf(0.01, scale_ratio)
+		var scaled_width: int = maxi(1, int(round(float(original_size.x) * ratio)))
+		var scaled_height: int = maxi(1, int(round(float(original_size.y) * ratio)))
+		return Vector2i(scaled_width, scaled_height)
+
 	var width: int = maxi(1, target_width)
 	var height: int = maxi(1, target_height)
 

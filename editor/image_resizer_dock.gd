@@ -22,6 +22,8 @@ var _editor_plugin: EditorPlugin = null
 
 var _source_edit: LineEdit
 var _output_edit: LineEdit
+var _resize_mode_option: OptionButton
+var _scale_ratio_spin: SpinBox
 var _width_spin: SpinBox
 var _height_spin: SpinBox
 var _keep_ratio_check: CheckBox
@@ -92,6 +94,33 @@ func _build_ui() -> void:
 	output_browse.text = "Browse"
 	output_browse.pressed.connect(_on_output_browse_pressed)
 	output_row.add_child(output_browse)
+
+	var mode_row: HBoxContainer = HBoxContainer.new()
+	add_child(mode_row)
+
+	var mode_label: Label = Label.new()
+	mode_label.text = "Mode"
+	mode_label.custom_minimum_size = Vector2(72.0, 0.0)
+	mode_row.add_child(mode_label)
+
+	_resize_mode_option = OptionButton.new()
+	_resize_mode_option.add_item("Target Size", 0)
+	_resize_mode_option.add_item("Scale Ratio", 1)
+	_resize_mode_option.select(0)
+	_resize_mode_option.item_selected.connect(_on_resize_mode_changed)
+	mode_row.add_child(_resize_mode_option)
+
+	var scale_label: Label = Label.new()
+	scale_label.text = "Scale(x)"
+	mode_row.add_child(scale_label)
+
+	_scale_ratio_spin = SpinBox.new()
+	_scale_ratio_spin.min_value = 0.01
+	_scale_ratio_spin.max_value = 16.0
+	_scale_ratio_spin.step = 0.01
+	_scale_ratio_spin.value = 1.0
+	_scale_ratio_spin.custom_minimum_size = Vector2(96.0, 0.0)
+	mode_row.add_child(_scale_ratio_spin)
 
 	var size_row: HBoxContainer = HBoxContainer.new()
 	add_child(size_row)
@@ -182,6 +211,8 @@ func _build_ui() -> void:
 	_status_label.text = "Ready."
 	add_child(_status_label)
 
+	_update_mode_state()
+
 func _build_file_dialogs() -> void:
 	_source_dialog = EditorFileDialog.new()
 	_source_dialog.title = "Select Source Image"
@@ -218,13 +249,19 @@ func _on_output_file_selected(path: String) -> void:
 func _on_clear_pressed() -> void:
 	_source_edit.text = ""
 	_output_edit.text = ""
+	_resize_mode_option.select(0)
+	_scale_ratio_spin.value = 1.0
 	_width_spin.value = 128.0
 	_height_spin.value = 128.0
 	_keep_ratio_check.button_pressed = true
 	_interpolation_option.select(1)
 	_overwrite_check.button_pressed = false
 	_quality_spin.value = 0.9
+	_update_mode_state()
 	_set_status("Ready.")
+
+func _on_resize_mode_changed(_index: int) -> void:
+	_update_mode_state()
 
 func _on_resize_pressed() -> void:
 	var src: String = _normalize_path(_source_edit.text)
@@ -248,7 +285,13 @@ func _on_resize_pressed() -> void:
 		return
 
 	var target_size: Vector2i = Vector2i(int(_width_spin.value), int(_height_spin.value))
-	var final_size: Vector2i = _compute_final_size(original_size, target_size, _keep_ratio_check.button_pressed)
+	var final_size: Vector2i = _compute_final_size(
+		original_size,
+		target_size,
+		_keep_ratio_check.button_pressed,
+		_is_ratio_mode(),
+		float(_scale_ratio_spin.value)
+	)
 	image.resize(final_size.x, final_size.y, _get_interpolation())
 
 	var dst: String = _resolve_output_path(src)
@@ -277,7 +320,19 @@ func _on_resize_pressed() -> void:
 		final_size.y
 	])
 
-func _compute_final_size(original_size: Vector2i, target_size: Vector2i, keep_aspect_ratio: bool) -> Vector2i:
+func _compute_final_size(
+	original_size: Vector2i,
+	target_size: Vector2i,
+	keep_aspect_ratio: bool,
+	use_ratio_mode: bool,
+	scale_ratio: float
+) -> Vector2i:
+	if use_ratio_mode:
+		var ratio: float = maxf(0.01, scale_ratio)
+		var scaled_width: int = maxi(1, int(round(float(original_size.x) * ratio)))
+		var scaled_height: int = maxi(1, int(round(float(original_size.y) * ratio)))
+		return Vector2i(scaled_width, scaled_height)
+
 	var width: int = maxi(1, target_size.x)
 	var height: int = maxi(1, target_size.y)
 
@@ -289,6 +344,18 @@ func _compute_final_size(original_size: Vector2i, target_size: Vector2i, keep_as
 		height = maxi(1, int(round(float(original_size.y) * fit_scale)))
 
 	return Vector2i(width, height)
+
+func _is_ratio_mode() -> bool:
+	return _resize_mode_option.get_selected_id() == 1
+
+func _update_mode_state() -> void:
+	var ratio_mode: bool = _is_ratio_mode()
+	_scale_ratio_spin.editable = ratio_mode
+	_width_spin.editable = not ratio_mode
+	_height_spin.editable = not ratio_mode
+	_keep_ratio_check.disabled = ratio_mode
+	if ratio_mode:
+		_keep_ratio_check.button_pressed = true
 
 func _resolve_output_path(src: String) -> String:
 	var requested_output: String = _normalize_path(_output_edit.text)
