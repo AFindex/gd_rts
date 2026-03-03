@@ -27,6 +27,7 @@ const RALLY_ALERT_BLINK_INTERVAL_SEC: float = 0.16
 const FEEDBACK_TONE_SAMPLE_RATE: int = 22050
 const CONTROL_GROUP_COUNT: int = 10
 const CONTROL_GROUP_DOUBLE_TAP_WINDOW: float = 0.3
+const SELECTION_DOUBLE_CLICK_WINDOW: float = 0.3
 
 enum InputState {
 	IDLE,
@@ -100,6 +101,8 @@ var _control_groups: Dictionary = {}
 var _last_selected_group_id: int = -1
 var _last_selected_group_time: float = -100.0
 var _active_subgroup_index: int = -1
+var _last_click_unit_kind: String = ""
+var _last_click_time_sec: float = -100.0
 var _ui_notice_text: String = ""
 var _ui_notice_timer: float = 0.0
 var _pending_build_orders: Array[Dictionary] = []
@@ -1338,6 +1341,7 @@ func _build_hud_snapshot() -> Dictionary:
 		"portrait_glyph": portrait_glyph,
 		"portrait_title": portrait_title,
 		"portrait_subtitle": portrait_subtitle,
+		"active_subgroup_kind": _active_subgroup_kind(),
 		"subgroup_text": _build_subgroup_text(mode, selection_total),
 		"command_hint": _build_command_hint(),
 		"command_entries": _build_command_entries(),
@@ -1477,6 +1481,53 @@ func _unit_kind_id(unit_node: Node) -> String:
 	if unit_node.has_method("is_worker_unit"):
 		return "worker" if bool(unit_node.call("is_worker_unit")) else "soldier"
 	return "unit"
+
+func _select_units_by_kind(unit_kind: String, global_scope: bool) -> int:
+	if unit_kind == "":
+		return 0
+	var selected_count: int = 0
+	if global_scope:
+		var all_units: Array[Node] = get_tree().get_nodes_in_group("selectable_unit")
+		for unit_node in all_units:
+			if unit_node == null or not is_instance_valid(unit_node):
+				continue
+			if not _is_player_owned(unit_node):
+				continue
+			if _unit_kind_id(unit_node) != unit_kind:
+				continue
+			_add_selected_unit(unit_node)
+			selected_count += 1
+		_set_ui_notice("Global selected: %s x%d." % [_subgroup_kind_label(unit_kind), selected_count])
+		_play_feedback_tone("ground")
+		return selected_count
+
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return 0
+	var visible_rect: Rect2 = viewport.get_visible_rect()
+	var candidates: Array[Node]
+	if _units_root != null:
+		candidates = _units_root.get_children()
+	else:
+		candidates = get_tree().get_nodes_in_group("selectable_unit")
+	for unit_node in candidates:
+		var unit_3d: Node3D = unit_node as Node3D
+		if unit_3d == null:
+			continue
+		if not _is_player_owned(unit_3d):
+			continue
+		if _unit_kind_id(unit_3d) != unit_kind:
+			continue
+		if _camera.is_position_behind(unit_3d.global_position):
+			continue
+		var screen_pos: Vector2 = _camera.unproject_position(unit_3d.global_position)
+		if not visible_rect.has_point(screen_pos):
+			continue
+		_add_selected_unit(unit_3d)
+		selected_count += 1
+	_set_ui_notice("Screen selected: %s x%d." % [_subgroup_kind_label(unit_kind), selected_count])
+	_play_feedback_tone("ground")
+	return selected_count
 
 func _command_units() -> Array[Node]:
 	var units: Array[Node] = []
@@ -2487,20 +2538,31 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 
 	var collider: Node = result.get("collider") as Node
 	if collider == null:
+		_last_click_unit_kind = ""
 		return
 
 	if collider.is_in_group("selectable_unit"):
 		if _is_player_owned(collider):
-			_add_selected_unit(collider)
+			var unit_kind: String = _unit_kind_id(collider)
+			var now_sec: float = float(Time.get_ticks_msec()) / 1000.0
+			var is_double_click: bool = unit_kind != "" and _last_click_unit_kind == unit_kind and (now_sec - _last_click_time_sec) <= SELECTION_DOUBLE_CLICK_WINDOW
+			_last_click_unit_kind = unit_kind
+			_last_click_time_sec = now_sec
+			if is_double_click:
+				_select_units_by_kind(unit_kind, Input.is_key_pressed(KEY_CTRL))
+			else:
+				_add_selected_unit(collider)
 		_refresh_subgroup_state(true)
 		return
 
 	if collider.is_in_group("selectable_building"):
 		if _is_player_owned(collider):
 			_add_selected_building(collider)
+		_last_click_unit_kind = ""
 		_refresh_subgroup_state(true)
 		return
 
+	_last_click_unit_kind = ""
 	_refresh_subgroup_state(true)
 
 func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> void:

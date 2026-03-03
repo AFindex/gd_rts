@@ -106,7 +106,10 @@ func update_hud(snapshot: Dictionary) -> void:
 	_queue_progress_bar.value = queue_progress * 100.0
 	_apply_queue_preview(_to_string_array(snapshot.get("queue_preview", [])))
 
-	_apply_multi_roles(_to_string_array(snapshot.get("multi_roles", [])))
+	_apply_multi_roles(
+		_to_string_array(snapshot.get("multi_roles", [])),
+		str(snapshot.get("active_subgroup_kind", ""))
+	)
 	_matrix_page_text.text = str(snapshot.get("matrix_page_text", "Page 1/1"))
 
 	_portrait_glyph.text = str(snapshot.get("portrait_glyph", "?"))
@@ -242,15 +245,39 @@ func _apply_queue_preview(queue_preview: Array[String]) -> void:
 			value = queue_preview[i]
 		_queue_slot_labels[i].text = value
 
-func _apply_multi_roles(multi_roles: Array[String]) -> void:
+func _apply_multi_roles(multi_roles: Array[String], active_subgroup_kind: String = "") -> void:
 	for i in _matrix_labels.size():
 		if i < multi_roles.size():
 			var role: String = multi_roles[i]
 			_matrix_labels[i].text = role
-			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style(role))
+			var highlighted: bool = _role_matches_subgroup(role, active_subgroup_kind)
+			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style_with_highlight(role, highlighted))
 		else:
 			_matrix_labels[i].text = "--"
 			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style("empty"))
+
+func _role_matches_subgroup(role: String, subgroup_kind: String) -> bool:
+	if subgroup_kind == "":
+		return false
+	var role_key: String = role.to_lower()
+	match subgroup_kind:
+		"worker":
+			return role_key == "w" or role_key.contains("worker")
+		"soldier":
+			return role_key == "s" or role_key.contains("soldier")
+		_:
+			return false
+
+func _matrix_style_with_highlight(role: String, highlighted: bool) -> StyleBoxFlat:
+	var style: StyleBoxFlat = _matrix_style(role)
+	if not highlighted:
+		return style
+	style.border_color = Color(1.0, 0.95, 0.55, 0.98)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	return style
 
 func _apply_command_entries(entries_variant: Variant) -> void:
 	var entries: Array = []
