@@ -1,0 +1,28 @@
+[gd_scene load_steps=5 format=3]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_1"]
+size = Vector2(120, 120)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1"]
+size = Vector3(120, 1, 120)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
+albedo_color = Color(0.203922, 0.32549, 0.2, 1)
+roughness = 1.0
+
+[node name="World" type="Node3D"]
+
+[node name="Ground" type="StaticBody3D" parent="."]
+collision_layer = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+position = Vector3(0, -0.5, 0)
+shape = SubResource("BoxShape3D_1")
+
+[node name="GroundVisual" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_1")
+material_override = SubResource("StandardMaterial3D_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.89, -0.74, 0)
+light_energy = 1.6

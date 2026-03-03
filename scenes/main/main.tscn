@@ -1,0 +1,46 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/game_manager.gd" id="1_game_manager"]
+[ext_resource type="PackedScene" path="res://scenes/world/world.tscn" id="2_world"]
+[ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="3_unit"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/building.tscn" id="4_building"]
+[ext_resource type="Script" path="res://scripts/core/rts_camera.gd" id="5_camera"]
+[ext_resource type="Script" path="res://scripts/ui/selection_overlay.gd" id="6_overlay"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_game_manager")
+camera_path = NodePath("RTSCamera")
+units_root_path = NodePath("Units")
+selection_overlay_path = NodePath("UI/SelectionOverlay")
+
+[node name="World" parent="." instance=ExtResource("2_world")]
+
+[node name="Units" type="Node3D" parent="."]
+
+[node name="WorkerA" parent="Units" instance=ExtResource("3_unit")]
+position = Vector3(-6, 0, -2)
+
+[node name="WorkerB" parent="Units" instance=ExtResource("3_unit")]
+position = Vector3(-4, 0, -1)
+
+[node name="WorkerC" parent="Units" instance=ExtResource("3_unit")]
+position = Vector3(-5, 0, 1)
+
+[node name="SoldierA" parent="Units" instance=ExtResource("3_unit")]
+position = Vector3(-2, 0, -2)
+
+[node name="Buildings" type="Node3D" parent="."]
+
+[node name="MainBase" parent="Buildings" instance=ExtResource("4_building")]
+position = Vector3(8, 0, 0)
+
+[node name="RTSCamera" type="Camera3D" parent="."]
+script = ExtResource("5_camera")
+position = Vector3(0, 30, 24)
+current = true
+far = 2000.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="SelectionOverlay" type="Control" parent="UI"]
+script = ExtResource("6_overlay")
