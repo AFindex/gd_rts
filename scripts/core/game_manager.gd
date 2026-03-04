@@ -35,6 +35,8 @@ const CONTROL_GROUP_MARKER_GROUP: StringName = &"control_group_marker"
 const CONTROL_GROUP_MARKER_DURATION: float = 0.9
 const PING_DURATION: float = 1.6
 const PING_VISUAL_HEIGHT: float = 0.1
+const ATTACK_PING_CHECK_INTERVAL: float = 0.35
+const ATTACK_PING_PER_BUILDING_COOLDOWN: float = 4.0
 const BUILD_MENU_GROUP_ROOT: String = "root"
 const BUILD_MENU_GROUP_GARRISONED: String = "garrisoned"
 const BUILD_MENU_GROUP_SUMMONING: String = "summoning"
@@ -113,6 +115,9 @@ var _last_queue_visual_signature: String = ""
 var _ping_visual_root: Node3D
 var _active_pings: Array[Dictionary] = []
 var _ping_targeting_active: bool = false
+var _attack_ping_check_accum: float = 0.0
+var _building_health_snapshot: Dictionary = {}
+var _building_attack_ping_cooldowns: Dictionary = {}
 var _construction_ghost_visual_root: Node3D
 var _pending_construction_ghosts: Array[Dictionary] = []
 var _next_construction_ghost_id: int = 1
@@ -155,6 +160,7 @@ func _ready() -> void:
 	_setup_feedback_audio()
 	_setup_runtime_navigation_baking()
 	_register_existing_buildings()
+	_refresh_building_health_snapshot()
 	_register_existing_resources()
 	_request_navmesh_rebake("startup")
 	_refresh_resource_label()
@@ -225,6 +231,7 @@ func _process(delta: float) -> void:
 	_refresh_input_state()
 	_update_queue_visuals()
 	_process_ping_visuals(delta)
+	_process_under_attack_pings(delta)
 	_update_rally_visuals()
 	_process_minimap_update(delta)
 
@@ -1031,6 +1038,64 @@ func _process_ping_visuals(delta: float) -> void:
 			if visual_node != null and is_instance_valid(visual_node):
 				visual_node.queue_free()
 			_active_pings.remove_at(i)
+
+func _process_under_attack_pings(delta: float) -> void:
+	_attack_ping_check_accum += delta
+	if _attack_ping_check_accum < ATTACK_PING_CHECK_INTERVAL:
+		return
+	_attack_ping_check_accum = 0.0
+
+	var existing_ids: Dictionary = {}
+	for node in _player_owned_building_nodes():
+		var building: Node3D = node as Node3D
+		if building == null:
+			continue
+		var id: int = building.get_instance_id()
+		existing_ids[id] = true
+		var current_hp: float = 0.0
+		if building.has_method("get_health_points"):
+			current_hp = float(building.call("get_health_points"))
+		var previous_hp: float = float(_building_health_snapshot.get(id, current_hp))
+		var cooldown_left: float = maxf(0.0, float(_building_attack_ping_cooldowns.get(id, 0.0)) - ATTACK_PING_CHECK_INTERVAL)
+		if current_hp < previous_hp - 0.01 and cooldown_left <= 0.0:
+			_emit_ping(building.global_position, "alert", false)
+			cooldown_left = ATTACK_PING_PER_BUILDING_COOLDOWN
+		_building_health_snapshot[id] = current_hp
+		_building_attack_ping_cooldowns[id] = cooldown_left
+
+	for key in _building_health_snapshot.keys():
+		var id: int = int(key)
+		if existing_ids.has(id):
+			continue
+		_building_health_snapshot.erase(id)
+		_building_attack_ping_cooldowns.erase(id)
+
+func _player_owned_building_nodes() -> Array[Node]:
+	var result: Array[Node] = []
+	var building_nodes: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
+	for node in building_nodes:
+		if node == null or not is_instance_valid(node):
+			continue
+		if not _is_player_owned(node):
+			continue
+		if node.has_method("is_alive") and not bool(node.call("is_alive")):
+			continue
+		result.append(node)
+	return result
+
+func _refresh_building_health_snapshot() -> void:
+	_building_health_snapshot.clear()
+	_building_attack_ping_cooldowns.clear()
+	for node in _player_owned_building_nodes():
+		var building: Node3D = node as Node3D
+		if building == null:
+			continue
+		var id: int = building.get_instance_id()
+		var hp: float = 0.0
+		if building.has_method("get_health_points"):
+			hp = float(building.call("get_health_points"))
+		_building_health_snapshot[id] = hp
+		_building_attack_ping_cooldowns[id] = 0.0
 
 func _update_queue_visuals() -> void:
 	if _queue_visual_root == null:
@@ -1863,7 +1928,8 @@ func _build_minimap_ping_entries() -> Array[Dictionary]:
 		result.append({
 			"x": position.x,
 			"z": position.z,
-			"progress": progress
+			"progress": progress,
+			"kind": str(entry.get("kind", "manual"))
 		})
 	return result
 
@@ -1904,29 +1970,37 @@ func _set_ping_mode_active(active: bool) -> void:
 	if active:
 		_set_ui_notice("Ping mode: Left click world/minimap to place ping. RMB/ESC cancel.", 1.6)
 
-func _emit_ping(world_position: Vector3) -> void:
+func _emit_ping(world_position: Vector3, ping_kind: String = "manual", show_notice: bool = true) -> void:
 	var map_half_size: Vector2 = _camera_map_half_size()
 	var clamped_position: Vector3 = Vector3(
 		clampf(world_position.x, -map_half_size.x, map_half_size.x),
 		0.0,
 		clampf(world_position.z, -map_half_size.y, map_half_size.y)
 	)
-	var visual_node: Node3D = _create_ping_visual(clamped_position)
+	var normalized_kind: String = ping_kind.strip_edges().to_lower()
+	if normalized_kind == "":
+		normalized_kind = "manual"
+	var visual_node: Node3D = _create_ping_visual(clamped_position, normalized_kind)
 	if _ping_visual_root != null and visual_node != null:
 		_ping_visual_root.add_child(visual_node)
 	_active_pings.append({
 		"position": clamped_position,
 		"duration": PING_DURATION,
 		"remaining": PING_DURATION,
+		"kind": normalized_kind,
 		"visual_node": visual_node
 	})
 	_push_minimap_update()
-	_set_ui_notice("Ping sent.", 0.8)
+	if show_notice:
+		_set_ui_notice("Ping sent.", 0.8)
 
-func _create_ping_visual(world_position: Vector3) -> Node3D:
+func _create_ping_visual(world_position: Vector3, ping_kind: String = "manual") -> Node3D:
 	var root: Node3D = Node3D.new()
 	root.position = Vector3(world_position.x, PING_VISUAL_HEIGHT, world_position.z)
 	root.scale = Vector3.ONE * 0.55
+	var is_alert: bool = ping_kind == "alert"
+	var ring_color: Color = Color(1.0, 0.34, 0.32, 0.82) if is_alert else Color(1.0, 0.86, 0.35, 0.78)
+	var core_color: Color = Color(1.0, 0.44, 0.42, 0.92) if is_alert else Color(1.0, 0.96, 0.62, 0.9)
 
 	var ring: MeshInstance3D = MeshInstance3D.new()
 	var ring_mesh: TorusMesh = TorusMesh.new()
@@ -1938,9 +2012,9 @@ func _create_ping_visual(world_position: Vector3) -> Node3D:
 	var ring_mat: StandardMaterial3D = StandardMaterial3D.new()
 	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	ring_mat.albedo_color = Color(1.0, 0.86, 0.35, 0.78)
+	ring_mat.albedo_color = ring_color
 	ring_mat.emission_enabled = true
-	ring_mat.emission = Color(1.0, 0.86, 0.35, 1.0)
+	ring_mat.emission = Color(ring_color.r, ring_color.g, ring_color.b, 1.0)
 	ring.material_override = ring_mat
 	root.add_child(ring)
 
@@ -1953,9 +2027,9 @@ func _create_ping_visual(world_position: Vector3) -> Node3D:
 	var core_mat: StandardMaterial3D = StandardMaterial3D.new()
 	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	core_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	core_mat.albedo_color = Color(1.0, 0.96, 0.62, 0.9)
+	core_mat.albedo_color = core_color
 	core_mat.emission_enabled = true
-	core_mat.emission = Color(1.0, 0.96, 0.62, 1.0)
+	core_mat.emission = Color(core_color.r, core_color.g, core_color.b, 1.0)
 	core.material_override = core_mat
 	root.add_child(core)
 	return root

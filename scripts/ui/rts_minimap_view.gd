@@ -17,6 +17,7 @@ signal ping_requested(world_position: Vector3)
 @export var selected_outline_color: Color = Color(1.0, 1.0, 1.0, 1.0)
 @export var camera_rect_color: Color = Color(1.0, 0.92, 0.46, 1.0)
 @export var ping_color: Color = Color(1.0, 0.86, 0.36, 0.95)
+@export var alert_ping_color: Color = Color(1.0, 0.34, 0.32, 0.98)
 @export var ping_mode_outline_color: Color = Color(1.0, 0.82, 0.3, 1.0)
 
 var _units: Array = []
@@ -174,12 +175,14 @@ func _draw_pings() -> void:
 		var entry: Dictionary = value as Dictionary
 		var world: Vector2 = _entry_world_xz(entry)
 		var progress: float = clampf(float(entry.get("progress", 0.0)), 0.0, 1.0)
+		var ping_kind: String = str(entry.get("kind", "manual")).strip_edges().to_lower()
+		var base_color: Color = alert_ping_color if ping_kind == "alert" else ping_color
 		var center: Vector2 = _world_to_minimap(world)
 		var radius: float = lerpf(4.0, 18.0, progress)
 		var alpha: float = lerpf(0.95, 0.18, progress)
-		var pulse_color: Color = Color(ping_color.r, ping_color.g, ping_color.b, alpha)
+		var pulse_color: Color = Color(base_color.r, base_color.g, base_color.b, alpha)
 		draw_arc(center, radius, 0.0, TAU, 32, pulse_color, 1.6)
-		draw_circle(center, 1.6, Color(ping_color.r, ping_color.g, ping_color.b, maxf(0.45, alpha)))
+		draw_circle(center, 1.6, Color(base_color.r, base_color.g, base_color.b, maxf(0.45, alpha)))
 
 func _draw_ping_mode_outline() -> void:
 	if not _ping_mode:
