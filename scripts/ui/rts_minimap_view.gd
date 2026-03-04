@@ -1,6 +1,7 @@
 extends Control
 
 signal navigate_requested(world_position: Vector3)
+signal ping_requested(world_position: Vector3)
 
 @export var map_half_size: Vector2 = Vector2(58.0, 58.0)
 @export var player_team_id: int = 1
@@ -15,13 +16,17 @@ signal navigate_requested(world_position: Vector3)
 @export var resource_color: Color = Color(0.45, 0.82, 1.0, 1.0)
 @export var selected_outline_color: Color = Color(1.0, 1.0, 1.0, 1.0)
 @export var camera_rect_color: Color = Color(1.0, 0.92, 0.46, 1.0)
+@export var ping_color: Color = Color(1.0, 0.86, 0.36, 0.95)
+@export var ping_mode_outline_color: Color = Color(1.0, 0.82, 0.3, 1.0)
 
 var _units: Array = []
 var _buildings: Array = []
 var _resources: Array = []
+var _pings: Array = []
 var _camera_world_pos: Vector3 = Vector3.ZERO
 var _camera_world_half_extent: Vector2 = Vector2(10.0, 10.0)
 var _is_drag_navigate: bool = false
+var _ping_mode: bool = false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -37,6 +42,7 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 	_units = []
 	_buildings = []
 	_resources = []
+	_pings = []
 	var unit_values: Variant = snapshot.get("units", [])
 	if unit_values is Array:
 		_units = (unit_values as Array).duplicate(true)
@@ -46,6 +52,9 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 	var resource_values: Variant = snapshot.get("resources", [])
 	if resource_values is Array:
 		_resources = (resource_values as Array).duplicate(true)
+	var ping_values: Variant = snapshot.get("pings", [])
+	if ping_values is Array:
+		_pings = (ping_values as Array).duplicate(true)
 	var camera_pos_value: Variant = snapshot.get("camera_position", Vector3.ZERO)
 	if camera_pos_value is Vector3:
 		_camera_world_pos = camera_pos_value as Vector3
@@ -54,12 +63,22 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 		_camera_world_half_extent = (camera_extent_value as Vector2).abs()
 	queue_redraw()
 
+func set_ping_mode(enabled: bool) -> void:
+	_ping_mode = enabled
+	_is_drag_navigate = false
+	queue_redraw()
+
 func _gui_input(event: InputEvent) -> void:
 	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_LEFT:
 		if mouse_button.pressed:
-			_is_drag_navigate = true
-			_emit_navigation(mouse_button.position)
+			if _ping_mode:
+				_emit_ping(mouse_button.position)
+				_ping_mode = false
+				_is_drag_navigate = false
+			else:
+				_is_drag_navigate = true
+				_emit_navigation(mouse_button.position)
 		else:
 			_is_drag_navigate = false
 		accept_event()
@@ -80,7 +99,9 @@ func _draw() -> void:
 	_draw_resources()
 	_draw_buildings()
 	_draw_units()
+	_draw_pings()
 	_draw_camera_rect()
+	_draw_ping_mode_outline()
 	draw_rect(view_rect, border_color, false, 1.0)
 
 func _draw_grid(view_rect: Rect2) -> void:
@@ -146,8 +167,30 @@ func _draw_camera_rect() -> void:
 	draw_rect(rect, camera_rect_color, false, 1.2)
 	draw_circle(center, 1.8, camera_rect_color)
 
+func _draw_pings() -> void:
+	for value in _pings:
+		if not (value is Dictionary):
+			continue
+		var entry: Dictionary = value as Dictionary
+		var world: Vector2 = _entry_world_xz(entry)
+		var progress: float = clampf(float(entry.get("progress", 0.0)), 0.0, 1.0)
+		var center: Vector2 = _world_to_minimap(world)
+		var radius: float = lerpf(4.0, 18.0, progress)
+		var alpha: float = lerpf(0.95, 0.18, progress)
+		var pulse_color: Color = Color(ping_color.r, ping_color.g, ping_color.b, alpha)
+		draw_arc(center, radius, 0.0, TAU, 32, pulse_color, 1.6)
+		draw_circle(center, 1.6, Color(ping_color.r, ping_color.g, ping_color.b, maxf(0.45, alpha)))
+
+func _draw_ping_mode_outline() -> void:
+	if not _ping_mode:
+		return
+	draw_rect(Rect2(Vector2.ZERO, size).grow(-1.0), ping_mode_outline_color, false, 2.0)
+
 func _emit_navigation(local_position: Vector2) -> void:
 	emit_signal("navigate_requested", _minimap_to_world(local_position))
+
+func _emit_ping(local_position: Vector2) -> void:
+	emit_signal("ping_requested", _minimap_to_world(local_position))
 
 func _entry_world_xz(entry: Dictionary) -> Vector2:
 	var x: float = float(entry.get("x", 0.0))
@@ -162,7 +205,7 @@ func _safe_map_full_size() -> Vector2:
 func _world_to_minimap(world_xz: Vector2) -> Vector2:
 	var map_full: Vector2 = _safe_map_full_size()
 	var u: float = (world_xz.x + map_half_size.x) / map_full.x
-	var v: float = (map_half_size.y - world_xz.y) / map_full.y
+	var v: float = (world_xz.y + map_half_size.y) / map_full.y
 	u = clampf(u, 0.0, 1.0)
 	v = clampf(v, 0.0, 1.0)
 	return Vector2(u * size.x, v * size.y)
@@ -173,7 +216,7 @@ func _minimap_to_world(local_position: Vector2) -> Vector3:
 	var u: float = local_x / maxf(1.0, size.x)
 	var v: float = local_y / maxf(1.0, size.y)
 	var world_x: float = lerpf(-map_half_size.x, map_half_size.x, u)
-	var world_z: float = lerpf(map_half_size.y, -map_half_size.y, v)
+	var world_z: float = lerpf(-map_half_size.y, map_half_size.y, v)
 	return Vector3(world_x, 0.0, world_z)
 
 func _team_color(team_id: int, ally: Color, enemy: Color, neutral: Color) -> Color:

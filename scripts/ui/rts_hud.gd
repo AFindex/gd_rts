@@ -5,6 +5,8 @@ signal multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_presse
 signal control_group_pressed(group_id: int)
 signal matrix_page_selected(page_index: int)
 signal minimap_navigate_requested(world_position: Vector3)
+signal ping_button_pressed
+signal ping_requested(world_position: Vector3)
 
 const COMMAND_SLOTS: int = 15
 const MULTI_SLOTS: int = 30
@@ -86,6 +88,7 @@ const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
 @onready var _selection_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel
 @onready var _minimap_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel
 @onready var _minimap_view: Control = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel/MiniMapView
+@onready var _ping_button: Button = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/BottomButtonRow/PingButton
 @onready var _queue_column: Control = $BottomHUD/BottomRow/QueueColumn
 @onready var _queue_panel: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel
 @onready var _queue_content: Control = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent
@@ -161,10 +164,12 @@ var _multi_matrix_guard_hidden: bool = false
 var _debug_hud_update_seq: int = 0
 var _debug_layout_seq: int = 0
 var _debug_log_burst_until_msec: float = 0.0
+var _minimap_ping_armed: bool = false
 
 func _ready() -> void:
 	_cache_control_group_buttons()
 	_setup_static_styles()
+	_connect_ping_button()
 	_connect_minimap_view()
 	_configure_bottom_layout_nodes()
 	_apply_bottom_helper_transparency()
@@ -342,9 +347,33 @@ func _connect_minimap_view() -> void:
 		var callback: Callable = Callable(self, "_on_minimap_view_navigate_requested")
 		if not _minimap_view.is_connected("navigate_requested", callback):
 			_minimap_view.connect("navigate_requested", callback)
+	if _minimap_view.has_signal("ping_requested"):
+		var ping_callback: Callable = Callable(self, "_on_minimap_view_ping_requested")
+		if not _minimap_view.is_connected("ping_requested", ping_callback):
+			_minimap_view.connect("ping_requested", ping_callback)
+
+func _connect_ping_button() -> void:
+	if _ping_button == null or not is_instance_valid(_ping_button):
+		return
+	var callback: Callable = Callable(self, "_on_ping_button_pressed")
+	if not _ping_button.pressed.is_connected(callback):
+		_ping_button.pressed.connect(callback)
+
+func _on_ping_button_pressed() -> void:
+	set_ping_mode_armed(true)
+	emit_signal("ping_button_pressed")
 
 func _on_minimap_view_navigate_requested(world_position: Vector3) -> void:
 	emit_signal("minimap_navigate_requested", world_position)
+
+func _on_minimap_view_ping_requested(world_position: Vector3) -> void:
+	set_ping_mode_armed(false)
+	emit_signal("ping_requested", world_position)
+
+func set_ping_mode_armed(armed: bool) -> void:
+	_minimap_ping_armed = armed
+	if _minimap_view != null and is_instance_valid(_minimap_view) and _minimap_view.has_method("set_ping_mode"):
+		_minimap_view.call("set_ping_mode", armed)
 
 func update_minimap(snapshot: Dictionary) -> void:
 	if _minimap_view == null or not is_instance_valid(_minimap_view):

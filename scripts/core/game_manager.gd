@@ -33,6 +33,8 @@ const CONTROL_GROUP_DOUBLE_TAP_WINDOW: float = 0.3
 const SELECTION_DOUBLE_CLICK_WINDOW: float = 0.3
 const CONTROL_GROUP_MARKER_GROUP: StringName = &"control_group_marker"
 const CONTROL_GROUP_MARKER_DURATION: float = 0.9
+const PING_DURATION: float = 1.6
+const PING_VISUAL_HEIGHT: float = 0.1
 const BUILD_MENU_GROUP_ROOT: String = "root"
 const BUILD_MENU_GROUP_GARRISONED: String = "garrisoned"
 const BUILD_MENU_GROUP_SUMMONING: String = "summoning"
@@ -108,6 +110,9 @@ var _queue_visual_root: Node3D
 var _queue_visible_marker_nodes: Array[Node] = []
 var _queue_reject_feedback_timer: float = 0.0
 var _last_queue_visual_signature: String = ""
+var _ping_visual_root: Node3D
+var _active_pings: Array[Dictionary] = []
+var _ping_targeting_active: bool = false
 var _construction_ghost_visual_root: Node3D
 var _pending_construction_ghosts: Array[Dictionary] = []
 var _next_construction_ghost_id: int = 1
@@ -144,6 +149,7 @@ func _ready() -> void:
 	_connect_hud_signals()
 	_create_placement_preview()
 	_setup_queue_visual_root()
+	_setup_ping_visual_root()
 	_setup_construction_ghost_visual_root()
 	_setup_rally_visual_root()
 	_setup_feedback_audio()
@@ -196,6 +202,14 @@ func _connect_hud_signals() -> void:
 		var minimap_nav_callback: Callable = Callable(self, "_on_hud_minimap_navigate_requested")
 		if not _hud.is_connected("minimap_navigate_requested", minimap_nav_callback):
 			_hud.connect("minimap_navigate_requested", minimap_nav_callback)
+	if _hud.has_signal("ping_button_pressed"):
+		var ping_button_callback: Callable = Callable(self, "_on_hud_ping_button_pressed")
+		if not _hud.is_connected("ping_button_pressed", ping_button_callback):
+			_hud.connect("ping_button_pressed", ping_button_callback)
+	if _hud.has_signal("ping_requested"):
+		var ping_requested_callback: Callable = Callable(self, "_on_hud_ping_requested")
+		if not _hud.is_connected("ping_requested", ping_requested_callback):
+			_hud.connect("ping_requested", ping_requested_callback)
 
 func _process(delta: float) -> void:
 	_drain_execution_queue()
@@ -210,6 +224,7 @@ func _process(delta: float) -> void:
 	_process_active_research(delta)
 	_refresh_input_state()
 	_update_queue_visuals()
+	_process_ping_visuals(delta)
 	_update_rally_visuals()
 	_process_minimap_update(delta)
 
@@ -324,6 +339,17 @@ func _input(event: InputEvent) -> void:
 				str(_dragging),
 				_ui_control_debug_name(ui_control)
 			], true)
+			if _ping_targeting_active:
+				if ui_control != null:
+					# Let minimap/UI handle click when ping mode is active.
+					return
+				var ping_world_value: Variant = _ground_point_from_screen(mouse_button.position)
+				if not (ping_world_value is Vector3):
+					return
+				_emit_ping(ping_world_value as Vector3)
+				_set_ping_mode_active(false)
+				_refresh_hint_label()
+				return
 			if Input.is_key_pressed(KEY_ALT):
 				if _try_remove_queue_marker_at(mouse_button.position):
 					_gmhud_log("LMB alt-remove queue marker success at %s" % str(mouse_button.position), true)
@@ -412,6 +438,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_execute_command("attack")
 				return
 			KEY_ESCAPE:
+				if _ping_targeting_active:
+					_set_ping_mode_active(false)
+					_refresh_hint_label()
+					return
 				if _placing_building:
 					_execute_command("placement_cancel")
 					return
@@ -456,6 +486,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_RIGHT and mouse_button.pressed:
+		if _ping_targeting_active:
+			_set_ping_mode_active(false)
+			_refresh_hint_label()
+			return
 		if _pending_target_skill != "":
 			_pending_target_skill = ""
 			_refresh_hint_label()
@@ -893,6 +927,11 @@ func _setup_queue_visual_root() -> void:
 	_queue_visual_root.name = "CommandQueueVisuals"
 	add_child(_queue_visual_root)
 
+func _setup_ping_visual_root() -> void:
+	_ping_visual_root = Node3D.new()
+	_ping_visual_root.name = "PingVisuals"
+	add_child(_ping_visual_root)
+
 func _setup_construction_ghost_visual_root() -> void:
 	_construction_ghost_visual_root = Node3D.new()
 	_construction_ghost_visual_root.name = "PendingConstructionGhosts"
@@ -973,6 +1012,25 @@ func _process_queue_feedback(delta: float) -> void:
 		_ui_notice_timer = maxf(0.0, _ui_notice_timer - delta)
 		if _ui_notice_timer <= 0.0:
 			_ui_notice_text = ""
+
+func _process_ping_visuals(delta: float) -> void:
+	if _active_pings.is_empty():
+		return
+	for i in range(_active_pings.size() - 1, -1, -1):
+		var entry: Dictionary = _active_pings[i]
+		var duration: float = maxf(0.01, float(entry.get("duration", PING_DURATION)))
+		var remaining: float = maxf(0.0, float(entry.get("remaining", duration)) - delta)
+		var progress: float = clampf(1.0 - (remaining / duration), 0.0, 1.0)
+		var visual_node: Node3D = entry.get("visual_node") as Node3D
+		if visual_node != null and is_instance_valid(visual_node):
+			var pulse_scale: float = lerpf(0.55, 1.6, progress)
+			visual_node.scale = Vector3.ONE * pulse_scale
+		entry["remaining"] = remaining
+		_active_pings[i] = entry
+		if remaining <= 0.0:
+			if visual_node != null and is_instance_valid(visual_node):
+				visual_node.queue_free()
+			_active_pings.remove_at(i)
 
 func _update_queue_visuals() -> void:
 	if _queue_visual_root == null:
@@ -1733,7 +1791,8 @@ func _build_minimap_snapshot() -> Dictionary:
 		"camera_half_extent": _estimate_minimap_camera_half_extent(map_half_size),
 		"units": _build_minimap_unit_entries(),
 		"buildings": _build_minimap_building_entries(),
-		"resources": _build_minimap_resource_entries()
+		"resources": _build_minimap_resource_entries(),
+		"pings": _build_minimap_ping_entries()
 	}
 
 func _build_minimap_unit_entries() -> Array[Dictionary]:
@@ -1784,6 +1843,24 @@ func _build_minimap_resource_entries() -> Array[Dictionary]:
 		})
 	return result
 
+func _build_minimap_ping_entries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for value in _active_pings:
+		var entry: Dictionary = value as Dictionary
+		var pos_value: Variant = entry.get("position", Vector3.ZERO)
+		if not (pos_value is Vector3):
+			continue
+		var position: Vector3 = pos_value as Vector3
+		var duration: float = maxf(0.01, float(entry.get("duration", PING_DURATION)))
+		var remaining: float = clampf(float(entry.get("remaining", duration)), 0.0, duration)
+		var progress: float = clampf(1.0 - (remaining / duration), 0.0, 1.0)
+		result.append({
+			"x": position.x,
+			"z": position.z,
+			"progress": progress
+		})
+	return result
+
 func _camera_map_half_size() -> Vector2:
 	if _camera != null:
 		var half_size_value: Variant = _camera.get("map_half_size")
@@ -1813,6 +1890,69 @@ func _node_team_id(node: Node) -> int:
 	if node != null and node.has_method("get_team_id"):
 		return int(node.call("get_team_id"))
 	return 0
+
+func _set_ping_mode_active(active: bool) -> void:
+	_ping_targeting_active = active
+	if _hud != null and _hud.has_method("set_ping_mode_armed"):
+		_hud.call("set_ping_mode_armed", active)
+	if active:
+		_set_ui_notice("Ping mode: Left click world/minimap to place ping. RMB/ESC cancel.", 1.6)
+
+func _emit_ping(world_position: Vector3) -> void:
+	var map_half_size: Vector2 = _camera_map_half_size()
+	var clamped_position: Vector3 = Vector3(
+		clampf(world_position.x, -map_half_size.x, map_half_size.x),
+		0.0,
+		clampf(world_position.z, -map_half_size.y, map_half_size.y)
+	)
+	var visual_node: Node3D = _create_ping_visual(clamped_position)
+	if _ping_visual_root != null and visual_node != null:
+		_ping_visual_root.add_child(visual_node)
+	_active_pings.append({
+		"position": clamped_position,
+		"duration": PING_DURATION,
+		"remaining": PING_DURATION,
+		"visual_node": visual_node
+	})
+	_push_minimap_update()
+	_set_ui_notice("Ping sent.", 0.8)
+
+func _create_ping_visual(world_position: Vector3) -> Node3D:
+	var root: Node3D = Node3D.new()
+	root.position = Vector3(world_position.x, PING_VISUAL_HEIGHT, world_position.z)
+	root.scale = Vector3.ONE * 0.55
+
+	var ring: MeshInstance3D = MeshInstance3D.new()
+	var ring_mesh: TorusMesh = TorusMesh.new()
+	ring_mesh.inner_radius = 0.66
+	ring_mesh.outer_radius = 0.9
+	ring_mesh.rings = 20
+	ring_mesh.ring_segments = 28
+	ring.mesh = ring_mesh
+	var ring_mat: StandardMaterial3D = StandardMaterial3D.new()
+	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ring_mat.albedo_color = Color(1.0, 0.86, 0.35, 0.78)
+	ring_mat.emission_enabled = true
+	ring_mat.emission = Color(1.0, 0.86, 0.35, 1.0)
+	ring.material_override = ring_mat
+	root.add_child(ring)
+
+	var core: MeshInstance3D = MeshInstance3D.new()
+	var sphere_mesh: SphereMesh = SphereMesh.new()
+	sphere_mesh.radius = 0.18
+	sphere_mesh.height = 0.36
+	core.mesh = sphere_mesh
+	core.position = Vector3(0.0, 0.12, 0.0)
+	var core_mat: StandardMaterial3D = StandardMaterial3D.new()
+	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	core_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	core_mat.albedo_color = Color(1.0, 0.96, 0.62, 0.9)
+	core_mat.emission_enabled = true
+	core_mat.emission = Color(1.0, 0.96, 0.62, 1.0)
+	core.material_override = core_mat
+	root.add_child(core)
+	return root
 
 func _push_hud_update() -> void:
 	if _hud == null or not _hud.has_method("update_hud"):
@@ -2315,6 +2455,8 @@ func _build_command_hint() -> String:
 		return "Build menu open. Select a building option or press ESC to close."
 	if _pending_target_skill != "":
 		return "Targeted skill armed. Left click world target, RMB/ESC to cancel."
+	if _ping_targeting_active:
+		return "Ping mode active. Left click world/minimap to ping, RMB/ESC cancel."
 	if _input_state == InputState.QUEUE_INPUT:
 		return "Queue input active. Shift-held commands are appended."
 	if _selection_has_construction_exit_worker():
@@ -3446,6 +3588,14 @@ func _on_hud_minimap_navigate_requested(world_position: Vector3) -> void:
 	cam_pos.x = clampf(world_position.x, -map_half_size.x, map_half_size.x)
 	cam_pos.z = clampf(world_position.z, -map_half_size.y, map_half_size.y)
 	_camera.global_position = cam_pos
+
+func _on_hud_ping_button_pressed() -> void:
+	_set_ping_mode_active(true)
+
+func _on_hud_ping_requested(world_position: Vector3) -> void:
+	_emit_ping(world_position)
+	_set_ping_mode_active(false)
+	_refresh_hint_label()
 
 func _execute_command(command_id: String) -> void:
 	_prune_invalid_selection()
