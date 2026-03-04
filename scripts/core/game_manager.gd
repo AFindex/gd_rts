@@ -21,6 +21,9 @@ const SMART_COMMAND_PRIORITY_RANGE: float = 0.5
 const DEFAULT_WORKER_BUILD_TIME: float = 2.5
 const BUILD_ORDER_START_DISTANCE: float = 1.4
 const BUILD_ORDER_MOVE_REFRESH: float = 0.45
+const CONSTRUCTION_GHOST_RETRY_INTERVAL: float = 3.0
+const CONSTRUCTION_GHOST_FLOAT_AMPLITUDE: float = 0.08
+const CONSTRUCTION_GHOST_FLOAT_SPEED: float = 2.4
 const RALLY_MAX_HOPS: int = 3
 const RALLY_VISUAL_HEIGHT: float = 0.08
 const RALLY_ALERT_BLINK_INTERVAL_SEC: float = 0.16
@@ -93,6 +96,9 @@ var _queue_visual_root: Node3D
 var _queue_visible_marker_nodes: Array[Node] = []
 var _queue_reject_feedback_timer: float = 0.0
 var _last_queue_visual_signature: String = ""
+var _construction_ghost_visual_root: Node3D
+var _pending_construction_ghosts: Array[Dictionary] = []
+var _next_construction_ghost_id: int = 1
 var _rally_visual_root: Node3D
 var _rally_visible_nodes: Array[Node] = []
 var _last_rally_visual_signature: String = ""
@@ -122,6 +128,7 @@ func _ready() -> void:
 	_connect_hud_signals()
 	_create_placement_preview()
 	_setup_queue_visual_root()
+	_setup_construction_ghost_visual_root()
 	_setup_rally_visual_root()
 	_setup_feedback_audio()
 	_setup_runtime_navigation_baking()
@@ -173,6 +180,7 @@ func _process(delta: float) -> void:
 	_drain_execution_queue()
 	_process_queue_feedback(delta)
 	_process_pending_build_orders(delta)
+	_process_pending_construction_ghosts(delta)
 	if _placing_building:
 		_update_placement_preview()
 
@@ -362,6 +370,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				if _pending_target_skill != "":
 					_pending_target_skill = ""
 					_refresh_hint_label()
+					return
+				if _cancel_pending_construction_for_selected_workers():
 					return
 			KEY_R:
 				if _placing_building:
@@ -756,6 +766,11 @@ func _setup_queue_visual_root() -> void:
 	_queue_visual_root.name = "CommandQueueVisuals"
 	add_child(_queue_visual_root)
 
+func _setup_construction_ghost_visual_root() -> void:
+	_construction_ghost_visual_root = Node3D.new()
+	_construction_ghost_visual_root.name = "PendingConstructionGhosts"
+	add_child(_construction_ghost_visual_root)
+
 func _setup_rally_visual_root() -> void:
 	_rally_visual_root = Node3D.new()
 	_rally_visual_root.name = "RallyPointVisuals"
@@ -975,6 +990,200 @@ func _cylinder_basis_from_to(from_position: Vector3, to_position: Vector3) -> Ba
 	var axis: Vector3 = up.cross(direction).normalized()
 	var angle: float = acos(dot)
 	return Basis(axis, angle)
+
+func _building_construction_paradigm(building_kind: String) -> String:
+	if building_kind == "":
+		return "garrisoned"
+	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
+	var paradigm: String = str(building_def.get("construction_paradigm", "garrisoned")).strip_edges().to_lower()
+	if paradigm != "summoning" and paradigm != "garrisoned" and paradigm != "incorporated":
+		return "garrisoned"
+	return paradigm
+
+func _create_pending_construction_ghost(worker_node: Node3D, kind: String, world_position: Vector3, rotation_y: float, queued: bool) -> int:
+	if worker_node == null or not is_instance_valid(worker_node):
+		return -1
+	if _construction_ghost_visual_root == null:
+		return -1
+	var ghost_id: int = _next_construction_ghost_id
+	_next_construction_ghost_id += 1
+
+	var ghost_node: Node3D = _create_pending_construction_ghost_node(ghost_id, kind, world_position, rotation_y)
+	_construction_ghost_visual_root.add_child(ghost_node)
+
+	_pending_construction_ghosts.append({
+		"ghost_id": ghost_id,
+		"worker_path": worker_node.get_path(),
+		"position": Vector3(world_position.x, 0.0, world_position.z),
+		"rotation_y": rotation_y,
+		"building_kind": kind,
+		"paradigm": _building_construction_paradigm(kind),
+		"is_queued": queued,
+		"status": "pending",
+		"elapsed": 0.0,
+		"node_path": ghost_node.get_path(),
+		"created_at": float(Time.get_ticks_msec()) / 1000.0
+	})
+	return ghost_id
+
+func _create_pending_construction_ghost_node(ghost_id: int, kind: String, world_position: Vector3, rotation_y: float) -> Node3D:
+	var root: Node3D = Node3D.new()
+	root.name = "ConstructionGhost%d" % ghost_id
+	root.global_position = Vector3(world_position.x, 0.04, world_position.z)
+	root.rotation.y = rotation_y
+
+	var mesh_instance: MeshInstance3D = MeshInstance3D.new()
+	mesh_instance.name = "GhostMesh"
+	var mesh: BoxMesh = BoxMesh.new()
+	mesh.size = Vector3(2.6, 0.12, 1.8)
+	mesh_instance.mesh = mesh
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = Color(0.18, 0.95, 0.36, 0.42)
+	mesh_instance.material_override = material
+	root.add_child(mesh_instance)
+
+	var label: Label3D = Label3D.new()
+	label.name = "GhostLabel"
+	label.text = _building_display_name(kind)
+	label.position = Vector3(0.0, 0.7, 0.0)
+	label.font_size = 28
+	label.modulate = Color(0.9, 0.96, 0.92, 0.95)
+	root.add_child(label)
+	return root
+
+func _pending_construction_ghost_index(ghost_id: int) -> int:
+	for i in _pending_construction_ghosts.size():
+		var ghost_value: Variant = _pending_construction_ghosts[i]
+		if not (ghost_value is Dictionary):
+			continue
+		var ghost: Dictionary = ghost_value as Dictionary
+		if int(ghost.get("ghost_id", -1)) == ghost_id:
+			return i
+	return -1
+
+func _has_pending_construction_ghost(ghost_id: int) -> bool:
+	return _pending_construction_ghost_index(ghost_id) >= 0
+
+func _remove_pending_construction_ghost(ghost_id: int) -> bool:
+	var index: int = _pending_construction_ghost_index(ghost_id)
+	if index < 0:
+		return false
+	var ghost: Dictionary = _pending_construction_ghosts[index] as Dictionary
+	var node_path: NodePath = ghost.get("node_path", NodePath("")) as NodePath
+	if str(node_path) != "":
+		var ghost_node: Node3D = get_node_or_null(node_path) as Node3D
+		if ghost_node != null and is_instance_valid(ghost_node):
+			ghost_node.queue_free()
+	_pending_construction_ghosts.remove_at(index)
+	return true
+
+func _set_pending_construction_ghost_invalid(ghost_id: int, invalid: bool) -> void:
+	var index: int = _pending_construction_ghost_index(ghost_id)
+	if index < 0:
+		return
+	var ghost: Dictionary = _pending_construction_ghosts[index] as Dictionary
+	ghost["status"] = "invalid" if invalid else "pending"
+	_pending_construction_ghosts[index] = ghost
+
+func _is_internal_build_order_command(command: RTSCommand) -> bool:
+	if command == null:
+		return false
+	if not (command.payload is Dictionary):
+		return false
+	return bool(command.payload.get("internal_build_order", false))
+
+func _cancel_pending_construction_for_worker(worker_node: Node, reason: String = "override") -> bool:
+	if worker_node == null or not is_instance_valid(worker_node):
+		return false
+	var worker_path: NodePath = worker_node.get_path()
+	var changed: bool = false
+
+	for i in range(_pending_build_orders.size() - 1, -1, -1):
+		var order_value: Variant = _pending_build_orders[i]
+		if not (order_value is Dictionary):
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var builder_path: NodePath = order.get("builder_path", NodePath("")) as NodePath
+		if builder_path != worker_path:
+			continue
+		if bool(order.get("started", false)):
+			continue
+		var ghost_id: int = int(order.get("ghost_id", -1))
+		if ghost_id >= 0:
+			_remove_pending_construction_ghost(ghost_id)
+		_pending_build_orders.remove_at(i)
+		changed = true
+
+	for i in range(_pending_construction_ghosts.size() - 1, -1, -1):
+		var ghost_value: Variant = _pending_construction_ghosts[i]
+		if not (ghost_value is Dictionary):
+			continue
+		var ghost: Dictionary = ghost_value as Dictionary
+		var ghost_worker_path: NodePath = ghost.get("worker_path", NodePath("")) as NodePath
+		if ghost_worker_path != worker_path:
+			continue
+		var ghost_id: int = int(ghost.get("ghost_id", -1))
+		if ghost_id >= 0:
+			_remove_pending_construction_ghost(ghost_id)
+			changed = true
+
+	if not changed:
+		return false
+	_set_ui_notice("Pending construction canceled (%s)." % reason, 1.1)
+	return true
+
+func _cancel_pending_construction_for_selected_workers() -> bool:
+	var changed: bool = false
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not selected_unit.has_method("is_worker_unit"):
+			continue
+		if not bool(selected_unit.call("is_worker_unit")):
+			continue
+		if _cancel_pending_construction_for_worker(selected_unit, "manual cancel"):
+			changed = true
+	if changed:
+		_refresh_hint_label()
+	return changed
+
+func _process_pending_construction_ghosts(delta: float) -> void:
+	if _pending_construction_ghosts.is_empty():
+		return
+	var now_sec: float = float(Time.get_ticks_msec()) / 1000.0
+	for i in range(_pending_construction_ghosts.size() - 1, -1, -1):
+		var ghost_value: Variant = _pending_construction_ghosts[i]
+		if not (ghost_value is Dictionary):
+			_pending_construction_ghosts.remove_at(i)
+			continue
+		var ghost: Dictionary = ghost_value as Dictionary
+		var node_path: NodePath = ghost.get("node_path", NodePath("")) as NodePath
+		var ghost_node: Node3D = get_node_or_null(node_path) as Node3D
+		if ghost_node == null or not is_instance_valid(ghost_node):
+			_pending_construction_ghosts.remove_at(i)
+			continue
+		var elapsed: float = float(ghost.get("elapsed", 0.0)) + delta
+		ghost["elapsed"] = elapsed
+		var base_position: Vector3 = Vector3.ZERO
+		var base_position_value: Variant = ghost.get("position", Vector3.ZERO)
+		if base_position_value is Vector3:
+			base_position = base_position_value as Vector3
+		var float_offset: float = sin(now_sec * CONSTRUCTION_GHOST_FLOAT_SPEED + float(i)) * CONSTRUCTION_GHOST_FLOAT_AMPLITUDE
+		ghost_node.global_position = Vector3(base_position.x, 0.05 + float_offset, base_position.z)
+
+		var mesh_instance: MeshInstance3D = ghost_node.get_node_or_null("GhostMesh") as MeshInstance3D
+		if mesh_instance != null:
+			var material: StandardMaterial3D = mesh_instance.material_override as StandardMaterial3D
+			if material != null:
+				var status: String = str(ghost.get("status", "pending"))
+				if status == "invalid":
+					var blink: float = 0.38 + 0.25 * absf(sin(now_sec * 9.0))
+					material.albedo_color = Color(0.95, 0.24, 0.24, blink)
+				else:
+					material.albedo_color = Color(0.18, 0.95, 0.36, 0.42)
+		_pending_construction_ghosts[i] = ghost
 
 func _update_rally_visuals() -> void:
 	if _rally_visual_root == null:
@@ -1264,6 +1473,11 @@ func _schedule_unit_command(unit_node: Node, command: RTSCommand) -> void:
 		return
 	if command == null:
 		return
+	if not _is_internal_build_order_command(command):
+		if command.command_type == RTSCommand.CommandType.STOP:
+			_cancel_pending_construction_for_worker(unit_node, "stop")
+		elif not command.is_queue_command:
+			_cancel_pending_construction_for_worker(unit_node, "override")
 	if command.is_queue_command and unit_node.has_method("can_enqueue_command"):
 		if not bool(unit_node.call("can_enqueue_command")):
 			_queue_reject_feedback_timer = 1.1
@@ -3316,13 +3530,14 @@ func _try_place_building(screen_pos: Vector2, keep_mode: bool = false) -> void:
 func _confirm_building_placement(keep_mode: bool = false) -> void:
 	if not _placement_can_place:
 		return
-	if not try_spend_minerals(_placing_cost):
-		return
 	var target_position: Vector3 = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
 	var builder: Node3D = _nearest_selected_worker(target_position)
 	if builder != null:
-		_schedule_worker_build_order(builder, _placing_kind, target_position, _placement_rotation_y)
+		var ghost_id: int = _create_pending_construction_ghost(builder, _placing_kind, target_position, _placement_rotation_y, keep_mode)
+		_schedule_worker_build_order(builder, _placing_kind, target_position, _placement_rotation_y, _placing_cost, ghost_id)
 	else:
+		if not try_spend_minerals(_placing_cost):
+			return
 		var spawned_building: Node3D = _spawn_building_instance(_placing_kind, target_position, _placement_rotation_y)
 		if spawned_building == null:
 			add_minerals(_placing_cost)
@@ -3358,7 +3573,7 @@ func _worker_build_time_for(kind: String) -> float:
 	var def: Dictionary = RTS_CATALOG.get_building_def(kind)
 	return maxf(0.25, float(def.get("build_time", DEFAULT_WORKER_BUILD_TIME)))
 
-func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float) -> void:
+func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int) -> void:
 	if builder == null or not is_instance_valid(builder):
 		return
 	_pending_build_orders.append({
@@ -3366,12 +3581,17 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"kind": kind,
 		"position": world_position,
 		"rotation_y": rotation_y,
+		"cost": build_cost,
+		"ghost_id": ghost_id,
+		"spent": false,
 		"started": false,
 		"progress": 0.0,
 		"build_time": _worker_build_time_for(kind),
-		"move_repath_timer": 0.0
+		"move_repath_timer": 0.0,
+		"retry_timer": 0.0
 	})
 	var move_command: RTSCommand = RTS_COMMAND.make_move(world_position, false)
+	move_command.payload["internal_build_order"] = true
 	_schedule_unit_command(builder, move_command)
 
 func _process_pending_build_orders(delta: float) -> void:
@@ -3386,31 +3606,73 @@ func _process_pending_build_orders(delta: float) -> void:
 		var builder_path: NodePath = order.get("builder_path", NodePath("")) as NodePath
 		var builder_node: Node3D = get_node_or_null(builder_path) as Node3D
 		var kind: String = str(order.get("kind", ""))
+		var ghost_id: int = int(order.get("ghost_id", -1))
+		var build_cost: int = maxi(0, int(order.get("cost", _building_cost(kind))))
+		var spent: bool = bool(order.get("spent", false))
 		if builder_node == null or not is_instance_valid(builder_node):
-			add_minerals(_building_cost(kind))
+			if spent and build_cost > 0:
+				add_minerals(build_cost)
+			if ghost_id >= 0:
+				_remove_pending_construction_ghost(ghost_id)
 			_pending_build_orders.remove_at(i)
 			continue
 		if not _is_player_owned(builder_node):
+			if ghost_id >= 0:
+				_remove_pending_construction_ghost(ghost_id)
 			_pending_build_orders.remove_at(i)
 			continue
 		var target_position_value: Variant = order.get("position", Vector3.ZERO)
 		if not (target_position_value is Vector3):
+			if ghost_id >= 0:
+				_remove_pending_construction_ghost(ghost_id)
 			_pending_build_orders.remove_at(i)
 			continue
 		var target_position: Vector3 = target_position_value as Vector3
 		var started: bool = bool(order.get("started", false))
 		if not started:
+			if ghost_id >= 0 and not _has_pending_construction_ghost(ghost_id):
+				_pending_build_orders.remove_at(i)
+				continue
+
 			var repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
 			if repath_timer <= 0.0:
 				repath_timer = BUILD_ORDER_MOVE_REFRESH
 				var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+				move_command.payload["internal_build_order"] = true
 				_schedule_unit_command(builder_node, move_command)
 			order["move_repath_timer"] = repath_timer
+
 			if builder_node.global_position.distance_to(target_position) <= BUILD_ORDER_START_DISTANCE:
+				if build_cost > 0 and _minerals < build_cost:
+					var retry_timer: float = float(order.get("retry_timer", 0.0)) - delta
+					if retry_timer <= 0.0:
+						retry_timer = CONSTRUCTION_GHOST_RETRY_INTERVAL
+						_set_ui_notice("Not enough minerals for %s." % _building_display_name(kind), 1.1)
+						var stop_for_wait: RTSCommand = RTS_COMMAND.make_stop(false)
+						stop_for_wait.payload["internal_build_order"] = true
+						_schedule_unit_command(builder_node, stop_for_wait)
+					order["retry_timer"] = retry_timer
+					if ghost_id >= 0:
+						_set_pending_construction_ghost_invalid(ghost_id, true)
+					_pending_build_orders[i] = order
+					continue
+
+				if build_cost > 0 and not try_spend_minerals(build_cost):
+					order["retry_timer"] = CONSTRUCTION_GHOST_RETRY_INTERVAL
+					if ghost_id >= 0:
+						_set_pending_construction_ghost_invalid(ghost_id, true)
+					_pending_build_orders[i] = order
+					continue
+
+				order["spent"] = true
 				order["started"] = true
 				order["progress"] = 0.0
+				order["retry_timer"] = 0.0
 				order["move_repath_timer"] = 0.0
+				if ghost_id >= 0:
+					_remove_pending_construction_ghost(ghost_id)
 				var stop_command: RTSCommand = RTS_COMMAND.make_stop(false)
+				stop_command.payload["internal_build_order"] = true
 				_schedule_unit_command(builder_node, stop_command)
 			_pending_build_orders[i] = order
 			continue
@@ -3424,8 +3686,8 @@ func _process_pending_build_orders(delta: float) -> void:
 
 		var rotation_y: float = float(order.get("rotation_y", 0.0))
 		var spawned: Node3D = _spawn_building_instance(kind, target_position, rotation_y)
-		if spawned == null:
-			add_minerals(_building_cost(kind))
+		if spawned == null and spent and build_cost > 0:
+			add_minerals(build_cost)
 		_pending_build_orders.remove_at(i)
 
 func _spawn_building_instance(kind: String, world_position: Vector3, rotation_y: float) -> Node3D:

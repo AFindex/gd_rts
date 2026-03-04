@@ -56,6 +56,7 @@
 - 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，矩阵格子交互改为选择语义：`LMB` 单独选中该格对象、`Shift+LMB` 选中当前选择内同类型、`Ctrl+LMB` 从当前选择剔除该格对象；子组循环快捷键改为 `Tab`。
 - 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，修正多选同类型分页在状态刷新时被重置到第一页的问题（子组状态刷新不再每帧强制清零分页）。
 - 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，QueueTopSpacer/ControlGroupBar 透明容器改为鼠标穿透，恢复透明区域内框选响应。
+- 新增：[RTS_Worker_Construction_TaskPlan.md](D:/Godot/projs/gd_rts/docs/RTS_Worker_Construction_TaskPlan.md)，基于 Worker Construction System v1.2 的实施任务分解与进度看板。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 

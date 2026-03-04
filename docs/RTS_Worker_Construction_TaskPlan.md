@@ -23,6 +23,14 @@
 - 完整存档系统接入（当前代码中无统一 save/load 框架）。
 - 高复杂美术资源替换（先用程序化/占位视觉）。
 
+### 1.1 本轮实施更新（2026-03-04）
+
+- 改造：[scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd)，为建筑定义补充 `construction_paradigm`、`build_time`、`cancel_refund_ratio`。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增 Pending Ghost 数据与可视层（`_pending_construction_ghosts` + `PendingConstructionGhosts` root）。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，建造确认改为“先创建 Pending Ghost + 下达农民到位”，扣费后移到到位开工瞬间。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，资源不足到位时进入红色闪烁等待并每3秒重试资源检查。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，落地 Ghost 基础清理触发：`Stop`、冲突覆盖命令、农民死亡/失效、`ESC` 手动取消（当前对选中农民生效）。
+
 ---
 
 ## 2. 当前基线学习结论（针对建造链路）
@@ -110,15 +118,15 @@
 ### M1：基础状态机与 Ghost（P0）
 
 - `WCS-001` 在 `rts_catalog.gd` 增加建造范式与建造参数配置。  
-状态：`Todo`
+状态：`Done`
 - `WCS-002` 在 `game_manager.gd` 引入 `pending_construction_ghosts` 数据结构与增删改查。  
-状态：`Todo`
+状态：`Done`
 - `WCS-003` 把 `_confirm_building_placement` 改为“生成 Pending Ghost + 下达到位命令”，移除即时扣费。  
-状态：`Todo`
+状态：`Done`
 - `WCS-004` 增加 Ghost 可视节点（至少支持 pending/invalid 两种表现与清理特效）。  
-状态：`Todo`
+状态：`Done (基础版)`
 - `WCS-005` 落地 Ghost 清理触发器：Stop、覆盖指令、worker死亡、ESC/取消。  
-状态：`Todo`
+状态：`In Progress`（已接入 Stop/覆盖命令/worker失效/ESC，专用取消按钮待补）
 
 验收（M1）：
 - 仅左键确认不扣费。
@@ -256,11 +264,11 @@
 
 | ID | 任务 | 优先级 | 状态 | 关联文件 |
 |---|---|---|---|---|
-| WCS-001 | Catalog 增加建造范式配置 | P0 | Todo | `rts_catalog.gd` |
-| WCS-002 | Pending Ghost 数据结构 | P0 | Todo | `game_manager.gd` |
-| WCS-003 | placement 扣费时机改造 | P0 | Todo | `game_manager.gd` |
-| WCS-004 | Ghost 可视节点与状态 | P0 | Todo | `game_manager.gd`/新scene |
-| WCS-005 | Ghost 生命周期清理触发器 | P0 | Todo | `game_manager.gd` |
+| WCS-001 | Catalog 增加建造范式配置 | P0 | Done | `rts_catalog.gd` |
+| WCS-002 | Pending Ghost 数据结构 | P0 | Done | `game_manager.gd` |
+| WCS-003 | placement 扣费时机改造 | P0 | Done | `game_manager.gd` |
+| WCS-004 | Ghost 可视节点与状态 | P0 | Done (基础版) | `game_manager.gd` |
+| WCS-005 | Ghost 生命周期清理触发器 | P0 | In Progress | `game_manager.gd` |
 | WCS-006~013 | Site/三范式/取消层级 | P0 | Todo | `building.gd` + `game_manager.gd` |
 | WCS-014~016 | 采集循环 + Shift 队列 | P1 | Todo | `unit.gd` + `game_manager.gd` |
 | WCS-017~020 | UI与边界规则 | P1 | Todo | `rts_hud.gd` + 相关核心脚本 |
