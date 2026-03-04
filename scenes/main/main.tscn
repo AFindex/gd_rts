@@ -41,6 +41,174 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, -2)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0, -2)
 team_id = 2
 
+[node name="WorkerA2" parent="Units" unique_id=891480593 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.7429066, 3.8146973e-06, -13.813339)
+is_worker = true
+
+[node name="WorkerB2" parent="Units" unique_id=2021709687 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.7429066, 3.8146973e-06, -12.813339)
+is_worker = true
+
+[node name="WorkerC2" parent="Units" unique_id=1527367280 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.7429066, 3.8146973e-06, -10.813339)
+is_worker = true
+
+[node name="WorkerA3" parent="Units" unique_id=873281819 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3844347, 0, 5.1576996)
+is_worker = true
+
+[node name="WorkerB3" parent="Units" unique_id=650276575 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.3844347, 0, 6.1576996)
+is_worker = true
+
+[node name="WorkerC3" parent="Units" unique_id=1420058558 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3844347, 0, 8.1577)
+is_worker = true
+
+[node name="WorkerA4" parent="Units" unique_id=398429407 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 13.127341, 3.8146973e-06, -6.6556396)
+is_worker = true
+
+[node name="WorkerB4" parent="Units" unique_id=1707238547 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.127341, 3.8146973e-06, -5.6556396)
+is_worker = true
+
+[node name="WorkerC4" parent="Units" unique_id=670407074 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14.127341, 3.8146973e-06, -3.6556396)
+is_worker = true
+
+[node name="WorkerA5" parent="Units" unique_id=85270016 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.877602, 0, -3.1021767)
+is_worker = true
+
+[node name="WorkerB5" parent="Units" unique_id=2106856348 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.877602, 0, -2.1021767)
+is_worker = true
+
+[node name="WorkerC5" parent="Units" unique_id=2004222228 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.877602, 0, -0.102176666)
+is_worker = true
+
+[node name="WorkerA6" parent="Units" unique_id=1294318258 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.13469553, 3.8146973e-06, -14.915516)
+is_worker = true
+
+[node name="WorkerB6" parent="Units" unique_id=1941753990 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.8653045, 3.8146973e-06, -13.915516)
+is_worker = true
+
+[node name="WorkerC6" parent="Units" unique_id=1248168218 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.86530447, 3.8146973e-06, -11.915516)
+is_worker = true
+
+[node name="WorkerA7" parent="Units" unique_id=1353411319 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.4931674, 0, 4.055523)
+is_worker = true
+
+[node name="WorkerB7" parent="Units" unique_id=857112868 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.4931674, 0, 5.055523)
+is_worker = true
+
+[node name="WorkerC7" parent="Units" unique_id=404307448 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.4931674, 0, 7.055523)
+is_worker = true
+
+[node name="WorkerA8" parent="Units" unique_id=1160628764 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.249739, 3.8146973e-06, -7.7578163)
+is_worker = true
+
+[node name="WorkerB8" parent="Units" unique_id=1077490959 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.249739, 3.8146973e-06, -6.7578163)
+is_worker = true
+
+[node name="WorkerC8" parent="Units" unique_id=114811004 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.249739, 3.8146973e-06, -4.7578163)
+is_worker = true
+
+[node name="WorkerA9" parent="Units" unique_id=751734457 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.277078, 3.8146973e-06, -15.591476)
+is_worker = true
+
+[node name="WorkerB9" parent="Units" unique_id=687213350 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.277077, 3.8146973e-06, -14.591476)
+is_worker = true
+
+[node name="WorkerC9" parent="Units" unique_id=1301837512 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.277077, 3.8146973e-06, -12.591476)
+is_worker = true
+
+[node name="WorkerA10" parent="Units" unique_id=1381253286 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.918606, 0, 3.3795624)
+is_worker = true
+
+[node name="WorkerB10" parent="Units" unique_id=2098001372 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.918606, 0, 4.3795624)
+is_worker = true
+
+[node name="WorkerC10" parent="Units" unique_id=598452685 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.918606, 0, 6.3795624)
+is_worker = true
+
+[node name="WorkerA11" parent="Units" unique_id=429517268 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22.661512, 3.8146973e-06, -8.433777)
+is_worker = true
+
+[node name="WorkerB11" parent="Units" unique_id=929698837 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24.661512, 3.8146973e-06, -7.433777)
+is_worker = true
+
+[node name="WorkerC11" parent="Units" unique_id=1932587915 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.661512, 3.8146973e-06, -5.433777)
+is_worker = true
+
+[node name="WorkerA12" parent="Units" unique_id=696357611 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.3434305, 0, -4.880314)
+is_worker = true
+
+[node name="WorkerB12" parent="Units" unique_id=458362912 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.34343052, 0, -3.8803139)
+is_worker = true
+
+[node name="WorkerC12" parent="Units" unique_id=393265526 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.3434305, 0, -1.8803139)
+is_worker = true
+
+[node name="WorkerA13" parent="Units" unique_id=5012579 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.399475, 3.8146973e-06, -16.693653)
+is_worker = true
+
+[node name="WorkerB13" parent="Units" unique_id=2001975939 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.399475, 3.8146973e-06, -15.693653)
+is_worker = true
+
+[node name="WorkerC13" parent="Units" unique_id=2039563489 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.399475, 3.8146973e-06, -13.693653)
+is_worker = true
+
+[node name="WorkerA14" parent="Units" unique_id=878135472 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.0410037, 0, 2.2773857)
+is_worker = true
+
+[node name="WorkerB14" parent="Units" unique_id=2076449749 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.0410037, 0, 3.2773857)
+is_worker = true
+
+[node name="WorkerC14" parent="Units" unique_id=1356800892 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.0410037, 0, 5.2773857)
+is_worker = true
+
+[node name="WorkerA15" parent="Units" unique_id=231357156 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.78391, 3.8146973e-06, -9.5359535)
+is_worker = true
+
+[node name="WorkerB15" parent="Units" unique_id=336287300 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 18.783909, 3.8146973e-06, -8.5359535)
+is_worker = true
+
+[node name="WorkerC15" parent="Units" unique_id=800018107 instance=ExtResource("3_unit")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.783909, 3.8146973e-06, -6.5359535)
+is_worker = true
+
 [node name="Buildings" type="Node3D" parent="." unique_id=582541461]
 
 [node name="MainBase" parent="Buildings" unique_id=973704050 instance=ExtResource("4_building")]

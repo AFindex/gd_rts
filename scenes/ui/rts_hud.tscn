@@ -218,6 +218,77 @@ self_modulate = Color(1, 1, 1, 0)
 custom_minimum_size = Vector2(0, 84)
 layout_mode = 2
 
+[node name="ControlGroupBar" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 52.0
+offset_right = -8.0
+offset_bottom = -8.0
+theme_override_constants/separation = 4
+
+[node name="ControlGroupButton0" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton1" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton2" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton3" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton4" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton5" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton6" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton7" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton8" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
+[node name="ControlGroupButton9" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+
 [node name="QueuePanel" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn" unique_id=2129553495]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -325,32 +396,30 @@ size_flags_vertical = 3
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="MatrixGrid" type="GridContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent" unique_id=1818788423]
+[node name="MatrixBody" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
 layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+
+[node name="MatrixFooter" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1831428208]
+visible = false
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 4
+
+[node name="MatrixPageButtons" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody/MatrixFooter"]
+layout_mode = 2
+size_flags_horizontal = 1
+theme_override_constants/separation = 4
+
+[node name="MatrixGrid" type="GridContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1818788423]
+layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
 columns = 8
-
-[node name="MatrixFooter" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent" unique_id=1831428208]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="PrevPageButton" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter" unique_id=232123090]
-layout_mode = 2
-disabled = true
-text = "<"
-
-[node name="MatrixPageText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter" unique_id=1254583503]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Page 1/1"
-horizontal_alignment = 1
-
-[node name="NextPageButton" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixFooter" unique_id=475182341]
-layout_mode = 2
-disabled = true
-text = ">"
 
 [node name="PortraitColumn" type="VBoxContainer" parent="BottomHUD/BottomRow" unique_id=450057549]
 self_modulate = Color(1, 1, 1, 0)
@@ -414,6 +483,7 @@ layout_mode = 2
 theme_override_constants/separation = 6
 
 [node name="SubgroupText" type="Label" parent="BottomHUD/BottomRow/CommandPanel/CommandContent" unique_id=1993498507]
+visible = false
 layout_mode = 2
 text = "Subgroup -"
 

@@ -45,12 +45,14 @@
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增同类双击选择（屏幕内）与 `Ctrl+双击` 全图同类选择（按精确单位类型）。
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增编组设置地面反馈（单位/建筑头顶短时数字标识）。
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增多选矩阵分页（`PgUp/PgDn`）与子组联动页签定位。
-- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增 HUD 多选矩阵点击切换子组（再次点击同类可回到All）。
-- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增子组条数据下发、子组条点击切换与矩阵页按钮（上一页/下一页）事件接入。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增 HUD 编组条数据下发与点击选组事件接入（QueueTopSpacer）。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，矩阵分页新增“按页码直达”事件（替代上一页/下一页）。
 - 改造：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，多选矩阵对当前激活子组做高亮描边（子组UI联动基础版）。
 - 改造：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，多选矩阵支持按单元类型高亮匹配（避免仅靠角色文案推断）。
-- 改造：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，命令区新增可点击子组条（ALL/W/S计数）并支持激活态高亮。
-- 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，子组条间距改为 `add_theme_constant_override`，修复 `HBoxContainer.theme_override_constants` 运行时报错。
+- 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，QueueTopSpacer 改为编组条（0-9 预置按钮），运行时仅更新透明度与文案。
+- 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，MatrixFooter 改为 MatrixGrid 左侧页码列（每页独立按钮）。
+- 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，MatrixFooter 宽度收敛为单按钮级，分页按钮统一固定宽度并按 `1..N` 直达。
+- 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，编组条间距改为 `add_theme_constant_override`，修复 `HBoxContainer.theme_override_constants` 运行时报错。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 
@@ -68,8 +70,9 @@
 12. 子组切换后 HUD 多选矩阵：当前子组对应的单位格子边框应高亮。
 13. 选中单位后按 `Ctrl+数字`/`Shift+数字`：对应单位/建筑头顶应短时显示该数字标识。
 14. 多选数量超过24时按 `PgUp/PgDn`：多选矩阵应切页；`Ctrl+Tab` 切子组时应自动跳到该子组所在页。
-15. 多选矩阵中点击 `W/S` 格子：应切换到对应子组；再次点击同类型格子应回到 `All`。
-16. 命令区子组条点击 `ALL/W/S`：应切换到对应子组（含回到 `ALL`）；矩阵底部 `<` `>` 按钮应能切换分页。
+15. QueueTopSpacer 编组条：仅已有编组的按钮显示不透明（其余透明占位）；点击某数字按钮应选中对应编组。
+16. 多选矩阵分页：当页数 `<=1` 隐藏左侧分页列；当页数 `>1` 显示每一页独立按钮（1..N），点击后直达该页。
+17. MatrixFooter 布局：应位于 MatrixGrid 左侧，宽度接近一个普通按钮宽度，不再显示 `prev/next`。
 
 ---
 
@@ -95,7 +98,7 @@
 - 右键智能判定链已落地基础版（含交付、跟随、集结点）；仍缺“按住右键预览、维修/治疗分支、错误音效”。
 - 单位命令队列已支持基础排队、路径点可视化、上限控制、`Alt+LMB` 删除后续；仍缺插入编辑（`Ctrl+Shift+LMB`）与更完整规则。
 - 集结点已支持多跳中继（最多3跳）、基础可视化、受击闪烁警示、目标失效地面回退、模式字母旗帜与基础提示音；仍缺专业图标资源与更完整音效体系。
-- 已有编组、子组、同类双击、编组数字地标、多选分页与子组条点击交互；功能闭环完成，后续可选做“头像化”展示优化。
+- 已有编组、子组、同类双击、编组数字地标；HUD层已调整为“QueueTopSpacer 编组条 + Matrix 左侧页码列”，后续可继续打磨图标与视觉风格。
 - 无光标状态机、范围圈、音效反馈、网络预测回滚。
 
 ---
@@ -114,7 +117,7 @@
 | 4.4 建造放置      | 部分实现 | 已支持虚影预览、合法红绿、旋转、连续放置、工人到位后开建（基础版）                                        | 缺间距数值、范围圈、建造中断策略与多建造者加速规则                   |
 | 4.5 集结点系统     | 部分实现 | 已支持生产建筑RMB设置集结（地面/资源/攻击/跟随/中继），`Shift+RMB` 追加最多3跳，并在出生后按跳点顺序执行；含连线+旗帜可视化、受击闪烁、目标失效回退、`M/G/A/F/R` 字母标识与基础提示音 | 缺专业图标资源与更完整音效体系                      |
 | 4.6 命令队列系统    | 部分实现 | 已支持单位命令排队 + 路径点编号可视化 + 队列上限32 + Alt删除后续                                  | 缺 Ctrl+Shift插入编辑、完整混合编辑规则与UI层队列面板联动         |
-| 4.7 选中与群组     | 部分实现 | 已支持单选/框选/混选基础 + 控制编组（设置/追加/选中/双击聚焦）+ 编组数字地标 + `Ctrl+Tab` 子组循环与子组指令控制 + 双击同类/`Ctrl+双击` 全图同类 + 子组矩阵高亮 + 多选分页（PgUp/PgDn） + 命令区子组条点击切换 | 仍缺“头像化”美术展示（功能非阻塞） |
+| 4.7 选中与群组     | 部分实现 | 已支持单选/框选/混选基础 + 控制编组（设置/追加/选中/双击聚焦）+ 编组数字地标 + QueueTopSpacer 编组条点击选组 + `Ctrl+Tab` 子组循环与子组指令控制 + 双击同类/`Ctrl+双击` 全图同类 + 子组矩阵高亮 + 多选分页（PgUp/PgDn + 左侧页码按钮） | 仍缺“头像化”美术展示（功能非阻塞） |
 | 5 视觉与反馈规范     | 部分实现 | 选择框、选中圈、建造虚影着色、HUD提示                                                     | 缺光标状态表、施法/射程范围圈、指令音效                        |
 | 6 边界与异常处理     | 部分实现 | 目标失效后部分回退、资源与训练前置检查                                                      | 缺资源枯竭自动换矿、卡死重算、网络预测回滚                       |
 | 7 配置化参数       | 部分实现 | 已有一部分常量和导出变量                                                             | 缺 PRD 参数全集与统一配置入口                           |
@@ -233,7 +236,7 @@
 | A-005 | 智能右键优先级链               | P0  | 已完成（基础版） | 已接入优先级链与邻域冲突判定，预览与维修分支待补                          |
 | A-006 | 建造旋转与连续建造              | P1  | 已完成（基础版） | 已支持旋转/连续放置/工人到位开建；高级规则后续在边界项补齐                    |
 | A-007 | 集结点系统（地面/资源/攻击）        | P1  | 进行中（增强版） | 已支持3跳中继、`Shift+RMB` 追加、连线旗帜可视化、受击闪烁、目标失效回退、`M/G/A/F/R` 字母标识、基础提示音与出生按链执行，待补专业图标资源与更完整音效 |
-| A-008 | 控制编组与子组切换              | P1  | 已完成（增强版） | 已支持 Ctrl设组/Shift追加/数字选组与双击聚焦，已支持编组数字地标，已支持 Ctrl+Tab 子组轮换与子组指令控制，已支持双击同类/`Ctrl+双击` 全图同类、子组矩阵高亮、PgUp/PgDn 多选分页、矩阵点击切换与命令区子组条点击切换 |
+| A-008 | 控制编组与子组切换              | P1  | 已完成（增强版） | 已支持 Ctrl设组/Shift追加/数字选组与双击聚焦，已支持编组数字地标与 QueueTopSpacer 编组条点击选组，已支持 Ctrl+Tab 子组轮换与子组指令控制，已支持双击同类/`Ctrl+双击` 全图同类、子组矩阵高亮、PgUp/PgDn 多选分页与左侧页码按钮直达 |
 | A-009 | 队列插入编辑（Ctrl+Shift+LMB） | P1  | Hold     | 依据当前指令，暂缓实现                                       |
 
 
