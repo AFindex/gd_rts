@@ -1577,7 +1577,6 @@ func _refresh_subgroup_state(reset_to_all: bool = false) -> void:
 	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
 	if subgroup_keys.size() <= 1:
 		_active_subgroup_index = -1
-		_multi_matrix_page_index = 0
 		return
 	if reset_to_all:
 		_active_subgroup_index = -1
@@ -2611,6 +2610,7 @@ func _select_same_multi_role_kind(entry_kind: String) -> int:
 	var kind_key: String = entry_kind.strip_edges().to_lower()
 	if kind_key == "":
 		return 0
+	var previous_page_index: int = _multi_matrix_page_index
 
 	var matched_units: Array[Node] = []
 	for selected_unit in _selected_units:
@@ -2637,7 +2637,9 @@ func _select_same_multi_role_kind(entry_kind: String) -> int:
 		_add_selected_unit(matched_unit)
 	for matched_building in matched_buildings:
 		_add_selected_building(matched_building)
-	_refresh_subgroup_state(true)
+	_refresh_subgroup_state()
+	var page_count: int = _multi_role_page_count()
+	_multi_matrix_page_index = clampi(previous_page_index, 0, page_count - 1)
 	return matched_units.size() + matched_buildings.size()
 
 func _remove_multi_role_entry_from_selection(target_node: Node) -> bool:

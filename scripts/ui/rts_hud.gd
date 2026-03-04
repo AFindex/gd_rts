@@ -512,10 +512,7 @@ func _apply_bottom_helper_mouse_filters() -> void:
 			control.mouse_filter = Control.MOUSE_FILTER_STOP
 			continue
 		if _is_queue_control_group_ui(control):
-			if control == _queue_top_spacer or control == _control_group_bar:
-				control.mouse_filter = Control.MOUSE_FILTER_PASS
-			else:
-				control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			continue
 		if _is_bottom_layout_helper(control):
 			control.mouse_filter = Control.MOUSE_FILTER_IGNORE

@@ -54,6 +54,8 @@
 - 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，MatrixFooter 宽度收敛为单按钮级，分页按钮统一固定宽度并按 `1..N` 直达。
 - 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，编组条间距改为 `add_theme_constant_override`，修复 `HBoxContainer.theme_override_constants` 运行时报错。
 - 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，矩阵格子交互改为选择语义：`LMB` 单独选中该格对象、`Shift+LMB` 选中当前选择内同类型、`Ctrl+LMB` 从当前选择剔除该格对象；子组循环快捷键改为 `Tab`。
+- 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，修正多选同类型分页在状态刷新时被重置到第一页的问题（子组状态刷新不再每帧强制清零分页）。
+- 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，QueueTopSpacer/ControlGroupBar 透明容器改为鼠标穿透，恢复透明区域内框选响应。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 
@@ -75,6 +77,8 @@
 16. QueueTopSpacer 编组条：仅已有编组的按钮显示不透明（其余透明占位）；点击某数字按钮应选中对应编组。
 17. 多选矩阵分页：当页数 `<=1` 隐藏左侧分页列；当页数 `>1` 显示每一页独立按钮（1..N），点击后直达该页。
 18. MatrixFooter 布局：应位于 MatrixGrid 左侧，宽度接近一个普通按钮宽度，不再显示 `prev/next`。
+19. 选中大量同类型单位并切到第2页及以后：在无选择变更的状态刷新过程中，分页不应自动跳回第1页。
+20. 在 QueueTopSpacer 的透明区域（非按钮）按住左键拖拽：应正常触发框选，不被透明控件拦截。
 
 ---
 
