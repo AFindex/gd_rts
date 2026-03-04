@@ -115,6 +115,7 @@ var _last_click_time_sec: float = -100.0
 var _ui_notice_text: String = ""
 var _ui_notice_timer: float = 0.0
 var _pending_build_orders: Array[Dictionary] = []
+var _pending_construction_resume_orders: Array[Dictionary] = []
 
 func _ready() -> void:
 	add_to_group("game_manager")
@@ -180,6 +181,7 @@ func _process(delta: float) -> void:
 	_drain_execution_queue()
 	_process_queue_feedback(delta)
 	_process_pending_build_orders(delta)
+	_process_pending_construction_resume_orders(delta)
 	_process_pending_construction_ghosts(delta)
 	if _placing_building:
 		_update_placement_preview()
@@ -831,6 +833,15 @@ func _set_ui_notice(text: String, duration: float = 1.4) -> void:
 	_ui_notice_text = text
 	_ui_notice_timer = maxf(0.0, duration)
 
+func _on_worker_queue_transition(_worker_node: Node, event_type: String) -> void:
+	match event_type:
+		"queued_checkpoint":
+			_set_ui_notice("Worker queue accepted: will switch after current gather/return.", 1.1)
+		"interrupt_checkpoint":
+			_set_ui_notice("Work interrupted: executing queued orders.", 1.0)
+		"interrupt_immediate":
+			_set_ui_notice("Worker switched to queued orders.", 1.0)
+
 func _process_queue_feedback(delta: float) -> void:
 	if _queue_reject_feedback_timer > 0.0:
 		_queue_reject_feedback_timer = maxf(0.0, _queue_reject_feedback_timer - delta)
@@ -859,7 +870,9 @@ func _update_queue_visuals() -> void:
 		_clear_queue_visual_markers()
 		return
 
-	var queue_points_variant: Variant = unit_node.call("get_command_queue_points", true, QUEUE_MARKER_MAX_VISIBLE)
+	# Queue markers should visualize queued commands only (Shift queue),
+	# not the current active/internal command.
+	var queue_points_variant: Variant = unit_node.call("get_command_queue_points", false, QUEUE_MARKER_MAX_VISIBLE)
 	if not (queue_points_variant is Array):
 		_last_queue_visual_signature = ""
 		_clear_queue_visual_markers()
@@ -1129,6 +1142,9 @@ func _cancel_pending_construction_for_worker(worker_node: Node, reason: String =
 		if ghost_id >= 0:
 			_remove_pending_construction_ghost(ghost_id)
 			changed = true
+
+	if _cancel_pending_construction_resume_for_worker(worker_node, reason):
+		changed = true
 
 	if not changed:
 		return false
@@ -3091,6 +3107,8 @@ func _issue_context_command(screen_pos: Vector2, queue_command: bool = false) ->
 			_issue_return_command_to_dropoff(resolved_target, queue_command)
 		"follow":
 			_issue_follow_command(resolved_target, queue_command)
+		"resume_construction":
+			_issue_resume_construction_command(resolved_target, queue_command)
 		"rally":
 			_apply_rally_point_command(resolved, screen_pos, queue_command)
 			_refresh_hint_label()
@@ -3131,6 +3149,10 @@ func _resolve_smart_context_command(screen_pos: Vector2) -> Dictionary:
 	var follow_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "follow")
 	if follow_target != null:
 		return {"command": "follow", "target": follow_target}
+
+	var resume_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "resume_construction")
+	if resume_target != null:
+		return {"command": "resume_construction", "target": resume_target}
 
 	return {"command": "move"}
 
@@ -3213,6 +3235,26 @@ func _smart_candidate_matches(node: Node3D, filter_mode: String) -> bool:
 			return _selection_has_worker_cargo() and _is_player_dropoff_node(node)
 		"follow":
 			return not _selected_units.is_empty() and node.is_in_group("selectable_unit") and _is_player_owned(node)
+		"resume_construction":
+			if not node.is_in_group("selectable_building") or not _is_player_owned(node):
+				return false
+			if not node.has_method("is_under_construction") or not bool(node.call("is_under_construction")):
+				return false
+			if not node.has_method("get_construction_paradigm"):
+				return false
+			if str(node.call("get_construction_paradigm")).strip_edges().to_lower() != "garrisoned":
+				return false
+			if not node.has_method("is_construction_paused") or not bool(node.call("is_construction_paused")):
+				return false
+			for unit_node in _command_units():
+				if unit_node == null or not is_instance_valid(unit_node):
+					continue
+				if not unit_node.has_method("is_worker_unit") or not bool(unit_node.call("is_worker_unit")):
+					continue
+				if unit_node.has_method("is_construction_locked") and bool(unit_node.call("is_construction_locked")):
+					continue
+				return true
+			return false
 		"rally_enemy":
 			return _is_attackable_enemy(node)
 		"rally_resource":
@@ -3447,6 +3489,153 @@ func _issue_stop_command(queue_command: bool = false) -> void:
 	for unit_node in _command_units():
 		var stop_command: RTSCommand = RTS_COMMAND.make_stop(queue_command)
 		_schedule_unit_command(unit_node, stop_command)
+
+func _is_valid_garrisoned_paused_site(node: Node) -> bool:
+	if node == null or not is_instance_valid(node):
+		return false
+	if not node.is_in_group("selectable_building"):
+		return false
+	if not _is_player_owned(node):
+		return false
+	if not node.has_method("is_under_construction") or not bool(node.call("is_under_construction")):
+		return false
+	if not node.has_method("get_construction_paradigm"):
+		return false
+	if str(node.call("get_construction_paradigm")).strip_edges().to_lower() != "garrisoned":
+		return false
+	if not node.has_method("is_construction_paused") or not bool(node.call("is_construction_paused")):
+		return false
+	return true
+
+func _nearest_available_worker_for_construction(target_position: Vector3) -> Node3D:
+	var nearest: Node3D = null
+	var best_distance_sq: float = INF
+	for unit_node in _command_units():
+		var unit_3d: Node3D = unit_node as Node3D
+		if unit_3d == null or not is_instance_valid(unit_3d):
+			continue
+		if not unit_3d.has_method("is_worker_unit") or not bool(unit_3d.call("is_worker_unit")):
+			continue
+		if unit_3d.has_method("is_construction_locked") and bool(unit_3d.call("is_construction_locked")):
+			continue
+		var distance_sq: float = unit_3d.global_position.distance_squared_to(target_position)
+		if nearest == null or distance_sq < best_distance_sq:
+			nearest = unit_3d
+			best_distance_sq = distance_sq
+	return nearest
+
+func _schedule_construction_resume_order(worker_node: Node3D, site_node: Node3D, queue_command: bool = false) -> bool:
+	if worker_node == null or not is_instance_valid(worker_node):
+		return false
+	if site_node == null or not is_instance_valid(site_node):
+		return false
+	if not _is_valid_garrisoned_paused_site(site_node):
+		return false
+	var worker_path: NodePath = worker_node.get_path()
+	var site_path: NodePath = site_node.get_path()
+	_cancel_pending_construction_resume_for_worker(worker_node, "replace")
+	for order_value in _pending_construction_resume_orders:
+		if not (order_value is Dictionary):
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var existing_site_path: NodePath = order.get("site_path", NodePath("")) as NodePath
+		if existing_site_path == site_path:
+			return false
+	var target_position: Vector3 = site_node.global_position
+	_pending_construction_resume_orders.append({
+		"worker_path": worker_path,
+		"site_path": site_path,
+		"position": target_position,
+		"queue_command": queue_command,
+		"move_repath_timer": 0.0
+	})
+	var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, queue_command)
+	move_command.payload["internal_build_order"] = true
+	_schedule_unit_command(worker_node, move_command)
+	return true
+
+func _cancel_pending_construction_resume_for_worker(worker_node: Node, _reason: String = "override") -> bool:
+	if worker_node == null or not is_instance_valid(worker_node):
+		return false
+	var worker_path: NodePath = worker_node.get_path()
+	var changed: bool = false
+	for i in range(_pending_construction_resume_orders.size() - 1, -1, -1):
+		var order_value: Variant = _pending_construction_resume_orders[i]
+		if not (order_value is Dictionary):
+			_pending_construction_resume_orders.remove_at(i)
+			changed = true
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var order_worker_path: NodePath = order.get("worker_path", NodePath("")) as NodePath
+		if order_worker_path != worker_path:
+			continue
+		_pending_construction_resume_orders.remove_at(i)
+		changed = true
+	return changed
+
+func _issue_resume_construction_command(site_node: Node3D, queue_command: bool = false) -> void:
+	if not _is_valid_garrisoned_paused_site(site_node):
+		return
+	var worker_node: Node3D = _nearest_available_worker_for_construction(site_node.global_position)
+	if worker_node == null:
+		_set_ui_notice("No available worker to resume construction.", 1.0)
+		_play_feedback_tone("error")
+		return
+	if not _schedule_construction_resume_order(worker_node, site_node, queue_command):
+		return
+	_set_ui_notice("Worker assigned to resume construction.", 1.0)
+	_play_feedback_tone("follow")
+
+func _process_pending_construction_resume_orders(delta: float) -> void:
+	if _pending_construction_resume_orders.is_empty():
+		return
+	for i in range(_pending_construction_resume_orders.size() - 1, -1, -1):
+		var order_value: Variant = _pending_construction_resume_orders[i]
+		if not (order_value is Dictionary):
+			_pending_construction_resume_orders.remove_at(i)
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var worker_path: NodePath = order.get("worker_path", NodePath("")) as NodePath
+		var site_path: NodePath = order.get("site_path", NodePath("")) as NodePath
+		var worker_node: Node3D = get_node_or_null(worker_path) as Node3D
+		var site_node: Node3D = get_node_or_null(site_path) as Node3D
+		if worker_node == null or not is_instance_valid(worker_node):
+			_pending_construction_resume_orders.remove_at(i)
+			continue
+		if worker_node.has_method("is_construction_locked") and bool(worker_node.call("is_construction_locked")):
+			_pending_construction_resume_orders.remove_at(i)
+			continue
+		if site_node == null or not is_instance_valid(site_node):
+			_pending_construction_resume_orders.remove_at(i)
+			continue
+		if not _is_valid_garrisoned_paused_site(site_node):
+			_pending_construction_resume_orders.remove_at(i)
+			continue
+		var target_position: Vector3 = site_node.global_position
+		var queue_mode: bool = bool(order.get("queue_command", false))
+		if worker_node.global_position.distance_to(target_position) > BUILD_ORDER_START_DISTANCE:
+			if not queue_mode:
+				var repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
+				if repath_timer <= 0.0:
+					repath_timer = BUILD_ORDER_MOVE_REFRESH
+					var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+					move_command.payload["internal_build_order"] = true
+					_schedule_unit_command(worker_node, move_command)
+				order["move_repath_timer"] = repath_timer
+			_pending_construction_resume_orders[i] = order
+			continue
+		var resumed: bool = false
+		if site_node.has_method("assign_construction_worker"):
+			resumed = bool(site_node.call("assign_construction_worker", worker_node))
+		if not resumed:
+			_pending_construction_resume_orders.remove_at(i)
+			continue
+		_bind_worker_to_construction(worker_node, site_node, "garrisoned")
+		var stop_command: RTSCommand = RTS_COMMAND.make_stop(false)
+		stop_command.payload["internal_build_order"] = true
+		_schedule_unit_command(worker_node, stop_command)
+		_set_ui_notice("Construction resumed.", 1.0)
+		_pending_construction_resume_orders.remove_at(i)
 
 func _selected_construction_sites() -> Array[Node]:
 	var sites: Array[Node] = []
@@ -3937,6 +4126,8 @@ func _bind_worker_to_construction(builder_node: Node3D, site_node: Node3D, parad
 			_selected_units.erase(builder_node)
 			if builder_node.has_method("set_selected"):
 				builder_node.call("set_selected", false)
+	elif normalized == "summoning":
+		builder_node.call("enter_construction_lock", "cast", site_path, false)
 	else:
 		if builder_node.has_method("exit_construction_lock"):
 			builder_node.call("exit_construction_lock")
@@ -4102,6 +4293,10 @@ func _on_building_construction_state_changed(event_type: String, payload: Dictio
 		return
 	var worker_path: NodePath = payload.get("worker_path", NodePath("")) as NodePath
 	match event_type:
+		"summoning_cast_complete":
+			_release_worker_from_construction(worker_path)
+			_set_ui_notice("Summoning cast complete: worker released.", 1.0)
+			_refresh_hint_label()
 		"completed":
 			_release_worker_from_construction(worker_path)
 			_refresh_hint_label()

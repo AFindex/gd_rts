@@ -60,6 +60,12 @@
 - 改造：[scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，新增施工中 Site 状态机与施工专用命令卡出口（Exit/Cancel/Select Worker）。
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，Worker Build 从“到点后二次计时生成建筑”切为“到点即生成 Site 并自推进”，并接入施工命令执行与返还逻辑（75%）。
 - 改造：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd)，新增驻守/献祭建造锁定、献祭隐藏重现、施工命令技能定义。
+- 改造：[scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd) + [scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增 A 范式施法阶段（Cast）与工人硬锁；施法完成触发 `summoning_cast_complete` 后释放工人并进入自动建造阶段。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增暂停驻守 Site 的右键智能恢复建造（`resume_construction`），由最近可用农民接单并到点恢复驻守施工。
+- 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，恢复建造挂单加入统一取消链（Stop/覆盖命令），并限制“同一站点仅一个恢复挂单”，避免重复派工。
+- 改造：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增采集循环与 Shift 队列断点交互：采集中/回收中延迟到资源状态节点切换队列，前往采集点途中立即切到队列命令，并接入“工作中断”HUD提示文案（基础版）。
+- 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，队列路径点改为仅显示 Shift 队列命令（不再包含 active/internal 命令），并过滤 `STOP` 点位，修复“建造时无队列也出现路径点且首点在原点”的问题。
+- 验证：执行 `godot --headless --path d:\\Godot\\projs\\gd_rts --quit --verbose`，当前无脚本解析错误。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 

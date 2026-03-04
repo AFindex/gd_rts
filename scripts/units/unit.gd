@@ -39,6 +39,7 @@ enum UnitMode {
 
 enum ConstructionLockMode {
 	NONE,
+	CAST,
 	GARRISONED,
 	INCORPORATED,
 }
@@ -72,6 +73,7 @@ var _construction_lock_mode: int = ConstructionLockMode.NONE
 var _construction_lock_building_path: NodePath = NodePath("")
 var _default_collision_layer: int = 0
 var _construction_hidden: bool = false
+var _defer_queue_until_worker_cycle_checkpoint: bool = false
 
 signal command_queue_changed
 
@@ -111,6 +113,8 @@ func get_unit_kind() -> String:
 	return "worker" if is_worker else "soldier"
 
 func get_skill_ids() -> Array[String]:
+	if _construction_lock_mode == ConstructionLockMode.CAST:
+		return []
 	if _construction_lock_mode == ConstructionLockMode.GARRISONED:
 		return ["construction_exit"]
 	if _construction_lock_mode == ConstructionLockMode.INCORPORATED:
@@ -125,6 +129,8 @@ func is_construction_locked() -> bool:
 
 func get_construction_lock_mode() -> String:
 	match _construction_lock_mode:
+		ConstructionLockMode.CAST:
+			return "cast"
 		ConstructionLockMode.GARRISONED:
 			return "garrisoned"
 		ConstructionLockMode.INCORPORATED:
@@ -137,7 +143,9 @@ func get_construction_building_path() -> NodePath:
 
 func enter_construction_lock(mode: String, building_path: NodePath = NodePath(""), hide_unit: bool = false) -> void:
 	var normalized_mode: String = mode.strip_edges().to_lower()
-	if normalized_mode == "incorporated":
+	if normalized_mode == "cast":
+		_construction_lock_mode = ConstructionLockMode.CAST
+	elif normalized_mode == "incorporated":
 		_construction_lock_mode = ConstructionLockMode.INCORPORATED
 	elif normalized_mode == "garrisoned":
 		_construction_lock_mode = ConstructionLockMode.GARRISONED
@@ -155,6 +163,7 @@ func enter_construction_lock(mode: String, building_path: NodePath = NodePath(""
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
 	_gather_timer = 0.0
+	_defer_queue_until_worker_cycle_checkpoint = false
 	_reset_navigation_motion()
 	if hide_unit:
 		_set_construction_hidden(true)
@@ -164,6 +173,7 @@ func enter_construction_lock(mode: String, building_path: NodePath = NodePath(""
 func exit_construction_lock() -> void:
 	_construction_lock_mode = ConstructionLockMode.NONE
 	_construction_lock_building_path = NodePath("")
+	_defer_queue_until_worker_cycle_checkpoint = false
 	_set_construction_hidden(false)
 
 func get_mode_label() -> String:
@@ -221,7 +231,7 @@ func submit_command(command: RefCounted) -> bool:
 	if rts_command.payload is Dictionary:
 		is_internal_build_order = bool(rts_command.payload.get("internal_build_order", false))
 
-	if _construction_lock_mode == ConstructionLockMode.INCORPORATED and not is_internal_build_order:
+	if (_construction_lock_mode == ConstructionLockMode.INCORPORATED or _construction_lock_mode == ConstructionLockMode.CAST) and not is_internal_build_order:
 		return false
 	if _construction_lock_mode == ConstructionLockMode.GARRISONED and not is_internal_build_order and not rts_command.is_queue_command:
 		rts_command.is_queue_command = true
@@ -230,11 +240,13 @@ func submit_command(command: RefCounted) -> bool:
 		if not can_enqueue_command():
 			return false
 		_command_queue.append(rts_command)
-		if _active_command == null:
+		_update_worker_queue_hold_after_enqueue()
+		if _active_command == null and not _should_delay_queued_command_start():
 			_start_next_queued_command()
 		_emit_command_queue_changed()
 		return true
 
+	_defer_queue_until_worker_cycle_checkpoint = false
 	_command_queue.clear()
 	_active_command = rts_command
 	_execute_rts_command(rts_command)
@@ -291,6 +303,7 @@ func remove_queued_commands_from(visible_index: int) -> bool:
 	return true
 
 func command_move(target: Vector3, preserve_queue: bool = false) -> void:
+	_defer_queue_until_worker_cycle_checkpoint = false
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
@@ -313,6 +326,7 @@ func command_gather(resource_node: Node3D, dropoff_node: Node3D, preserve_queue:
 		return
 	if resource_node == null or dropoff_node == null:
 		return
+	_defer_queue_until_worker_cycle_checkpoint = false
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
@@ -332,6 +346,7 @@ func command_return_to_dropoff(dropoff_node: Node3D, preserve_queue: bool = fals
 		return
 	if dropoff_node == null or not is_instance_valid(dropoff_node):
 		return
+	_defer_queue_until_worker_cycle_checkpoint = false
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
@@ -347,6 +362,7 @@ func command_return_to_dropoff(dropoff_node: Node3D, preserve_queue: bool = fals
 	_move_to(_dropoff_target.global_position)
 
 func command_stop(preserve_queue: bool = false) -> void:
+	_defer_queue_until_worker_cycle_checkpoint = false
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
@@ -372,6 +388,7 @@ func command_attack(target_node: Node3D, preserve_queue: bool = false) -> bool:
 		return false
 	if not _target_is_enemy(target_node):
 		return false
+	_defer_queue_until_worker_cycle_checkpoint = false
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
@@ -391,6 +408,7 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 		return false
 	if attack_damage <= 0.0 or attack_range <= 0.0:
 		return false
+	_defer_queue_until_worker_cycle_checkpoint = false
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
@@ -408,6 +426,8 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 func _process_command_queue() -> void:
 	if _construction_lock_mode != ConstructionLockMode.NONE:
 		return
+	if _defer_queue_until_worker_cycle_checkpoint and _mode != UnitMode.GATHER_RESOURCE and _mode != UnitMode.RETURN_RESOURCE:
+		_defer_queue_until_worker_cycle_checkpoint = false
 	if _active_command != null:
 		var active_command: RTSCommand = _active_command as RTSCommand
 		if active_command == null or _is_command_complete(active_command):
@@ -417,7 +437,49 @@ func _process_command_queue() -> void:
 		return
 	if _command_queue.is_empty():
 		return
+	if _should_delay_queued_command_start():
+		return
 	_start_next_queued_command()
+
+func _should_delay_queued_command_start() -> bool:
+	if not is_worker:
+		return false
+	if not _defer_queue_until_worker_cycle_checkpoint:
+		return false
+	return _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE
+
+func _update_worker_queue_hold_after_enqueue() -> void:
+	if not is_worker:
+		return
+	var was_deferred: bool = _defer_queue_until_worker_cycle_checkpoint
+	if _mode == UnitMode.GATHER_RESOURCE:
+		var traveling_to_resource: bool = _has_target
+		if traveling_to_resource and _gather_target != null and is_instance_valid(_gather_target):
+			traveling_to_resource = not _is_near(_gather_target.global_position, gather_range)
+		if traveling_to_resource:
+			_defer_queue_until_worker_cycle_checkpoint = false
+			_stop_worker_cycle(false)
+			_notify_game_manager_worker_queue_transition("interrupt_immediate")
+			return
+		_defer_queue_until_worker_cycle_checkpoint = true
+		if not was_deferred:
+			_notify_game_manager_worker_queue_transition("queued_checkpoint")
+		return
+	if _mode == UnitMode.RETURN_RESOURCE:
+		_defer_queue_until_worker_cycle_checkpoint = true
+		if not was_deferred:
+			_notify_game_manager_worker_queue_transition("queued_checkpoint")
+		return
+	_defer_queue_until_worker_cycle_checkpoint = false
+
+func _notify_game_manager_worker_queue_transition(event_type: String) -> void:
+	if event_type == "":
+		return
+	var game_manager: Node = get_tree().get_first_node_in_group("game_manager")
+	if game_manager == null:
+		return
+	if game_manager.has_method("_on_worker_queue_transition"):
+		game_manager.call("_on_worker_queue_transition", self, event_type)
 
 func _start_next_queued_command() -> void:
 	if _command_queue.is_empty():
@@ -493,6 +555,8 @@ func _execute_rts_command(command: RTSCommand) -> void:
 			command_stop(true)
 
 func _append_queue_point(points: Array[Dictionary], command: RTSCommand, queued: bool) -> void:
+	if command.command_type == RTSCommand.CommandType.STOP:
+		return
 	var position: Vector3 = command.target_position
 	match command.command_type:
 		RTSCommand.CommandType.ATTACK:
@@ -545,6 +609,11 @@ func _process_worker_cycle(delta: float) -> void:
 				var request_amount: int = mini(gather_amount, carry_capacity - _carried_amount)
 				var harvested: int = _harvest_resource(_gather_target, request_amount)
 				_carried_amount += harvested
+				if _defer_queue_until_worker_cycle_checkpoint:
+					_defer_queue_until_worker_cycle_checkpoint = false
+					_stop_worker_cycle(false)
+					_notify_game_manager_worker_queue_transition("interrupt_checkpoint")
+					return
 				if harvested <= 0:
 					if _carried_amount > 0:
 						_switch_to_return_mode()
@@ -566,6 +635,11 @@ func _process_worker_cycle(delta: float) -> void:
 			if _carried_amount > 0:
 				_deposit_to_game_manager(_carried_amount)
 				_carried_amount = 0
+			if _defer_queue_until_worker_cycle_checkpoint:
+				_defer_queue_until_worker_cycle_checkpoint = false
+				_stop_worker_cycle(false)
+				_notify_game_manager_worker_queue_transition("interrupt_checkpoint")
+				return
 			if _gather_target != null and is_instance_valid(_gather_target):
 				_mode = UnitMode.GATHER_RESOURCE
 				_move_to(_gather_target.global_position)
@@ -707,6 +781,7 @@ func _stop_worker_cycle(reset_carry: bool) -> void:
 	_gather_target = null
 	_dropoff_target = null
 	_gather_timer = 0.0
+	_defer_queue_until_worker_cycle_checkpoint = false
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0

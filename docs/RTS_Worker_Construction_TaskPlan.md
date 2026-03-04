@@ -35,6 +35,10 @@
 - 改造：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，新增建造锁定模式（Garrisoned/Incorporated）、驻守期默认队列化（近似默认 Shift）与献祭期隐藏/重现。
 - 改造：[scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd)，新增施工期命令定义（Exit/CancelDestroy/CancelEject/SelectWorker）。
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，接入建造中建筑被摧毁后的工人释放；献祭型按 50%HP 惩罚释放（基础版）。
+- 改造：[scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd) + [scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增 A 范式施法阶段（Cast）与工人硬锁；施法完成后自动释放工人进入 Auto-Build 阶段。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增“暂停的驻守型 Site”右键智能恢复建造（`resume_construction`），并加入挂单轮询与到点恢复绑定。
+- 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，统一把恢复建造挂单纳入 Stop/覆盖命令取消链，避免恢复订单残留或重复派单。
+- 改造：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增工人采集循环与 Shift 队列交互断点：采集中/回收中可延迟到资源状态节点切换队列；前往采集点途中支持立即切出执行队列，并提供“工作中断”HUD提示（基础版）。
 
 ---
 
@@ -145,7 +149,7 @@
 - `WCS-007` 增加 `cancel_construction_and_destroy()` 与统一 75% 返还。  
 状态：`Done`
 - `WCS-008` 增加 B 范式 `exit_construction()`（暂停保留进度，0%返还）。  
-状态：`Done (基础版)`
+状态：`Done (基础版，含右键恢复建造)`
 - `WCS-009` 在 `game_manager.gd` 接入“敌方摧毁=0%返还”的强制摧毁分支。  
 状态：`Done (基础版)`
 
@@ -156,13 +160,13 @@
 ### M3：三范式行为（P0）
 
 - `WCS-010` A 范式：施法阶段锁定 + 自动建造阶段可取消。  
-状态：`Todo`
+状态：`Done (基础版)`
 - `WCS-011` B 范式：worker 驻守锁定；普通指令自动视为队列追加到建造完成后。  
-状态：`Todo`
+状态：`Done (基础版)`
 - `WCS-012` C 范式：worker 内部化（不可选中）；Cancel&Eject 释放 + 75%返还。  
-状态：`Todo`
+状态：`Done (基础版)`
 - `WCS-013` C 范式建筑被毁：worker重现 + 50%HP 惩罚。  
-状态：`Todo`
+状态：`Done (基础版)`
 
 验收（M3）：
 - A/B/C 三种行为可在同局并行复现。
@@ -171,11 +175,11 @@
 ### M4：采集循环与队列交互（P1）
 
 - `WCS-014` `unit.gd` 增加“采集循环断开点”机制：采集中/回收中完成节点后切换到玩家队列。  
-状态：`Todo`
+状态：`Done (基础版)`
 - `WCS-015` 在 `game_manager.gd` 下达 Shift 队列时，为采集worker写入“待中断标记”。  
-状态：`Todo`
+状态：`Done (基础版，unit内持有中断标记)`
 - `WCS-016` 增加“工作中断”HUD提示与队列标记更新。  
-状态：`Todo`
+状态：`Done (基础版，HUD文案提示已接入)`
 
 验收（M4）：
 - 正在采集/回收时 Shift 指令不会丢资源。
@@ -275,7 +279,7 @@
 | WCS-004 | Ghost 可视节点与状态 | P0 | Done (基础版) | `game_manager.gd` |
 | WCS-005 | Ghost 生命周期清理触发器 | P0 | Done (基础版) | `game_manager.gd` |
 | WCS-006~009 | Site/取消层级/强制摧毁分支 | P0 | Done (基础版) | `building.gd` + `game_manager.gd` |
-| WCS-010~013 | 三范式细节深化 | P0 | In Progress | `building.gd` + `game_manager.gd` + `unit.gd` |
-| WCS-014~016 | 采集循环 + Shift 队列 | P1 | Todo | `unit.gd` + `game_manager.gd` |
+| WCS-010~013 | 三范式细节深化 | P0 | Done (基础版) | `building.gd` + `game_manager.gd` + `unit.gd` |
+| WCS-014~016 | 采集循环 + Shift 队列 | P1 | Done (基础版) | `unit.gd` + `game_manager.gd` |
 | WCS-017~020 | UI与边界规则 | P1 | Todo | `rts_hud.gd` + 相关核心脚本 |
 | WCS-021 | 存档一致性 | P2 | Deferred | （待存档框架） |
