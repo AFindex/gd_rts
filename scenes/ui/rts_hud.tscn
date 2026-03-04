@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://rru2owkiha5t"]
 
 [ext_resource type="Script" uid="uid://dc3mwhpnlqn00" path="res://scripts/ui/rts_hud.gd" id="1_script"]
+[ext_resource type="Script" path="res://scripts/ui/rts_minimap_view.gd" id="2_minimap_view"]
 
 [node name="RTSHud" type="Control" unique_id=1555415040]
 layout_mode = 3
@@ -182,12 +183,10 @@ custom_minimum_size = Vector2(0, 132)
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MinimapPlaceholder" type="CenterContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel" unique_id=1991485935]
+[node name="MiniMapView" type="Control" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel"]
 layout_mode = 2
-
-[node name="MinimapText" type="Label" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel/MinimapPlaceholder" unique_id=722036000]
-layout_mode = 2
-text = "Minimap"
+mouse_filter = 0
+script = ExtResource("2_minimap_view")
 
 [node name="BottomButtonRow" type="HBoxContainer" parent="BottomHUD/BottomRow/SelectionPanel/SelectionContent" unique_id=462785217]
 layout_mode = 2

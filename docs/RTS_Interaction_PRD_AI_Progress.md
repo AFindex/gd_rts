@@ -102,6 +102,7 @@
 - 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，底部列宽按容器级分配：`QueueColumn +58`（中型按钮宽）、`CommandColumn -58`、`Portrait` 保持原宽仅右移；并将多选矩阵每行列数 `8 -> 9`，分页容量同步 `24 -> 27`（HUD 与数据分页上限一致）。
 - 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，在上述容器级调整基础上，`QueueContent` 内容层再向右扩一列（`+58`）并将多选矩阵再扩一列（`9 -> 10`），分页容量同步 `27 -> 30`。
 - 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，容器重分配改为与矩阵列数联动：按 `manual_matrix_columns - 8` 自动计算 `QueueColumn` 右扩量（每列 `58`），并等量收窄 `CommandColumn`；`Portrait` 维持原宽仅右移。`QueueContent` 恢复为容器内填充，避免内容层“假扩宽”与容器分配不一致。
+- 新增：[scripts/ui/rts_minimap_view.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_minimap_view.gd) + [scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，落地 BottomHUD 小地图基础版：占位替换为可绘制 minimap（单位/建筑/资源点、镜头框）、HUD 与 GameManager 的 minimap 数据通道、以及小地图左键点击/拖拽导航主相机。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 

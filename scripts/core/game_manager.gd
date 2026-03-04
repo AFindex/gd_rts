@@ -59,6 +59,7 @@ enum InputState {
 @export var debug_selection_hud_max_entries: int = 8
 @export var debug_selection_log_burst_only: bool = true
 @export var debug_selection_log_burst_seconds: float = 1.0
+@export var minimap_update_interval: float = 0.05
 
 var _camera: Camera3D
 var _units_root: Node3D
@@ -92,6 +93,7 @@ var _input_state: int = InputState.IDLE
 var _execution_queue: Array[Dictionary] = []
 
 var _hint_refresh_accum: float = 0.0
+var _minimap_update_accum: float = 0.0
 var _match_rule_check_interval: float = 0.25
 var _match_notify_only: bool = true
 var _match_rule_defs: Array[Dictionary] = []
@@ -151,6 +153,7 @@ func _ready() -> void:
 	_request_navmesh_rebake("startup")
 	_refresh_resource_label()
 	_refresh_hint_label()
+	_push_minimap_update()
 	_refresh_input_state()
 
 func _apply_runtime_config() -> void:
@@ -189,6 +192,10 @@ func _connect_hud_signals() -> void:
 		var matrix_page_callback: Callable = Callable(self , "_on_hud_matrix_page_selected")
 		if not _hud.is_connected("matrix_page_selected", matrix_page_callback):
 			_hud.connect("matrix_page_selected", matrix_page_callback)
+	if _hud.has_signal("minimap_navigate_requested"):
+		var minimap_nav_callback: Callable = Callable(self, "_on_hud_minimap_navigate_requested")
+		if not _hud.is_connected("minimap_navigate_requested", minimap_nav_callback):
+			_hud.connect("minimap_navigate_requested", minimap_nav_callback)
 
 func _process(delta: float) -> void:
 	_drain_execution_queue()
@@ -204,6 +211,7 @@ func _process(delta: float) -> void:
 	_refresh_input_state()
 	_update_queue_visuals()
 	_update_rally_visuals()
+	_process_minimap_update(delta)
 
 	_hint_refresh_accum += delta
 	if _hint_refresh_accum >= 0.2:
@@ -1700,6 +1708,111 @@ func _refresh_resource_label() -> void:
 
 func _refresh_hint_label() -> void:
 	_push_hud_update()
+
+func _process_minimap_update(delta: float) -> void:
+	if _hud == null or not _hud.has_method("update_minimap"):
+		return
+	var refresh_interval: float = maxf(0.02, minimap_update_interval)
+	_minimap_update_accum += delta
+	if _minimap_update_accum < refresh_interval:
+		return
+	_minimap_update_accum = 0.0
+	_push_minimap_update()
+
+func _push_minimap_update() -> void:
+	if _hud == null or not _hud.has_method("update_minimap"):
+		return
+	_hud.call("update_minimap", _build_minimap_snapshot())
+
+func _build_minimap_snapshot() -> Dictionary:
+	var map_half_size: Vector2 = _camera_map_half_size()
+	return {
+		"map_half_size": map_half_size,
+		"player_team_id": PLAYER_TEAM_ID,
+		"camera_position": _camera.global_position if _camera != null else Vector3.ZERO,
+		"camera_half_extent": _estimate_minimap_camera_half_extent(map_half_size),
+		"units": _build_minimap_unit_entries(),
+		"buildings": _build_minimap_building_entries(),
+		"resources": _build_minimap_resource_entries()
+	}
+
+func _build_minimap_unit_entries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if _units_root == null:
+		return result
+	for node in _units_root.get_children():
+		var unit_3d: Node3D = node as Node3D
+		if unit_3d == null or not is_instance_valid(unit_3d):
+			continue
+		if node.has_method("is_alive") and not bool(node.call("is_alive")):
+			continue
+		result.append({
+			"x": unit_3d.global_position.x,
+			"z": unit_3d.global_position.z,
+			"team": _node_team_id(node),
+			"selected": _selected_units.has(node)
+		})
+	return result
+
+func _build_minimap_building_entries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if _buildings_root == null:
+		return result
+	for node in _buildings_root.get_children():
+		var building_3d: Node3D = node as Node3D
+		if building_3d == null or not is_instance_valid(building_3d):
+			continue
+		if node.has_method("is_alive") and not bool(node.call("is_alive")):
+			continue
+		result.append({
+			"x": building_3d.global_position.x,
+			"z": building_3d.global_position.z,
+			"team": _node_team_id(node),
+			"selected": _selected_buildings.has(node)
+		})
+	return result
+
+func _build_minimap_resource_entries() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for node_value in get_tree().get_nodes_in_group("resource_node"):
+		var resource_3d: Node3D = node_value as Node3D
+		if resource_3d == null or not is_instance_valid(resource_3d):
+			continue
+		result.append({
+			"x": resource_3d.global_position.x,
+			"z": resource_3d.global_position.z
+		})
+	return result
+
+func _camera_map_half_size() -> Vector2:
+	if _camera != null:
+		var half_size_value: Variant = _camera.get("map_half_size")
+		if half_size_value is Vector2:
+			var half_size: Vector2 = (half_size_value as Vector2).abs()
+			if half_size.x > 0.0 and half_size.y > 0.0:
+				return half_size
+	return Vector2(58.0, 58.0)
+
+func _estimate_minimap_camera_half_extent(map_half_size: Vector2) -> Vector2:
+	var clamped_half_size: Vector2 = Vector2(maxf(1.0, map_half_size.x), maxf(1.0, map_half_size.y))
+	if _camera == null:
+		return clamped_half_size * 0.2
+	var min_zoom: float = float(_camera.get("min_zoom"))
+	var max_zoom: float = float(_camera.get("max_zoom"))
+	var camera_height: float = _camera.global_position.y
+	var zoom_ratio: float = 0.5
+	if max_zoom - min_zoom > 0.001:
+		zoom_ratio = clampf((camera_height - min_zoom) / (max_zoom - min_zoom), 0.0, 1.0)
+	var extent_ratio: float = lerpf(0.12, 0.32, zoom_ratio)
+	return Vector2(
+		maxf(2.0, clamped_half_size.x * extent_ratio),
+		maxf(2.0, clamped_half_size.y * extent_ratio)
+	)
+
+func _node_team_id(node: Node) -> int:
+	if node != null and node.has_method("get_team_id"):
+		return int(node.call("get_team_id"))
+	return 0
 
 func _push_hud_update() -> void:
 	if _hud == null or not _hud.has_method("update_hud"):
@@ -3324,6 +3437,15 @@ func _on_hud_matrix_page_selected(page_index: int) -> void:
 	_gmhud_log("hud_matrix_page_selected request=%d current=%d" % [page_index, _multi_matrix_page_index], true)
 	if _set_multi_matrix_page(page_index):
 		_refresh_hint_label()
+
+func _on_hud_minimap_navigate_requested(world_position: Vector3) -> void:
+	if _camera == null:
+		return
+	var map_half_size: Vector2 = _camera_map_half_size()
+	var cam_pos: Vector3 = _camera.global_position
+	cam_pos.x = clampf(world_position.x, -map_half_size.x, map_half_size.x)
+	cam_pos.z = clampf(world_position.z, -map_half_size.y, map_half_size.y)
+	_camera.global_position = cam_pos
 
 func _execute_command(command_id: String) -> void:
 	_prune_invalid_selection()

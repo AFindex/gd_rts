@@ -4,6 +4,7 @@ signal command_pressed(command_id: String)
 signal multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_pressed: bool)
 signal control_group_pressed(group_id: int)
 signal matrix_page_selected(page_index: int)
+signal minimap_navigate_requested(world_position: Vector3)
 
 const COMMAND_SLOTS: int = 15
 const MULTI_SLOTS: int = 30
@@ -83,6 +84,8 @@ const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
 @onready var _bottom_hud: Control = $BottomHUD
 @onready var _bottom_row: Control = $BottomHUD/BottomRow
 @onready var _selection_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel
+@onready var _minimap_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel
+@onready var _minimap_view: Control = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel/MiniMapView
 @onready var _queue_column: Control = $BottomHUD/BottomRow/QueueColumn
 @onready var _queue_panel: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel
 @onready var _queue_content: Control = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent
@@ -162,6 +165,7 @@ var _debug_log_burst_until_msec: float = 0.0
 func _ready() -> void:
 	_cache_control_group_buttons()
 	_setup_static_styles()
+	_connect_minimap_view()
 	_configure_bottom_layout_nodes()
 	_apply_bottom_helper_transparency()
 	_apply_bottom_helper_mouse_filters()
@@ -309,6 +313,7 @@ func _apply_default_hud() -> void:
 func _setup_static_styles() -> void:
 	_style_panel(_top_bar, Color(0.03, 0.08, 0.14, 0.92), Color(0.16, 0.42, 0.58, 0.95))
 	_style_panel(_selection_panel, Color(0.06, 0.12, 0.2, 0.88), Color(0.18, 0.42, 0.56, 0.95))
+	_style_panel(_minimap_panel, Color(0.03, 0.08, 0.14, 0.95), Color(0.19, 0.42, 0.58, 0.95))
 	_style_panel(_queue_panel, Color(0.04, 0.1, 0.18, 0.9), Color(0.16, 0.38, 0.54, 0.95))
 	_style_panel(_portrait_panel, Color(0.05, 0.11, 0.18, 0.9), Color(0.16, 0.38, 0.52, 0.95))
 	_style_panel(_command_hover_panel, Color(0.03, 0.09, 0.16, 0.92), Color(0.21, 0.5, 0.68, 0.98))
@@ -329,6 +334,23 @@ func _setup_static_styles() -> void:
 	_style_bar_overlay_label(_health_value_label)
 	_style_bar_overlay_label(_shield_value_label)
 	_style_bar_overlay_label(_energy_value_label)
+
+func _connect_minimap_view() -> void:
+	if _minimap_view == null or not is_instance_valid(_minimap_view):
+		return
+	if _minimap_view.has_signal("navigate_requested"):
+		var callback: Callable = Callable(self, "_on_minimap_view_navigate_requested")
+		if not _minimap_view.is_connected("navigate_requested", callback):
+			_minimap_view.connect("navigate_requested", callback)
+
+func _on_minimap_view_navigate_requested(world_position: Vector3) -> void:
+	emit_signal("minimap_navigate_requested", world_position)
+
+func update_minimap(snapshot: Dictionary) -> void:
+	if _minimap_view == null or not is_instance_valid(_minimap_view):
+		return
+	if _minimap_view.has_method("apply_snapshot"):
+		_minimap_view.call("apply_snapshot", snapshot)
 
 func _apply_fixed_button_theme() -> void:
 	for node in find_children("*", "Button", true, false):
