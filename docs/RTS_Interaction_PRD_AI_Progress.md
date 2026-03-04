@@ -98,6 +98,7 @@
 - 调试体验：框选抬起触发日志窗口固定为 5 秒（代码内强制 `5.0s`），并将 `*_verbose` 默认回落为 `false`，避免高频帧日志刷屏。
 - 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，`CommandHoverPanel` 改为“底边固定、向上扩展”布局：根据 Tooltip 文本动态估算高度并只向上增高，避免向下拉伸时被下方 `CommandPanel` 覆盖。
 - 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，命令悬浮文本变化时改为“立即重排 CommandColumn”（非等待下一帧），消除 hover 切换瞬间先向下拉伸、下一帧再回到向上扩展的闪动。
+- 调整（按最新要求，最小改动）：仅修改 [scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) 的 `BottomHUD` 容器高度与Y位置（`offset_top: -326 -> -232`，`offset_bottom` 维持 `-12`），约 30% 降高并整体下移，不触及子面板/脚本布局参数。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 
