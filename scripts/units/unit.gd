@@ -14,6 +14,9 @@ const UNIT_COLLISION_LAYER_BIT: int = 1 << 1
 @export var carry_capacity: int = 24
 @export var gather_amount: int = 4
 @export var gather_interval: float = 0.55
+@export var repair_range: float = 2.1
+@export var repair_amount: float = 10.0
+@export var repair_interval: float = 0.5
 @export var attack_range: float = 2.4
 @export var attack_damage: float = 12.0
 @export var attack_cooldown: float = 0.8
@@ -35,6 +38,7 @@ enum UnitMode {
 	RETURN_RESOURCE,
 	ATTACK,
 	ATTACK_MOVE,
+	REPAIR,
 }
 
 enum ConstructionLockMode {
@@ -56,6 +60,8 @@ var _attack_target: Node = null
 var _attack_timer: float = 0.0
 var _attack_move_point: Vector3 = Vector3.ZERO
 var _has_attack_move_point: bool = false
+var _repair_target: Node3D = null
+var _repair_timer: float = 0.0
 var _retarget_timer: float = 0.0
 var _base_tint: Color = Color.WHITE
 var _nav_target_cached: Vector3 = Vector3.ZERO
@@ -90,6 +96,8 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE:
 		_process_worker_cycle(delta)
+	elif _mode == UnitMode.REPAIR:
+		_process_repair_cycle(delta)
 	elif _mode == UnitMode.ATTACK or _mode == UnitMode.ATTACK_MOVE:
 		_process_combat_cycle(delta)
 	_sync_worker_collection_navigation_profile()
@@ -161,6 +169,7 @@ func enter_construction_lock(mode: String, building_path: NodePath = NodePath(""
 	_attack_timer = 0.0
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
+	_clear_repair_state()
 	_retarget_timer = 0.0
 	_gather_timer = 0.0
 	_defer_queue_until_worker_cycle_checkpoint = false
@@ -188,6 +197,8 @@ func get_mode_label() -> String:
 			return "Attacking"
 		UnitMode.ATTACK_MOVE:
 			return "Attack-Move"
+		UnitMode.REPAIR:
+			return "Repairing"
 		_:
 			return "Idle"
 
@@ -334,6 +345,7 @@ func command_move(target: Vector3, preserve_queue: bool = false) -> void:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_clear_repair_state()
 	_mode = UnitMode.MOVE
 	_gather_target = null
 	_dropoff_target = null
@@ -357,6 +369,7 @@ func command_gather(resource_node: Node3D, dropoff_node: Node3D, preserve_queue:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_clear_repair_state()
 	_gather_target = resource_node
 	_dropoff_target = dropoff_node
 	_attack_target = null
@@ -377,6 +390,7 @@ func command_return_to_dropoff(dropoff_node: Node3D, preserve_queue: bool = fals
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_clear_repair_state()
 	_dropoff_target = dropoff_node
 	_gather_target = null
 	_attack_target = null
@@ -393,6 +407,7 @@ func command_stop(preserve_queue: bool = false) -> void:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_clear_repair_state()
 	_mode = UnitMode.IDLE
 	_has_target = false
 	velocity = Vector3.ZERO
@@ -419,6 +434,7 @@ func command_attack(target_node: Node3D, preserve_queue: bool = false) -> bool:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_clear_repair_state()
 	_attack_target = target_node
 	_attack_timer = 0.0
 	_attack_move_point = target_node.global_position
@@ -439,6 +455,7 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_clear_repair_state()
 	_attack_target = null
 	_attack_timer = 0.0
 	_attack_move_point = Vector3(target.x, global_position.y, target.z)
@@ -448,6 +465,30 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 	_dropoff_target = null
 	_mode = UnitMode.ATTACK_MOVE
 	_move_to(_attack_move_point)
+	return true
+
+func command_repair(building_node: Node3D, preserve_queue: bool = false) -> bool:
+	if not is_worker:
+		return false
+	if not _is_valid_repair_target(building_node):
+		return false
+	if not _is_repair_target_damaged(building_node):
+		return false
+	_defer_queue_until_worker_cycle_checkpoint = false
+	if not preserve_queue:
+		_command_queue.clear()
+		_active_command = null
+	_clear_repair_state()
+	_gather_target = null
+	_dropoff_target = null
+	_attack_target = null
+	_attack_timer = 0.0
+	_has_attack_move_point = false
+	_attack_move_point = Vector3.ZERO
+	_retarget_timer = 0.0
+	_mode = UnitMode.REPAIR
+	_repair_target = building_node
+	_move_to(building_node.global_position)
 	return true
 
 func _process_command_queue() -> void:
@@ -539,6 +580,8 @@ func _is_command_complete(command: RTSCommand) -> bool:
 			return _mode != UnitMode.GATHER_RESOURCE and _mode != UnitMode.RETURN_RESOURCE
 		RTSCommand.CommandType.RETURN_RESOURCE:
 			return _mode == UnitMode.IDLE and not _has_target and _carried_amount <= 0
+		RTSCommand.CommandType.REPAIR:
+			return _mode != UnitMode.REPAIR
 		RTSCommand.CommandType.STOP:
 			return true
 		_:
@@ -576,6 +619,16 @@ func _execute_rts_command(command: RTSCommand) -> void:
 				command_stop(true)
 				return
 			command_return_to_dropoff(dropoff, true)
+		RTSCommand.CommandType.REPAIR:
+			var repair_target: Node3D = command.payload.get("building") as Node3D
+			if repair_target == null:
+				repair_target = command.target_unit as Node3D
+			if repair_target == null or not is_instance_valid(repair_target):
+				command_stop(true)
+				return
+			if not command_repair(repair_target, true):
+				command_stop(true)
+				return
 		RTSCommand.CommandType.STOP:
 			command_stop(true)
 		_:
@@ -598,6 +651,12 @@ func _append_queue_point(points: Array[Dictionary], command: RTSCommand, queued:
 			var dropoff_target: Node3D = _safe_node3d_ref(command.payload.get("dropoff"))
 			if dropoff_target != null:
 				position = dropoff_target.global_position
+		RTSCommand.CommandType.REPAIR:
+			var repair_target: Node3D = _safe_node3d_ref(command.payload.get("building"))
+			if repair_target == null:
+				repair_target = _safe_node3d_ref(command.target_unit)
+			if repair_target != null:
+				position = repair_target.global_position
 	points.append({
 		"position": position,
 		"command_type": command.command_type,
@@ -681,6 +740,34 @@ func _process_worker_cycle(delta: float) -> void:
 				_stop_worker_cycle(false)
 		elif not _has_target:
 			_move_to(_dropoff_target.global_position)
+
+func _process_repair_cycle(delta: float) -> void:
+	if not is_worker:
+		command_stop(true)
+		return
+	if not _is_valid_repair_target(_repair_target):
+		command_stop(true)
+		return
+	if not _is_repair_target_damaged(_repair_target):
+		command_stop(true)
+		return
+	var effective_repair_range: float = maxf(0.5, repair_range)
+	if _is_near(_repair_target.global_position, effective_repair_range):
+		_has_target = false
+		velocity = Vector3.ZERO
+		_repair_timer += delta
+		var effective_interval: float = maxf(0.05, repair_interval)
+		if _repair_timer < effective_interval:
+			return
+		_repair_timer = 0.0
+		var repaired: bool = false
+		if _repair_target.has_method("repair"):
+			repaired = bool(_repair_target.call("repair", maxf(0.0, repair_amount), self))
+		if not repaired or not _is_repair_target_damaged(_repair_target):
+			command_stop(true)
+		return
+	if not _has_target:
+		_move_to(_repair_target.global_position)
 
 func _process_combat_cycle(delta: float) -> void:
 	if is_worker or attack_damage <= 0.0 or attack_range <= 0.0:
@@ -800,6 +887,34 @@ func _is_valid_enemy_target(target_node) -> bool:
 		return false
 	return true
 
+func _clear_repair_state() -> void:
+	_repair_target = null
+	_repair_timer = 0.0
+
+func _is_valid_repair_target(building_node: Node3D) -> bool:
+	if building_node == null or not is_instance_valid(building_node):
+		return false
+	if not building_node.is_in_group("selectable_building"):
+		return false
+	if building_node.has_method("is_alive") and not bool(building_node.call("is_alive")):
+		return false
+	if building_node.has_method("get_team_id") and int(building_node.call("get_team_id")) != team_id:
+		return false
+	return building_node.has_method("repair")
+
+func _is_repair_target_damaged(building_node: Node3D) -> bool:
+	if building_node == null or not is_instance_valid(building_node):
+		return false
+	if building_node.has_method("is_damaged"):
+		return bool(building_node.call("is_damaged"))
+	if building_node.has_method("get_health_points"):
+		var max_hp: float = float(building_node.get("max_health"))
+		if max_hp <= 0.0:
+			return false
+		var hp: float = float(building_node.call("get_health_points"))
+		return hp < max_hp - 0.01
+	return false
+
 func _switch_to_return_mode() -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
 		_stop_worker_cycle(true)
@@ -816,6 +931,7 @@ func _stop_worker_cycle(reset_carry: bool) -> void:
 	_dropoff_target = null
 	_gather_timer = 0.0
 	_defer_queue_until_worker_cycle_checkpoint = false
+	_clear_repair_state()
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
@@ -947,6 +1063,9 @@ func _apply_runtime_config_for_role() -> void:
 	carry_capacity = int(unit_def.get("carry_capacity", carry_capacity))
 	gather_amount = int(unit_def.get("gather_amount", gather_amount))
 	gather_interval = float(unit_def.get("gather_interval", gather_interval))
+	repair_range = float(unit_def.get("repair_range", repair_range))
+	repair_amount = float(unit_def.get("repair_amount", repair_amount))
+	repair_interval = float(unit_def.get("repair_interval", repair_interval))
 	attack_damage = float(unit_def.get("attack_damage", attack_damage))
 	attack_range = float(unit_def.get("attack_range", attack_range))
 	attack_cooldown = float(unit_def.get("attack_cooldown", attack_cooldown))

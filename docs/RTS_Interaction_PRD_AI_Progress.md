@@ -104,6 +104,7 @@
 - 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，容器重分配改为与矩阵列数联动：按 `manual_matrix_columns - 8` 自动计算 `QueueColumn` 右扩量（每列 `58`），并等量收窄 `CommandColumn`；`Portrait` 维持原宽仅右移。`QueueContent` 恢复为容器内填充，避免内容层“假扩宽”与容器分配不一致。
 - 新增：[scripts/ui/rts_minimap_view.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_minimap_view.gd) + [scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，落地 BottomHUD 小地图基础版：占位替换为可绘制 minimap（单位/建筑/资源点、镜头框）、HUD 与 GameManager 的 minimap 数据通道、以及小地图左键点击/拖拽导航主相机。
 - 调整：[scripts/ui/rts_minimap_view.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_minimap_view.gd) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，修正小地图 Y 轴与主相机方向相反问题，并接入 `Ping` 全链路：`PingButton` 武装后可在世界或小地图下点，场景生成 ping 特效并同步在小地图显示脉冲标记。
+- 新增：[scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，为农民接入 `Repair` 技能：命令卡可见、目标模式为“受损友方建筑”，并支持排队/到位持续修理直至满血或目标失效。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 

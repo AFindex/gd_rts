@@ -1739,6 +1739,12 @@ func _fallback_execute_unit_command(unit_node: Node, command: RTSCommand) -> voi
 			var dropoff: Node3D = command.payload.get("dropoff") as Node3D
 			if dropoff != null and unit_node.has_method("command_return_to_dropoff"):
 				unit_node.call("command_return_to_dropoff", dropoff)
+		RTSCommand.CommandType.REPAIR:
+			var repair_target: Node3D = command.payload.get("building") as Node3D
+			if repair_target == null:
+				repair_target = command.target_unit as Node3D
+			if repair_target != null and unit_node.has_method("command_repair"):
+				unit_node.call("command_repair", repair_target)
 		RTSCommand.CommandType.STOP:
 			if unit_node.has_method("command_stop"):
 				unit_node.call("command_stop")
@@ -2202,6 +2208,8 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 			return "Targeting %s | Left Click Resource | RMB/ESC Cancel" % skill_label
 		if target_mode == "ground":
 			return "Targeting %s | Left Click Ground | RMB/ESC Cancel" % skill_label
+		if target_mode == "friendly_building":
+			return "Targeting %s | Left Click Damaged Friendly Building | RMB/ESC Cancel" % skill_label
 		if target_mode == "unit_or_building":
 			return "Targeting %s | Left Click Enemy for focus fire, or Ground for attack-move | RMB/ESC Cancel" % skill_label
 		return "Targeting %s | RMB/ESC Cancel" % skill_label
@@ -2772,6 +2780,10 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 			var gather_enabled: bool = _selection_has_worker()
 			overrides["enabled"] = gather_enabled
 			overrides["disabled_reason"] = "" if gather_enabled else "Requires at least one worker in selection."
+		"repair":
+			var repair_enabled: bool = _selection_has_worker()
+			overrides["enabled"] = repair_enabled
+			overrides["disabled_reason"] = "" if repair_enabled else "Requires at least one worker in selection."
 		"return_resource":
 			var has_worker_cargo: bool = _selection_has_worker_cargo()
 			overrides["enabled"] = has_worker_cargo
@@ -3387,6 +3399,25 @@ func _is_attackable_enemy(node: Node) -> bool:
 		return false
 	return int(node.call("get_team_id")) != _selection_team_id()
 
+func _is_repairable_friendly_building(node: Node) -> bool:
+	if node == null or not is_instance_valid(node):
+		return false
+	if not node.is_in_group("selectable_building"):
+		return false
+	if not _is_player_owned(node):
+		return false
+	if node.has_method("is_alive") and not bool(node.call("is_alive")):
+		return false
+	if node.has_method("is_damaged"):
+		return bool(node.call("is_damaged"))
+	if not node.has_method("get_health_points"):
+		return false
+	var max_hp: float = float(node.get("max_health"))
+	if max_hp <= 0.0:
+		return false
+	var hp: float = float(node.call("get_health_points"))
+	return hp < max_hp - 0.01
+
 func _is_player_owned(node: Node) -> bool:
 	if node == null or not is_instance_valid(node):
 		return false
@@ -3635,7 +3666,7 @@ func _execute_command(command_id: String) -> void:
 			_queue_worker_from_selection()
 		"train_soldier":
 			_queue_soldier_from_selection()
-		"move", "gather", "attack":
+		"move", "gather", "attack", "repair":
 			_begin_target_skill(command_id)
 		"return_resource":
 			_issue_return_command(_is_queue_input_active())
@@ -3673,6 +3704,8 @@ func _begin_target_skill(skill_id: String) -> void:
 		return
 	if skill_id == "gather" and not _selection_has_worker():
 		return
+	if skill_id == "repair" and not _selection_has_worker():
+		return
 	_close_build_menu()
 	_pending_target_skill = skill_id
 
@@ -3699,6 +3732,17 @@ func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool 
 					return true
 			if not _issue_attack_move_command(screen_pos, queue_command):
 				return false
+			return true
+		"repair":
+			var ray_result: Dictionary = _raycast_from_screen(screen_pos)
+			if ray_result.is_empty():
+				return false
+			var collider: Node = ray_result.get("collider") as Node
+			if collider == null or not _is_repairable_friendly_building(collider):
+				_set_ui_notice("Repair requires a damaged friendly building.", 0.9)
+				_play_feedback_tone("error")
+				return false
+			_issue_repair_command(collider as Node3D, screen_pos, queue_command)
 			return true
 		_:
 			return false
@@ -4069,6 +4113,24 @@ func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2, 
 
 	if issued_count == 0:
 		_issue_move_command(fallback_screen_pos, queue_command)
+
+func _issue_repair_command(target_node: Node3D, _fallback_screen_pos: Vector2, queue_command: bool = false) -> void:
+	if target_node == null or not is_instance_valid(target_node):
+		return
+	if not _is_repairable_friendly_building(target_node):
+		return
+	var issued_count: int = 0
+	for unit_node in _command_units():
+		if not unit_node.has_method("is_worker_unit"):
+			continue
+		if not bool(unit_node.call("is_worker_unit")):
+			continue
+		var repair_command: RTSCommand = RTS_COMMAND.make_repair(target_node, queue_command)
+		_schedule_unit_command(unit_node, repair_command)
+		issued_count += 1
+	if issued_count <= 0:
+		_set_ui_notice("No available worker to repair target.", 1.0)
+		_play_feedback_tone("error")
 
 func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2, queue_command: bool = false) -> void:
 	if target_node == null or not is_instance_valid(target_node):

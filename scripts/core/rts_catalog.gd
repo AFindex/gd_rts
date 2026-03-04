@@ -23,7 +23,7 @@ const UNIT_DEFS: Dictionary = {
 		"attack_cooldown": 0.0,
 		"requires_buildings": ["base"],
 		"requires_tech": [],
-		"skills": ["move", "gather", "return_resource", "build_menu", "stop"],
+		"skills": ["move", "gather", "repair", "return_resource", "build_menu", "stop"],
 		"build_skills": [
 			"build_barracks",
 			"build_tower",
@@ -360,6 +360,14 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_ROOT_SKILLS + "cmd_gather.png",
 		"hotkey": "",
 		"target_mode": "resource"
+	},
+	"repair": {
+		"id": "repair",
+		"label": "Repair",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_build.png",
+		"hotkey": "",
+		"target_mode": "friendly_building",
+		"description": "Repair a damaged friendly building."
 	},
 	"return_resource": {
 		"id": "return_resource",

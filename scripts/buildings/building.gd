@@ -105,6 +105,11 @@ func get_health_ratio() -> float:
 func get_health_points() -> float:
 	return _health
 
+func is_damaged() -> bool:
+	if not is_alive():
+		return false
+	return _health < maxf(0.0, max_health) - 0.01
+
 func apply_damage(amount: float, _source: Node = null) -> void:
 	if amount <= 0.0 or not is_alive():
 		return
@@ -113,6 +118,19 @@ func apply_damage(amount: float, _source: Node = null) -> void:
 	_play_hit_flash()
 	if _health <= 0.0:
 		_die()
+
+func repair(amount: float, _source: Node = null) -> bool:
+	if amount <= 0.0 or not is_alive():
+		return false
+	var clamped_max_health: float = maxf(0.0, max_health)
+	if _health >= clamped_max_health - 0.01:
+		return false
+	var before: float = _health
+	_health = clampf(_health + amount, 0.0, clamped_max_health)
+	if _health <= before + 0.001:
+		return false
+	_play_repair_flash()
+	return true
 
 func can_queue_worker_unit() -> bool:
 	if _construction_active:
@@ -747,3 +765,11 @@ func _play_hit_flash() -> void:
 	_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	var tween: Tween = create_tween()
 	tween.tween_property(_sprite, "modulate", _base_tint, 0.1)
+
+func _play_repair_flash() -> void:
+	if _sprite == null:
+		return
+	var repair_tint: Color = _base_tint.lerp(Color(0.52, 1.0, 0.68, _base_tint.a), 0.35)
+	_sprite.modulate = repair_tint
+	var tween: Tween = create_tween()
+	tween.tween_property(_sprite, "modulate", _base_tint, 0.12)

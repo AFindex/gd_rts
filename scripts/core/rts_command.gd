@@ -11,6 +11,7 @@ enum CommandType {
 	STOP,
 	SKILL,
 	BUILD,
+	REPAIR,
 }
 
 enum TargetType {
@@ -82,3 +83,13 @@ static func make_return(dropoff_node: Node, queue_command: bool = false) -> RTSC
 
 static func make_stop(queue_command: bool = false) -> RTSCommand:
 	return create(CommandType.STOP, TargetType.NONE, queue_command)
+
+static func make_repair(building_node: Node, queue_command: bool = false) -> RTSCommand:
+	var command: RTSCommand = create(CommandType.REPAIR, TargetType.UNIT, queue_command)
+	command.target_unit = building_node
+	command.payload = {
+		"building": building_node
+	}
+	if building_node is Node3D:
+		command.target_position = (building_node as Node3D).global_position
+	return command
