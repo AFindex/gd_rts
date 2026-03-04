@@ -2283,7 +2283,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 		if target_mode == "ground":
 			return "Targeting %s | Left Click Ground | RMB/ESC Cancel" % skill_label
 		if target_mode == "friendly_building":
-			return "Targeting %s | Left Click Damaged Friendly Building | RMB/ESC Cancel" % skill_label
+			return "Targeting %s | Left Click Damaged Friendly Unit/Building | RMB/ESC Cancel" % skill_label
 		if target_mode == "unit_or_building":
 			return "Targeting %s | Left Click Enemy for focus fire, or Ground for attack-move | RMB/ESC Cancel" % skill_label
 		return "Targeting %s | RMB/ESC Cancel" % skill_label
@@ -2918,7 +2918,7 @@ func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
 		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Tab: Subgroup Cycle" % [_worker_cost, _soldier_cost],
-		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus | Matrix: LMB isolate / Shift+LMB same type / Ctrl+LMB remove"
+		"RMB Smart: Attack>Gather>Return>Repair>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus | Matrix: LMB isolate / Shift+LMB same type / Ctrl+LMB remove"
 	]
 	if _multi_role_page_count() > 1:
 		lines[2] += " | PgUp/PgDn Selection Page"
@@ -3473,14 +3473,17 @@ func _is_attackable_enemy(node: Node) -> bool:
 		return false
 	return int(node.call("get_team_id")) != _selection_team_id()
 
-func _is_repairable_friendly_building(node: Node) -> bool:
+func _is_repairable_friendly_target(node: Node) -> bool:
 	if node == null or not is_instance_valid(node):
 		return false
-	if not node.is_in_group("selectable_building"):
+	var selectable: bool = node.is_in_group("selectable_unit") or node.is_in_group("selectable_building")
+	if not selectable:
 		return false
 	if not _is_player_owned(node):
 		return false
 	if node.has_method("is_alive") and not bool(node.call("is_alive")):
+		return false
+	if not node.has_method("repair"):
 		return false
 	if node.has_method("is_damaged"):
 		return bool(node.call("is_damaged"))
@@ -3491,6 +3494,9 @@ func _is_repairable_friendly_building(node: Node) -> bool:
 		return false
 	var hp: float = float(node.call("get_health_points"))
 	return hp < max_hp - 0.01
+
+func _is_repairable_friendly_building(node: Node) -> bool:
+	return _is_repairable_friendly_target(node)
 
 func _is_player_owned(node: Node) -> bool:
 	if node == null or not is_instance_valid(node):
@@ -3812,8 +3818,8 @@ func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool 
 			if ray_result.is_empty():
 				return false
 			var collider: Node = ray_result.get("collider") as Node
-			if collider == null or not _is_repairable_friendly_building(collider):
-				_set_ui_notice("Repair requires a damaged friendly building.", 0.9)
+			if collider == null or not _is_repairable_friendly_target(collider):
+				_set_ui_notice("Repair requires a damaged friendly unit/building.", 0.9)
 				_play_feedback_tone("error")
 				return false
 			_issue_repair_command(collider as Node3D, screen_pos, queue_command)
@@ -3837,6 +3843,8 @@ func _issue_context_command(screen_pos: Vector2, queue_command: bool = false) ->
 			_issue_gather_command(resolved_target, screen_pos, queue_command)
 		"return":
 			_issue_return_command_to_dropoff(resolved_target, queue_command)
+		"repair":
+			_issue_repair_command(resolved_target, screen_pos, queue_command)
 		"follow":
 			_issue_follow_command(resolved_target, queue_command)
 		"resume_construction":
@@ -3877,6 +3885,10 @@ func _resolve_smart_context_command(screen_pos: Vector2) -> Dictionary:
 	var return_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "return")
 	if return_target != null:
 		return {"command": "return", "target": return_target}
+
+	var repair_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "repair")
+	if repair_target != null:
+		return {"command": "repair", "target": repair_target}
 
 	var follow_target: Node3D = _find_nearest_smart_candidate(candidates, hit_position, "follow")
 	if follow_target != null:
@@ -3965,6 +3977,8 @@ func _smart_candidate_matches(node: Node3D, filter_mode: String) -> bool:
 			return _selection_has_worker() and node.is_in_group("resource_node")
 		"return":
 			return _selection_has_worker_cargo() and _is_player_dropoff_node(node)
+		"repair":
+			return _selection_has_worker() and not _selection_has_worker_cargo() and _is_repairable_friendly_target(node)
 		"follow":
 			return not _selected_units.is_empty() and node.is_in_group("selectable_unit") and _is_player_owned(node)
 		"resume_construction":
@@ -4191,7 +4205,7 @@ func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2, 
 func _issue_repair_command(target_node: Node3D, _fallback_screen_pos: Vector2, queue_command: bool = false) -> void:
 	if target_node == null or not is_instance_valid(target_node):
 		return
-	if not _is_repairable_friendly_building(target_node):
+	if not _is_repairable_friendly_target(target_node):
 		return
 	var issued_count: int = 0
 	for unit_node in _command_units():

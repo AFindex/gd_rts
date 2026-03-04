@@ -216,6 +216,24 @@ func get_health_ratio() -> float:
 func get_health_points() -> float:
 	return _health
 
+func is_damaged() -> bool:
+	if not is_alive():
+		return false
+	return _health < maxf(0.0, max_health) - 0.01
+
+func repair(amount: float, _source: Node = null) -> bool:
+	if amount <= 0.0 or not is_alive():
+		return false
+	var clamped_max_health: float = maxf(0.0, max_health)
+	if _health >= clamped_max_health - 0.01:
+		return false
+	var before: float = _health
+	_health = clampf(_health + amount, 0.0, clamped_max_health)
+	if _health <= before + 0.001:
+		return false
+	_play_repair_flash()
+	return true
+
 func get_carry_fill_ratio() -> float:
 	if carry_capacity <= 0:
 		return 0.0
@@ -891,27 +909,30 @@ func _clear_repair_state() -> void:
 	_repair_target = null
 	_repair_timer = 0.0
 
-func _is_valid_repair_target(building_node: Node3D) -> bool:
-	if building_node == null or not is_instance_valid(building_node):
+func _is_valid_repair_target(target_node: Node3D) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
 		return false
-	if not building_node.is_in_group("selectable_building"):
+	if target_node == self:
 		return false
-	if building_node.has_method("is_alive") and not bool(building_node.call("is_alive")):
+	var selectable: bool = target_node.is_in_group("selectable_unit") or target_node.is_in_group("selectable_building")
+	if not selectable:
 		return false
-	if building_node.has_method("get_team_id") and int(building_node.call("get_team_id")) != team_id:
+	if target_node.has_method("is_alive") and not bool(target_node.call("is_alive")):
 		return false
-	return building_node.has_method("repair")
+	if target_node.has_method("get_team_id") and int(target_node.call("get_team_id")) != team_id:
+		return false
+	return target_node.has_method("repair")
 
-func _is_repair_target_damaged(building_node: Node3D) -> bool:
-	if building_node == null or not is_instance_valid(building_node):
+func _is_repair_target_damaged(target_node: Node3D) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
 		return false
-	if building_node.has_method("is_damaged"):
-		return bool(building_node.call("is_damaged"))
-	if building_node.has_method("get_health_points"):
-		var max_hp: float = float(building_node.get("max_health"))
+	if target_node.has_method("is_damaged"):
+		return bool(target_node.call("is_damaged"))
+	if target_node.has_method("get_health_points"):
+		var max_hp: float = float(target_node.get("max_health"))
 		if max_hp <= 0.0:
 			return false
-		var hp: float = float(building_node.call("get_health_points"))
+		var hp: float = float(target_node.call("get_health_points"))
 		return hp < max_hp - 0.01
 	return false
 
@@ -1120,6 +1141,14 @@ func _play_hit_flash() -> void:
 	_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	var tween: Tween = create_tween()
 	tween.tween_property(_sprite, "modulate", _base_tint, 0.08)
+
+func _play_repair_flash() -> void:
+	if _sprite == null:
+		return
+	var repair_tint: Color = _base_tint.lerp(Color(0.52, 1.0, 0.68, _base_tint.a), 0.35)
+	_sprite.modulate = repair_tint
+	var tween: Tween = create_tween()
+	tween.tween_property(_sprite, "modulate", _base_tint, 0.1)
 
 func _set_construction_hidden(hidden: bool) -> void:
 	if hidden == _construction_hidden:
