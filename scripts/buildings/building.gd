@@ -8,6 +8,11 @@ const CONSTRUCTION_PARADIGM_GARRISONED: String = "garrisoned"
 const CONSTRUCTION_PARADIGM_INCORPORATED: String = "incorporated"
 const CONSTRUCTION_STAGE_CAST: String = "cast"
 const CONSTRUCTION_STAGE_BUILD: String = "build"
+const BUILDING_HEALTH_BAR_BASE_HEIGHT: float = 2.0
+const BUILDING_HEALTH_BAR_SCALE_HEIGHT_FACTOR: float = 0.45
+const BUILDING_HEALTH_BAR_WIDTH: float = 1.42
+const BUILDING_HEALTH_BAR_HEIGHT: float = 0.14
+const BUILDING_HEALTH_BAR_PADDING: float = 0.02
 
 signal production_finished(unit_kind: String, spawn_position: Vector3)
 signal construction_state_changed(event_type: String, payload: Dictionary)
@@ -57,6 +62,10 @@ var _construction_assigned_worker_path: NodePath = NodePath("")
 var _construction_total_cost: int = 0
 var _construction_cancel_ratio: float = 0.75
 var _construction_pause_reason: String = ""
+var _health_bar_root: Node3D = null
+var _health_bar_background: MeshInstance3D = null
+var _health_bar_fill: MeshInstance3D = null
+var _health_bar_fill_full_width: float = maxf(0.02, BUILDING_HEALTH_BAR_WIDTH - BUILDING_HEALTH_BAR_PADDING * 2.0)
 
 func _ready() -> void:
 	add_to_group("selectable_building")
@@ -64,6 +73,8 @@ func _ready() -> void:
 	_health = max_health
 	_refresh_dropoff_group()
 	_apply_building_visual()
+	_ensure_health_bar_nodes()
+	_update_health_bar_visual()
 	_selection_ring.visible = false
 
 func _process(delta: float) -> void:
@@ -115,6 +126,7 @@ func apply_damage(amount: float, _source: Node = null) -> void:
 		return
 	_rally_alert_timer = RALLY_ALERT_DURATION
 	_health = maxf(0.0, _health - amount)
+	_update_health_bar_visual()
 	_play_hit_flash()
 	if _health <= 0.0:
 		_die()
@@ -129,6 +141,7 @@ func repair(amount: float, _source: Node = null) -> bool:
 	_health = clampf(_health + amount, 0.0, clamped_max_health)
 	if _health <= before + 0.001:
 		return false
+	_update_health_bar_visual()
 	_play_repair_flash()
 	return true
 
@@ -557,6 +570,8 @@ func configure_by_kind(kind: String) -> void:
 	_health = max_health
 	_refresh_dropoff_group()
 	_apply_building_visual()
+	_ensure_health_bar_nodes()
+	_update_health_bar_visual()
 
 func configure_as_barracks() -> void:
 	configure_by_kind("barracks")
@@ -613,6 +628,7 @@ func _apply_building_visual() -> void:
 		building_color = Color(0.55, 0.75, 1.0, 1.0)
 	_base_tint = building_color
 	_sprite.modulate = building_color
+	_update_health_bar_visual()
 
 func _format_unit_kind(unit_kind: String) -> String:
 	if unit_kind == "worker":
@@ -643,6 +659,7 @@ func _apply_building_config(kind: String) -> void:
 	var configured_spawn_offset: Variant = building_def.get("spawn_offset", spawn_offset)
 	if configured_spawn_offset is Vector3:
 		spawn_offset = configured_spawn_offset as Vector3
+	_update_health_bar_visual()
 
 func _process_tower_combat(delta: float) -> void:
 	if not is_alive() or attack_damage <= 0.0 or attack_range <= 0.0:
@@ -719,6 +736,7 @@ func _flat_distance_sq(a: Vector3, b: Vector3) -> float:
 func _die() -> void:
 	_selection_ring.visible = false
 	_attack_target = null
+	_update_health_bar_visual()
 	if _construction_active:
 		var payload: Dictionary = {
 			"paradigm": _construction_paradigm,
@@ -729,6 +747,73 @@ func _die() -> void:
 		emit_signal("construction_state_changed", "forced_destroyed", payload)
 		_reset_construction_state()
 	queue_free()
+
+func _ensure_health_bar_nodes() -> void:
+	if _health_bar_root != null and is_instance_valid(_health_bar_root):
+		return
+	_health_bar_root = Node3D.new()
+	_health_bar_root.name = "HealthBarRoot"
+	_health_bar_root.position = Vector3(0.0, _compute_health_bar_world_height(), 0.0)
+	add_child(_health_bar_root)
+
+	_health_bar_background = MeshInstance3D.new()
+	_health_bar_background.name = "HealthBarBackground"
+	var background_mesh: QuadMesh = QuadMesh.new()
+	background_mesh.size = Vector2(BUILDING_HEALTH_BAR_WIDTH, BUILDING_HEALTH_BAR_HEIGHT)
+	_health_bar_background.mesh = background_mesh
+	var background_material: StandardMaterial3D = StandardMaterial3D.new()
+	background_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	background_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	background_material.albedo_color = Color(0.05, 0.05, 0.07, 0.72)
+	background_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_health_bar_background.material_override = background_material
+	_health_bar_root.add_child(_health_bar_background)
+
+	_health_bar_fill = MeshInstance3D.new()
+	_health_bar_fill.name = "HealthBarFill"
+	var fill_mesh: QuadMesh = QuadMesh.new()
+	fill_mesh.size = Vector2(_health_bar_fill_full_width, maxf(0.02, BUILDING_HEALTH_BAR_HEIGHT - BUILDING_HEALTH_BAR_PADDING * 2.0))
+	_health_bar_fill.mesh = fill_mesh
+	_health_bar_fill.position = Vector3(0.0, 0.0, 0.005)
+	var fill_material: StandardMaterial3D = StandardMaterial3D.new()
+	fill_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fill_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fill_material.albedo_color = Color(0.22, 0.9, 0.36, 0.92)
+	fill_material.emission_enabled = true
+	fill_material.emission = Color(0.18, 0.78, 0.3, 1.0)
+	fill_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_health_bar_fill.material_override = fill_material
+	_health_bar_root.add_child(_health_bar_fill)
+
+func _update_health_bar_visual() -> void:
+	if _health_bar_root == null or not is_instance_valid(_health_bar_root):
+		return
+	if _health_bar_fill == null or not is_instance_valid(_health_bar_fill):
+		return
+	_health_bar_root.position.y = _compute_health_bar_world_height()
+	_health_bar_root.visible = is_alive()
+	if not is_alive():
+		return
+	var ratio: float = clampf(get_health_ratio(), 0.0, 1.0)
+	if ratio <= 0.001:
+		_health_bar_fill.visible = false
+		return
+	_health_bar_fill.visible = true
+	_health_bar_fill.scale.x = maxf(0.001, ratio)
+	_health_bar_fill.position.x = -0.5 * _health_bar_fill_full_width * (1.0 - ratio)
+	var low: Color = Color(0.95, 0.2, 0.2, 0.92)
+	var high: Color = Color(0.2, 0.9, 0.36, 0.92)
+	var hp_color: Color = low.lerp(high, ratio)
+	var fill_material: StandardMaterial3D = _health_bar_fill.material_override as StandardMaterial3D
+	if fill_material != null:
+		fill_material.albedo_color = hp_color
+		fill_material.emission = Color(hp_color.r * 0.85, hp_color.g * 0.85, hp_color.b * 0.85, 1.0)
+
+func _compute_health_bar_world_height() -> float:
+	var sprite_scale_y: float = 1.0
+	if _sprite != null:
+		sprite_scale_y = maxf(1.0, _sprite.scale.y)
+	return BUILDING_HEALTH_BAR_BASE_HEIGHT + sprite_scale_y * BUILDING_HEALTH_BAR_SCALE_HEIGHT_FACTOR
 
 func _spawn_attack_vfx(target_position: Vector3) -> void:
 	if not is_inside_tree():

@@ -4,6 +4,10 @@ const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
 const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65
 const UNIT_COLLISION_LAYER_BIT: int = 1 << 1
+const HEALTH_BAR_WORLD_HEIGHT: float = 2.02
+const HEALTH_BAR_WIDTH: float = 1.0
+const HEALTH_BAR_HEIGHT: float = 0.12
+const HEALTH_BAR_PADDING: float = 0.02
 
 @export var move_speed: float = 6.0
 @export var is_worker: bool = false
@@ -80,6 +84,10 @@ var _construction_lock_building_path: NodePath = NodePath("")
 var _default_collision_layer: int = 0
 var _construction_hidden: bool = false
 var _defer_queue_until_worker_cycle_checkpoint: bool = false
+var _health_bar_root: Node3D = null
+var _health_bar_background: MeshInstance3D = null
+var _health_bar_fill: MeshInstance3D = null
+var _health_bar_fill_full_width: float = maxf(0.02, HEALTH_BAR_WIDTH - HEALTH_BAR_PADDING * 2.0)
 
 signal command_queue_changed
 
@@ -89,6 +97,8 @@ func _ready() -> void:
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
+	_ensure_health_bar_nodes()
+	_update_health_bar_visual()
 	_default_collision_layer = collision_layer
 	_default_collision_mask = collision_mask
 	_setup_navigation_agent()
@@ -231,6 +241,7 @@ func repair(amount: float, _source: Node = null) -> bool:
 	_health = clampf(_health + amount, 0.0, clamped_max_health)
 	if _health <= before + 0.001:
 		return false
+	_update_health_bar_visual()
 	_play_repair_flash()
 	return true
 
@@ -247,6 +258,7 @@ func set_worker_role(worker: bool) -> void:
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
+	_update_health_bar_visual()
 
 func submit_command(command: RefCounted) -> bool:
 	if command == null:
@@ -695,6 +707,7 @@ func apply_damage(amount: float, _source: Node = null) -> void:
 	if amount <= 0.0 or not is_alive():
 		return
 	_health = maxf(0.0, _health - amount)
+	_update_health_bar_visual()
 	_play_hit_flash()
 	if _health <= 0.0:
 		_die()
@@ -1073,6 +1086,7 @@ func _apply_role_visual() -> void:
 		unit_color = Color(0.45, 0.72, 1.0, 1.0)
 	_base_tint = unit_color
 	_sprite.modulate = unit_color
+	_update_health_bar_visual()
 
 func _apply_runtime_config_for_role() -> void:
 	var unit_kind: String = get_unit_kind()
@@ -1092,6 +1106,7 @@ func _apply_runtime_config_for_role() -> void:
 	attack_cooldown = float(unit_def.get("attack_cooldown", attack_cooldown))
 	if _nav_agent != null:
 		_nav_agent.max_speed = move_speed
+	_update_health_bar_visual()
 
 func _target_is_enemy(target_node) -> bool:
 	if target_node == null:
@@ -1149,6 +1164,66 @@ func _play_repair_flash() -> void:
 	_sprite.modulate = repair_tint
 	var tween: Tween = create_tween()
 	tween.tween_property(_sprite, "modulate", _base_tint, 0.1)
+
+func _ensure_health_bar_nodes() -> void:
+	if _health_bar_root != null and is_instance_valid(_health_bar_root):
+		return
+	_health_bar_root = Node3D.new()
+	_health_bar_root.name = "HealthBarRoot"
+	_health_bar_root.position = Vector3(0.0, HEALTH_BAR_WORLD_HEIGHT, 0.0)
+	add_child(_health_bar_root)
+
+	_health_bar_background = MeshInstance3D.new()
+	_health_bar_background.name = "HealthBarBackground"
+	var background_mesh: QuadMesh = QuadMesh.new()
+	background_mesh.size = Vector2(HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT)
+	_health_bar_background.mesh = background_mesh
+	var background_material: StandardMaterial3D = StandardMaterial3D.new()
+	background_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	background_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	background_material.albedo_color = Color(0.05, 0.05, 0.07, 0.72)
+	background_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_health_bar_background.material_override = background_material
+	_health_bar_root.add_child(_health_bar_background)
+
+	_health_bar_fill = MeshInstance3D.new()
+	_health_bar_fill.name = "HealthBarFill"
+	var fill_mesh: QuadMesh = QuadMesh.new()
+	fill_mesh.size = Vector2(_health_bar_fill_full_width, maxf(0.02, HEALTH_BAR_HEIGHT - HEALTH_BAR_PADDING * 2.0))
+	_health_bar_fill.mesh = fill_mesh
+	_health_bar_fill.position = Vector3(0.0, 0.0, 0.005)
+	var fill_material: StandardMaterial3D = StandardMaterial3D.new()
+	fill_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fill_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fill_material.albedo_color = Color(0.22, 0.9, 0.36, 0.92)
+	fill_material.emission_enabled = true
+	fill_material.emission = Color(0.18, 0.78, 0.3, 1.0)
+	fill_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_health_bar_fill.material_override = fill_material
+	_health_bar_root.add_child(_health_bar_fill)
+
+func _update_health_bar_visual() -> void:
+	if _health_bar_root == null or not is_instance_valid(_health_bar_root):
+		return
+	if _health_bar_fill == null or not is_instance_valid(_health_bar_fill):
+		return
+	_health_bar_root.visible = is_alive()
+	if not is_alive():
+		return
+	var ratio: float = clampf(get_health_ratio(), 0.0, 1.0)
+	if ratio <= 0.001:
+		_health_bar_fill.visible = false
+		return
+	_health_bar_fill.visible = true
+	_health_bar_fill.scale.x = maxf(0.001, ratio)
+	_health_bar_fill.position.x = -0.5 * _health_bar_fill_full_width * (1.0 - ratio)
+	var low: Color = Color(0.95, 0.2, 0.2, 0.92)
+	var high: Color = Color(0.2, 0.9, 0.36, 0.92)
+	var hp_color: Color = low.lerp(high, ratio)
+	var fill_material: StandardMaterial3D = _health_bar_fill.material_override as StandardMaterial3D
+	if fill_material != null:
+		fill_material.albedo_color = hp_color
+		fill_material.emission = Color(hp_color.r * 0.85, hp_color.g * 0.85, hp_color.b * 0.85, 1.0)
 
 func _set_construction_hidden(hidden: bool) -> void:
 	if hidden == _construction_hidden:
