@@ -483,6 +483,7 @@ size_flags_vertical = 3
 size_flags_stretch_ratio = 25.0
 
 [node name="CommandHoverPanel" type="PanelContainer" parent="BottomHUD/BottomRow/CommandColumn"]
+visible = false
 custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
 size_flags_vertical = 0
@@ -491,7 +492,7 @@ mouse_filter = 2
 [node name="CommandHoverText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandHoverPanel"]
 layout_mode = 2
 size_flags_vertical = 3
-text = "Hover command for details."
+text = ""
 autowrap_mode = 3
 mouse_filter = 2
 

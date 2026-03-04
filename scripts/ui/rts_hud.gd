@@ -6,7 +6,7 @@ signal control_group_pressed(group_id: int)
 signal matrix_page_selected(page_index: int)
 
 const COMMAND_SLOTS: int = 15
-const MULTI_SLOTS: int = 24
+const MULTI_SLOTS: int = 30
 const QUEUE_SLOTS: int = 5
 const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_item.tscn")
 const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
@@ -18,6 +18,7 @@ const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
 @export var manual_queue_top_height: float = 84.0
 @export var manual_queue_gap: float = 0.0
 @export var manual_queue_content_padding: Vector2 = Vector2(6.0, 6.0)
+@export var manual_queue_content_right_extra_width: float = 58.0
 @export var manual_queue_content_gap: float = 6.0
 @export var manual_queue_hint_height: float = 26.0
 @export var manual_single_container_padding: Vector2 = Vector2(0.0, 0.0)
@@ -46,13 +47,14 @@ const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
 @export var manual_matrix_page_button_height: float = 24.0
 @export var manual_matrix_page_button_gap: float = 4.0
 @export var manual_matrix_page_button_min_width: float = 52.0
-@export var manual_matrix_columns: int = 8
+@export var manual_matrix_columns: int = 10
 @export var manual_matrix_h_gap: float = 3.0
 @export var manual_matrix_v_gap: float = 3.0
 @export var manual_matrix_cell_min_size: Vector2 = Vector2(50.0, 50.0)
 @export var manual_portrait_top_height: float = 84.0
 @export var manual_portrait_gap: float = 0.0
 @export var manual_command_hover_height: float = 64.0
+@export var manual_command_hover_extra_padding: float = 6.0
 @export var manual_command_gap: float = 6.0
 @export var manual_command_content_padding: Vector2 = Vector2(4.0, 4.0)
 @export var manual_command_content_gap: float = 4.0
@@ -661,8 +663,9 @@ func _on_command_item_pressed(command_id: String) -> void:
 	emit_signal("command_pressed", command_id)
 
 func _on_command_item_hover_started(hover_data: Dictionary) -> void:
-	if _command_hover_text == null:
+	if _command_hover_text == null or _command_hover_panel == null:
 		return
+	_command_hover_panel.visible = true
 	_command_hover_text.text = _format_command_hover_text(hover_data)
 	_refresh_command_hover_layout_for_text_change()
 
@@ -677,9 +680,10 @@ func _apply_notifications(notifications: Array[String]) -> void:
 			_notification_labels[i].text = ""
 
 func _set_command_hover_default() -> void:
-	if _command_hover_text == null:
+	if _command_hover_text == null or _command_hover_panel == null:
 		return
-	_command_hover_text.text = COMMAND_HOVER_DEFAULT_TEXT
+	_command_hover_panel.visible = false
+	_command_hover_text.text = ""
 	_refresh_command_hover_layout_for_text_change()
 
 func _refresh_command_hover_layout_for_text_change() -> void:
@@ -919,6 +923,16 @@ func _apply_manual_bottom_row_layout() -> void:
 			section_width = floor(usable_width * (ratios[i] / ratio_total))
 			consumed_width += section_width
 		section_widths.append(section_width)
+
+	# Expand QueueColumn based on matrix extra columns and shrink CommandColumn accordingly.
+	# Portrait keeps width and only shifts right; Command keeps right edge anchored.
+	var extra_matrix_columns: int = maxi(0, manual_matrix_columns - 8)
+	var queue_right_expand: float = maxf(0.0, manual_queue_content_right_extra_width) * float(extra_matrix_columns)
+	if queue_right_expand > 0.0 and section_widths.size() >= 4:
+		var command_width: float = section_widths[3]
+		var applied_expand: float = minf(queue_right_expand, maxf(0.0, command_width - 1.0))
+		section_widths[1] += applied_expand
+		section_widths[3] -= applied_expand
 
 	var x: float = pad_x
 	var y: float = pad_y
@@ -1359,7 +1373,8 @@ func _compute_command_hover_panel_height(panel_width: float, min_height: float) 
 		estimated_line_count += wrapped_lines
 
 	var text_height: float = float(estimated_line_count) * line_height + float(maxi(0, estimated_line_count - 1)) * line_spacing
-	return ceil(maxf(min_height, text_height + extra_vertical))
+	var safety_extra: float = line_height + maxf(0.0, manual_command_hover_extra_padding)
+	return ceil(maxf(min_height, text_height + extra_vertical + safety_extra))
 
 func _apply_manual_command_content_layout() -> void:
 	if _command_content == null:
