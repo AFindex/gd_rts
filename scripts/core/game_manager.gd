@@ -332,7 +332,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _try_handle_control_group_hotkey(key_event):
 			_refresh_hint_label()
 			return
-		if key_event.keycode == KEY_TAB and key_event.ctrl_pressed:
+		if key_event.keycode == KEY_TAB:
 			_cycle_unit_subgroup()
 			_refresh_hint_label()
 			return
@@ -1566,8 +1566,8 @@ func _build_subgroup_text(mode: String, selection_total: int) -> String:
 		if subgroup_keys.size() > 1:
 			var active_kind: String = _active_subgroup_kind()
 			if active_kind != "":
-				return "Subgroup: %s (%d/%d) | Ctrl+Tab/Click Matrix%s" % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size(), page_suffix]
-			return "Subgroup: All (%d types) | Ctrl+Tab/Click Matrix%s" % [subgroup_keys.size(), page_suffix]
+				return "Subgroup: %s (%d/%d) | Tab Cycle%s" % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size(), page_suffix]
+			return "Subgroup: All (%d types) | Tab Cycle%s" % [subgroup_keys.size(), page_suffix]
 		return "Subgroup: %d Units%s" % [selection_total, page_suffix]
 	if mode == "single":
 		return "Subgroup: Single"
@@ -1690,6 +1690,14 @@ func _unit_kind_id(unit_node: Node) -> String:
 		return "worker" if bool(unit_node.call("is_worker_unit")) else "soldier"
 	return "unit"
 
+func _building_kind_id(building_node: Node) -> String:
+	if building_node == null or not is_instance_valid(building_node):
+		return ""
+	var building_kind: String = str(building_node.get("building_kind")).strip_edges().to_lower()
+	if building_kind == "":
+		return "building"
+	return "building:%s" % building_kind
+
 func _select_units_by_kind(unit_kind: String, global_scope: bool) -> int:
 	if unit_kind == "":
 		return 0
@@ -1778,7 +1786,7 @@ func _build_command_hint() -> String:
 	if not _selected_units.is_empty():
 		var active_kind: String = _active_subgroup_kind()
 		if active_kind != "":
-			return "Subgroup active: %s | Ctrl+Tab or click matrix cell | Commands apply to active subgroup only." % _subgroup_kind_label(active_kind)
+			return "Subgroup active: %s | Tab cycles subgroup | Commands apply to active subgroup only." % _subgroup_kind_label(active_kind)
 		return "RMB context command or click move/gather/stop in command card."
 	return "Select something to open context commands."
 
@@ -1998,8 +2006,8 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
 		"B: Build Menu | Open build options from selected builder",
-		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Ctrl+Tab/Click Matrix: Subgroup" % [_worker_cost, _soldier_cost],
-		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus"
+		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Tab: Subgroup Cycle" % [_worker_cost, _soldier_cost],
+		"RMB Smart: Attack>Gather>Return>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus | Matrix: LMB isolate / Shift+LMB same type / Ctrl+LMB remove"
 	]
 	if _multi_role_page_count() > 1:
 		lines[2] += " | PgUp/PgDn Selection Page"
@@ -2041,7 +2049,8 @@ func _build_multi_role_entries() -> Array[Dictionary]:
 			role_tag = str(selected_unit.call("get_unit_role_tag"))
 		entries.append({
 			"role": role_tag,
-			"kind": _unit_kind_id(selected_unit)
+			"kind": _unit_kind_id(selected_unit),
+			"node": selected_unit
 		})
 
 	for selected_building in _selected_buildings:
@@ -2054,7 +2063,8 @@ func _build_multi_role_entries() -> Array[Dictionary]:
 			role = str(selected_building.call("get_building_role_tag"))
 		entries.append({
 			"role": role,
-			"kind": "building"
+			"kind": _building_kind_id(selected_building),
+			"node": selected_building
 		})
 	return entries
 
@@ -2546,8 +2556,124 @@ func _prune_invalid_selection() -> void:
 func _on_hud_command_pressed(command_id: String) -> void:
 	_execute_command(command_id)
 
-func _on_hud_multi_role_cell_pressed(role_kind: String) -> void:
-	_apply_subgroup_selection_from_hud(role_kind, true)
+func _on_hud_multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_pressed: bool) -> void:
+	var entry: Dictionary = _resolve_multi_role_entry_from_cell(cell_index)
+	if entry.is_empty():
+		return
+	var target_node: Node = entry.get("node") as Node
+	if target_node == null or not is_instance_valid(target_node):
+		return
+	var entry_kind: String = str(entry.get("kind", ""))
+
+	if ctrl_pressed:
+		if _remove_multi_role_entry_from_selection(target_node):
+			_set_ui_notice("Removed: %s." % _multi_role_kind_label(entry_kind, target_node), 1.1)
+			_play_feedback_tone("ground")
+			_refresh_hint_label()
+		return
+
+	if shift_pressed:
+		var selected_count: int = _select_same_multi_role_kind(entry_kind)
+		if selected_count > 0:
+			_set_ui_notice("Selected: %s x%d." % [_multi_role_kind_label(entry_kind, target_node), selected_count], 1.1)
+			_play_feedback_tone("follow")
+			_refresh_hint_label()
+		return
+
+	if _select_only_multi_role_entry(target_node):
+		_set_ui_notice("Selected: %s." % _multi_role_kind_label(entry_kind, target_node), 1.1)
+		_play_feedback_tone("ground")
+		_refresh_hint_label()
+
+func _resolve_multi_role_entry_from_cell(cell_index: int) -> Dictionary:
+	if cell_index < 0 or cell_index >= HUD_MULTI_MAX:
+		return {}
+	var entries: Array[Dictionary] = _build_multi_role_entries()
+	var global_index: int = _multi_matrix_page_index * HUD_MULTI_MAX + cell_index
+	if global_index < 0 or global_index >= entries.size():
+		return {}
+	return entries[global_index]
+
+func _select_only_multi_role_entry(target_node: Node) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	_clear_selection()
+	if target_node.is_in_group("selectable_unit"):
+		_add_selected_unit(target_node)
+	elif target_node.is_in_group("selectable_building"):
+		_add_selected_building(target_node)
+	else:
+		return false
+	_refresh_subgroup_state(true)
+	return not _selected_units.is_empty() or not _selected_buildings.is_empty()
+
+func _select_same_multi_role_kind(entry_kind: String) -> int:
+	var kind_key: String = entry_kind.strip_edges().to_lower()
+	if kind_key == "":
+		return 0
+
+	var matched_units: Array[Node] = []
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			continue
+		if _unit_kind_id(selected_unit) != kind_key:
+			continue
+		matched_units.append(selected_unit)
+
+	var matched_buildings: Array[Node] = []
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if _building_kind_id(selected_building) != kind_key:
+			continue
+		matched_buildings.append(selected_building)
+
+	_clear_selection()
+	for matched_unit in matched_units:
+		_add_selected_unit(matched_unit)
+	for matched_building in matched_buildings:
+		_add_selected_building(matched_building)
+	_refresh_subgroup_state(true)
+	return matched_units.size() + matched_buildings.size()
+
+func _remove_multi_role_entry_from_selection(target_node: Node) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	var removed: bool = false
+	var unit_index: int = _selected_units.find(target_node)
+	if unit_index >= 0:
+		_selected_units.remove_at(unit_index)
+		removed = true
+	else:
+		var building_index: int = _selected_buildings.find(target_node)
+		if building_index >= 0:
+			_selected_buildings.remove_at(building_index)
+			removed = true
+	if not removed:
+		return false
+	if target_node.has_method("set_selected"):
+		target_node.call("set_selected", false)
+	_build_menu_open = false
+	_pending_target_skill = ""
+	_refresh_subgroup_state()
+	return true
+
+func _multi_role_kind_label(entry_kind: String, target_node: Node = null) -> String:
+	var normalized: String = entry_kind.strip_edges().to_lower()
+	if normalized.begins_with("building:"):
+		if target_node != null and target_node.has_method("get_building_display_name"):
+			return str(target_node.call("get_building_display_name"))
+		var suffix: String = normalized.trim_prefix("building:")
+		return suffix.capitalize()
+	if normalized == "building":
+		if target_node != null and target_node.has_method("get_building_display_name"):
+			return str(target_node.call("get_building_display_name"))
+		return "Building"
+	return _subgroup_kind_label(normalized)
 
 func _on_hud_control_group_pressed(group_id: int) -> void:
 	_select_control_group(group_id)
@@ -2556,33 +2682,6 @@ func _on_hud_control_group_pressed(group_id: int) -> void:
 func _on_hud_matrix_page_selected(page_index: int) -> void:
 	if _set_multi_matrix_page(page_index):
 		_refresh_hint_label()
-
-func _apply_subgroup_selection_from_hud(role_kind: String, allow_toggle_all: bool = true) -> void:
-	var normalized_kind: String = role_kind.strip_edges().to_lower()
-	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
-	if subgroup_keys.size() <= 1:
-		_active_subgroup_index = -1
-		return
-	if normalized_kind == "":
-		if _active_subgroup_index >= 0:
-			_active_subgroup_index = -1
-			_set_ui_notice("Subgroup active: All.")
-			_play_feedback_tone("ground")
-			_refresh_hint_label()
-		return
-	var target_index: int = subgroup_keys.find(normalized_kind)
-	if target_index < 0:
-		return
-	if allow_toggle_all and _active_subgroup_kind() == normalized_kind:
-		_active_subgroup_index = -1
-		_set_ui_notice("Subgroup active: All.")
-		_play_feedback_tone("ground")
-	else:
-		_active_subgroup_index = target_index
-		_focus_multi_matrix_page_for_subgroup(normalized_kind)
-		_set_ui_notice("Subgroup active: %s (HUD)." % _subgroup_kind_label(normalized_kind))
-		_play_feedback_tone("follow")
-	_refresh_hint_label()
 
 func _execute_command(command_id: String) -> void:
 	_prune_invalid_selection()

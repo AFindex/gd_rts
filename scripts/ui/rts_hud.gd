@@ -1,7 +1,7 @@
 extends Control
 
 signal command_pressed(command_id: String)
-signal multi_role_cell_pressed(role_kind: String)
+signal multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_pressed: bool)
 signal control_group_pressed(group_id: int)
 signal matrix_page_selected(page_index: int)
 
@@ -422,9 +422,9 @@ func _on_matrix_cell_gui_input(event: InputEvent, index: int) -> void:
 	if index < 0 or index >= _current_multi_role_kinds.size():
 		return
 	var role_kind: String = _current_multi_role_kinds[index]
-	if role_kind == "" or role_kind == "building":
+	if role_kind == "":
 		return
-	emit_signal("multi_role_cell_pressed", role_kind)
+	emit_signal("multi_role_cell_pressed", index, mouse_button.shift_pressed, mouse_button.ctrl_pressed)
 
 func _role_matches_subgroup(role: String, role_kind: String, subgroup_kind: String) -> bool:
 	if subgroup_kind == "":
