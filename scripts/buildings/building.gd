@@ -576,6 +576,18 @@ func _apply_building_visual() -> void:
 	elif building_kind == "tech_lab":
 		building_color = Color(0.98, 0.72, 0.46, 1.0)
 		_sprite.scale = Vector3(1.36, 1.36, 1.36)
+	elif building_kind == "warp_gate":
+		building_color = Color(0.82, 0.58, 1.0, 1.0)
+		_sprite.scale = Vector3(1.35, 1.35, 1.35)
+	elif building_kind == "psionic_relay":
+		building_color = Color(0.68, 0.76, 1.0, 1.0)
+		_sprite.scale = Vector3(1.28, 1.28, 1.28)
+	elif building_kind == "bio_vat":
+		building_color = Color(0.86, 0.95, 0.56, 1.0)
+		_sprite.scale = Vector3(1.33, 1.33, 1.33)
+	elif building_kind == "void_core":
+		building_color = Color(1.0, 0.64, 0.8, 1.0)
+		_sprite.scale = Vector3(1.38, 1.38, 1.38)
 	else:
 		building_color = Color(0.95, 0.95, 1.0, 1.0)
 		_sprite.scale = Vector3(1.45, 1.45, 1.45)

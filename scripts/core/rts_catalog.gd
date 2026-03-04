@@ -24,7 +24,17 @@ const UNIT_DEFS: Dictionary = {
 		"requires_buildings": ["base"],
 		"requires_tech": [],
 		"skills": ["move", "gather", "return_resource", "build_menu", "stop"],
-		"build_skills": ["build_barracks", "build_tower", "build_academy", "build_engineering_bay", "build_tech_lab"]
+		"build_skills": [
+			"build_barracks",
+			"build_tower",
+			"build_academy",
+			"build_engineering_bay",
+			"build_tech_lab",
+			"build_warp_gate",
+			"build_psionic_relay",
+			"build_bio_vat",
+			"build_void_core"
+		]
 	},
 	"soldier": {
 		"display_name": "Soldier",
@@ -64,7 +74,17 @@ const BUILDING_DEFS: Dictionary = {
 		"requires_buildings": [],
 		"requires_tech": [],
 		"skills": ["train_worker", "build_menu"],
-		"build_skills": ["build_barracks", "build_tower", "build_academy", "build_engineering_bay", "build_tech_lab"]
+		"build_skills": [
+			"build_barracks",
+			"build_tower",
+			"build_academy",
+			"build_engineering_bay",
+			"build_tech_lab",
+			"build_warp_gate",
+			"build_psionic_relay",
+			"build_bio_vat",
+			"build_void_core"
+		]
 	},
 	"barracks": {
 		"display_name": "Barracks",
@@ -180,6 +200,98 @@ const BUILDING_DEFS: Dictionary = {
 		"requires_tech": ["field_logistics"],
 		"skills": ["research_advanced_targeting"],
 		"build_skills": []
+	},
+	"warp_gate": {
+		"display_name": "Warp Gate",
+		"role_tag": "Warp",
+		"cost": 190,
+		"construction_paradigm": "summoning",
+		"build_time": 8.2,
+		"cancel_refund_ratio": 0.75,
+		"max_health": 760.0,
+		"attack_range": 0.0,
+		"attack_damage": 0.0,
+		"attack_cooldown": 1.0,
+		"is_resource_dropoff": false,
+		"can_queue_worker": false,
+		"can_queue_soldier": false,
+		"worker_build_time": 0.0,
+		"soldier_build_time": 0.0,
+		"queue_limit": 0,
+		"spawn_offset": Vector3(2.8, 0.0, 0.0),
+		"requires_buildings": ["base"],
+		"requires_tech": [],
+		"skills": [],
+		"build_skills": []
+	},
+	"psionic_relay": {
+		"display_name": "Psionic Relay",
+		"role_tag": "Relay",
+		"cost": 140,
+		"construction_paradigm": "summoning",
+		"build_time": 5.8,
+		"cancel_refund_ratio": 0.75,
+		"max_health": 620.0,
+		"attack_range": 0.0,
+		"attack_damage": 0.0,
+		"attack_cooldown": 1.0,
+		"is_resource_dropoff": false,
+		"can_queue_worker": false,
+		"can_queue_soldier": false,
+		"worker_build_time": 0.0,
+		"soldier_build_time": 0.0,
+		"queue_limit": 0,
+		"spawn_offset": Vector3(2.6, 0.0, 0.0),
+		"requires_buildings": ["base"],
+		"requires_tech": [],
+		"skills": [],
+		"build_skills": []
+	},
+	"bio_vat": {
+		"display_name": "Bio Vat",
+		"role_tag": "Vat",
+		"cost": 175,
+		"construction_paradigm": "incorporated",
+		"build_time": 7.0,
+		"cancel_refund_ratio": 0.75,
+		"max_health": 740.0,
+		"attack_range": 0.0,
+		"attack_damage": 0.0,
+		"attack_cooldown": 1.0,
+		"is_resource_dropoff": false,
+		"can_queue_worker": false,
+		"can_queue_soldier": false,
+		"worker_build_time": 0.0,
+		"soldier_build_time": 0.0,
+		"queue_limit": 0,
+		"spawn_offset": Vector3(2.7, 0.0, 0.0),
+		"requires_buildings": ["base"],
+		"requires_tech": [],
+		"skills": [],
+		"build_skills": []
+	},
+	"void_core": {
+		"display_name": "Void Core",
+		"role_tag": "Core",
+		"cost": 230,
+		"construction_paradigm": "incorporated",
+		"build_time": 8.8,
+		"cancel_refund_ratio": 0.75,
+		"max_health": 880.0,
+		"attack_range": 0.0,
+		"attack_damage": 0.0,
+		"attack_cooldown": 1.0,
+		"is_resource_dropoff": false,
+		"can_queue_worker": false,
+		"can_queue_soldier": false,
+		"worker_build_time": 0.0,
+		"soldier_build_time": 0.0,
+		"queue_limit": 0,
+		"spawn_offset": Vector3(2.9, 0.0, 0.0),
+		"requires_buildings": ["base"],
+		"requires_tech": [],
+		"skills": [],
+		"build_skills": []
 	}
 }
 
@@ -261,7 +373,40 @@ const SKILL_DEFS: Dictionary = {
 		"label": "Build",
 		"icon_path": ICON_ROOT_SKILLS + "cmd_build.png",
 		"hotkey": "B",
-		"target_mode": "none"
+		"target_mode": "none",
+		"description": "Open categorized structure menus."
+	},
+	"build_menu_garrisoned": {
+		"id": "build_menu_garrisoned",
+		"label": "Garrisoned",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_build.png",
+		"hotkey": "Q",
+		"target_mode": "none",
+		"description": "Show garrisoned construction structures."
+	},
+	"build_menu_summoning": {
+		"id": "build_menu_summoning",
+		"label": "Summoning",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_build.png",
+		"hotkey": "W",
+		"target_mode": "none",
+		"description": "Show summoning construction structures."
+	},
+	"build_menu_incorporated": {
+		"id": "build_menu_incorporated",
+		"label": "Incorporated",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_build.png",
+		"hotkey": "E",
+		"target_mode": "none",
+		"description": "Show incorporated (sacrifice) structures."
+	},
+	"build_menu_back": {
+		"id": "build_menu_back",
+		"label": "Back",
+		"icon_path": ICON_ROOT_UI + "ui_close_back.png",
+		"hotkey": "ESC",
+		"target_mode": "none",
+		"description": "Back to build categories."
 	},
 	"build_barracks": {
 		"id": "build_barracks",
@@ -302,6 +447,38 @@ const SKILL_DEFS: Dictionary = {
 		"hotkey": "C",
 		"target_mode": "placement",
 		"building_kind": "tech_lab"
+	},
+	"build_warp_gate": {
+		"id": "build_warp_gate",
+		"label": "Warp Gate",
+		"icon_path": ICON_TMP_BUILD,
+		"hotkey": "F",
+		"target_mode": "placement",
+		"building_kind": "warp_gate"
+	},
+	"build_psionic_relay": {
+		"id": "build_psionic_relay",
+		"label": "Psi Relay",
+		"icon_path": ICON_TMP_BUILD,
+		"hotkey": "Z",
+		"target_mode": "placement",
+		"building_kind": "psionic_relay"
+	},
+	"build_bio_vat": {
+		"id": "build_bio_vat",
+		"label": "Bio Vat",
+		"icon_path": ICON_TMP_BUILD,
+		"hotkey": "X",
+		"target_mode": "placement",
+		"building_kind": "bio_vat"
+	},
+	"build_void_core": {
+		"id": "build_void_core",
+		"label": "Void Core",
+		"icon_path": ICON_TMP_BUILD,
+		"hotkey": "V",
+		"target_mode": "placement",
+		"building_kind": "void_core"
 	},
 	"close_menu": {
 		"id": "close_menu",

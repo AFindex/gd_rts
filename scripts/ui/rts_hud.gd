@@ -9,6 +9,7 @@ const COMMAND_SLOTS: int = 15
 const MULTI_SLOTS: int = 24
 const QUEUE_SLOTS: int = 5
 const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_item.tscn")
+const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
 
 @onready var _top_bar: PanelContainer = $TopBar
 @onready var _resource_panel: PanelContainer = $TopBar/TopBarRow/ResourcePanel
@@ -19,7 +20,8 @@ const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_i
 @onready var _selection_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel
 @onready var _queue_panel: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel
 @onready var _portrait_panel: PanelContainer = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel
-@onready var _command_panel: PanelContainer = $BottomHUD/BottomRow/CommandPanel
+@onready var _command_hover_panel: PanelContainer = $BottomHUD/BottomRow/CommandColumn/CommandHoverPanel
+@onready var _command_panel: PanelContainer = $BottomHUD/BottomRow/CommandColumn/CommandPanel
 @onready var _notification_panel: PanelContainer = $NotificationPanel
 
 @onready var _minerals_value: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/MineralsValue
@@ -37,8 +39,11 @@ const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_i
 @onready var _production_queue_root: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot
 @onready var _single_name_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/SingleNameText
 @onready var _health_bar: ProgressBar = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/HealthBar
+@onready var _health_value_label: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/HealthBar/HealthValueLabel
 @onready var _shield_bar: ProgressBar = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/ShieldBar
+@onready var _shield_value_label: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/ShieldBar/ShieldValueLabel
 @onready var _energy_bar: ProgressBar = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/EnergyBar
+@onready var _energy_value_label: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/EnergyBar/EnergyValueLabel
 @onready var _single_detail_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent/SingleDetailText
 @onready var _armor_type_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent/ArmorTypeText
 @onready var _queue_summary_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent/QueueSummaryText
@@ -52,9 +57,10 @@ const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_i
 @onready var _portrait_glyph: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter/PortraitGlyph
 @onready var _portrait_name_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitNameText
 @onready var _portrait_role_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitRoleText
-@onready var _subgroup_text: Label = $BottomHUD/BottomRow/CommandPanel/CommandContent/SubgroupText
-@onready var _command_grid: GridContainer = $BottomHUD/BottomRow/CommandPanel/CommandContent/CommandGrid
-@onready var _command_hint_text: Label = $BottomHUD/BottomRow/CommandPanel/CommandContent/CommandHintText
+@onready var _command_hover_text: Label = $BottomHUD/BottomRow/CommandColumn/CommandHoverPanel/CommandHoverText
+@onready var _subgroup_text: Label = $BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent/SubgroupText
+@onready var _command_grid: GridContainer = $BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent/CommandGrid
+@onready var _command_hint_text: Label = $BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent/CommandHintText
 @onready var _notification_list: VBoxContainer = $NotificationPanel/NotificationList
 
 var _elapsed_seconds: float = 0.0
@@ -78,6 +84,7 @@ func _ready() -> void:
 	_build_matrix_cells()
 	_apply_default_hud()
 	_apply_fixed_button_theme()
+	_set_command_hover_default()
 	if _subgroup_text != null:
 		_subgroup_text.visible = false
 
@@ -107,6 +114,9 @@ func update_hud(snapshot: Dictionary) -> void:
 	_health_bar.value = clampf(float(snapshot.get("status_health", 1.0)) * 100.0, 0.0, 100.0)
 	_shield_bar.value = clampf(float(snapshot.get("status_shield", 0.0)) * 100.0, 0.0, 100.0)
 	_energy_bar.value = clampf(float(snapshot.get("status_energy", 0.0)) * 100.0, 0.0, 100.0)
+	_health_value_label.text = "HP %d%%" % int(round(_health_bar.value))
+	_shield_value_label.text = "SH %d%%" % int(round(_shield_bar.value))
+	_energy_value_label.text = "EN %d%%" % int(round(_energy_bar.value))
 
 	var show_production: bool = bool(snapshot.get("show_production", false))
 	_single_detail_root.visible = _single_container.visible and not show_production
@@ -169,6 +179,7 @@ func _setup_static_styles() -> void:
 	_style_panel(_selection_panel, Color(0.06, 0.12, 0.2, 0.88), Color(0.18, 0.42, 0.56, 0.95))
 	_style_panel(_queue_panel, Color(0.04, 0.1, 0.18, 0.9), Color(0.16, 0.38, 0.54, 0.95))
 	_style_panel(_portrait_panel, Color(0.05, 0.11, 0.18, 0.9), Color(0.16, 0.38, 0.52, 0.95))
+	_style_panel(_command_hover_panel, Color(0.03, 0.09, 0.16, 0.92), Color(0.21, 0.5, 0.68, 0.98))
 	_style_panel(_command_panel, Color(0.04, 0.09, 0.16, 0.9), Color(0.16, 0.39, 0.56, 0.95))
 	_style_panel(_resource_panel, Color(0.04, 0.1, 0.18, 0.84), Color(0.18, 0.42, 0.58, 0.95))
 	_style_panel(_center_top, Color(0.05, 0.12, 0.2, 0.84), Color(0.18, 0.42, 0.58, 0.95))
@@ -183,6 +194,9 @@ func _setup_static_styles() -> void:
 	_style_progress_bar(_shield_bar, Color(0.21, 0.64, 0.98))
 	_style_progress_bar(_energy_bar, Color(0.95, 0.76, 0.22))
 	_style_progress_bar(_queue_progress_bar, Color(0.92, 0.62, 0.22))
+	_style_bar_overlay_label(_health_value_label)
+	_style_bar_overlay_label(_shield_value_label)
+	_style_bar_overlay_label(_energy_value_label)
 
 func _apply_fixed_button_theme() -> void:
 	for node in find_children("*", "Button", true, false):
@@ -222,6 +236,10 @@ func _build_command_items() -> void:
 			continue
 		if item.has_signal("pressed"):
 			item.connect("pressed", Callable(self, "_on_command_item_pressed"))
+		if item.has_signal("hover_started"):
+			item.connect("hover_started", Callable(self, "_on_command_item_hover_started"))
+		if item.has_signal("hover_ended"):
+			item.connect("hover_ended", Callable(self, "_on_command_item_hover_ended"))
 		_command_grid.add_child(item)
 		_command_items.append(item)
 
@@ -457,6 +475,9 @@ func _apply_command_entries(entries_variant: Variant) -> void:
 	if entries_variant is Array:
 		entries = entries_variant
 
+	if entries.is_empty():
+		_set_command_hover_default()
+
 	for i in _command_items.size():
 		var item: Control = _command_items[i]
 		if i < entries.size() and entries[i] is Dictionary:
@@ -469,12 +490,50 @@ func _apply_command_entries(entries_variant: Variant) -> void:
 func _on_command_item_pressed(command_id: String) -> void:
 	emit_signal("command_pressed", command_id)
 
+func _on_command_item_hover_started(hover_data: Dictionary) -> void:
+	if _command_hover_text == null:
+		return
+	_command_hover_text.text = _format_command_hover_text(hover_data)
+
+func _on_command_item_hover_ended() -> void:
+	_set_command_hover_default()
+
 func _apply_notifications(notifications: Array[String]) -> void:
 	for i in _notification_labels.size():
 		if i < notifications.size():
 			_notification_labels[i].text = notifications[i]
 		else:
 			_notification_labels[i].text = ""
+
+func _set_command_hover_default() -> void:
+	if _command_hover_text == null:
+		return
+	_command_hover_text.text = COMMAND_HOVER_DEFAULT_TEXT
+
+func _format_command_hover_text(hover_data: Dictionary) -> String:
+	var label: String = str(hover_data.get("label", ""))
+	var command_id: String = str(hover_data.get("id", ""))
+	var cost_text: String = str(hover_data.get("cost_text", ""))
+	var detail_text: String = str(hover_data.get("detail_text", ""))
+	var hotkey: String = str(hover_data.get("hotkey", ""))
+	var disabled_reason: String = str(hover_data.get("disabled_reason", ""))
+	var enabled: bool = bool(hover_data.get("enabled", true))
+
+	var lines: Array[String] = []
+	var header: String = label if label != "" else command_id
+	if header != "":
+		lines.append(header)
+	if cost_text != "":
+		lines.append("Cost: %s" % cost_text)
+	if detail_text != "":
+		lines.append(detail_text)
+	if hotkey != "":
+		lines.append("Hotkey: %s" % hotkey)
+	if not enabled and disabled_reason != "":
+		lines.append(disabled_reason)
+	if lines.is_empty():
+		return COMMAND_HOVER_DEFAULT_TEXT
+	return "\n".join(lines)
 
 func _style_panel(panel: PanelContainer, background: Color, border: Color) -> void:
 	panel.add_theme_stylebox_override("panel", _build_stylebox(background, border, 2, 8))
@@ -486,13 +545,21 @@ func _style_progress_bar(progress_bar: ProgressBar, fill_color: Color) -> void:
 	progress_bar.add_theme_stylebox_override("background", _build_stylebox(Color(0.01, 0.05, 0.09, 0.85), Color(0.16, 0.36, 0.52, 0.88), 1, 3))
 	progress_bar.add_theme_stylebox_override("fill", _build_stylebox(fill_color, fill_color.darkened(0.25), 1, 3))
 
+func _style_bar_overlay_label(label: Label) -> void:
+	if label == null:
+		return
+	label.add_theme_color_override("font_color", Color(0.96, 0.99, 1.0))
+	label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
+	label.add_theme_constant_override("shadow_offset_x", 1)
+	label.add_theme_constant_override("shadow_offset_y", 1)
+
 func _apply_bottom_helper_transparency() -> void:
 	_bottom_row.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
 	for node in _bottom_hud.find_children("*", "", true, false):
 		var control: Control = node as Control
 		if control == null:
 			continue
-		if control == _selection_panel or control == _queue_panel or control == _portrait_panel or control == _command_panel:
+		if control == _selection_panel or control == _queue_panel or control == _portrait_panel or control == _command_panel or control == _command_hover_panel:
 			control.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
 			continue
 		if _is_queue_control_group_ui(control):
@@ -510,6 +577,9 @@ func _apply_bottom_helper_mouse_filters() -> void:
 			continue
 		if control == _selection_panel or control == _queue_panel or control == _portrait_panel or control == _command_panel:
 			control.mouse_filter = Control.MOUSE_FILTER_STOP
+			continue
+		if control == _command_hover_panel:
+			control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			continue
 		if _is_queue_control_group_ui(control):
 			control.mouse_filter = Control.MOUSE_FILTER_IGNORE

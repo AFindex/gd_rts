@@ -65,6 +65,13 @@
 - 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，恢复建造挂单加入统一取消链（Stop/覆盖命令），并限制“同一站点仅一个恢复挂单”，避免重复派工。
 - 改造：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，新增采集循环与 Shift 队列断点交互：采集中/回收中延迟到资源状态节点切换队列，前往采集点途中立即切到队列命令，并接入“工作中断”HUD提示文案（基础版）。
 - 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，队列路径点改为仅显示 Shift 队列命令（不再包含 active/internal 命令），并过滤 `STOP` 点位，修复“建造时无队列也出现路径点且首点在原点”的问题。
+- 修复：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，命令队列可视化取点改为“先判活再转型”的安全引用路径，修复 `Trying to cast a freed object`（在目标节点已释放时读取 `resource/dropoff/target_unit`）报错。
+- 调整：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，建造锁定（驻守/献祭）下的非 Shift 指令改为“单槽替换”：默认仅保留一个待执行指令；按 Shift 才允许多条追加队列（并修正献祭锁定在调度层被提前拦截的问题）。
+- 改造：[scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd) + [scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，为农民建造面板补充额外测试项：新增 2 个召唤型建筑（`Warp Gate`/`Psionic Relay`）与 2 个献祭型建筑（`Bio Vat`/`Void Core`），并加入对应建造技能与热键（`F/Z/X/V`）。
+- 调整：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd)，建造菜单改为分组命令入口：按建造范式拆分为 `Garrisoned / Summoning / Incorporated` 子菜单，再进入具体建筑列表。
+- 调整：[scripts/ui/skill_command_item.gd](D:/Godot/projs/gd_rts/scripts/ui/skill_command_item.gd) + [scenes/ui/skill_command_item.tscn](D:/Godot/projs/gd_rts/scenes/ui/skill_command_item.tscn) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，命令格改为“图标优先”显示（隐藏按钮内名称/费用），名称、费用和建造详情移到悬浮 Tooltip 显示。
+- 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/ui/skill_command_item.gd](D:/Godot/projs/gd_rts/scripts/ui/skill_command_item.gd)，命令悬浮信息改为固定面板：在 `CommandPanel` 上方新增同宽 `CommandHoverPanel`，按钮改为发出 `hover_started/hover_ended` 信号，HUD 固定位置渲染名称/费用/描述/热键/禁用原因。
+- 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，`SingleStatusContent` 的 `HP/SH/EN` 数值标签内嵌到各自 `ProgressBar`（`HealthBar/ShieldBar/EnergyBar`）内部展示，移除外置独立标签布局。
 - 验证：执行 `godot --headless --path d:\\Godot\\projs\\gd_rts --quit --verbose`，当前无脚本解析错误。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）

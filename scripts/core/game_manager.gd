@@ -33,6 +33,10 @@ const CONTROL_GROUP_DOUBLE_TAP_WINDOW: float = 0.3
 const SELECTION_DOUBLE_CLICK_WINDOW: float = 0.3
 const CONTROL_GROUP_MARKER_GROUP: StringName = &"control_group_marker"
 const CONTROL_GROUP_MARKER_DURATION: float = 0.9
+const BUILD_MENU_GROUP_ROOT: String = "root"
+const BUILD_MENU_GROUP_GARRISONED: String = "garrisoned"
+const BUILD_MENU_GROUP_SUMMONING: String = "summoning"
+const BUILD_MENU_GROUP_INCORPORATED: String = "incorporated"
 
 enum InputState {
 	IDLE,
@@ -78,6 +82,7 @@ var _placement_rotation_y: float = 0.0
 
 var _pending_target_skill: String = ""
 var _build_menu_open: bool = false
+var _build_menu_group: String = BUILD_MENU_GROUP_ROOT
 var _input_state: int = InputState.IDLE
 var _execution_queue: Array[Dictionary] = []
 
@@ -284,7 +289,7 @@ func _trigger_match_rule(rule: Dictionary) -> void:
 	_refresh_hint_label()
 	if not _match_notify_only:
 		_pending_target_skill = ""
-		_build_menu_open = false
+		_close_build_menu()
 
 func _input(event: InputEvent) -> void:
 	if _camera == null:
@@ -367,7 +372,10 @@ func _unhandled_input(event: InputEvent) -> void:
 					_execute_command("placement_cancel")
 					return
 				if _build_menu_open:
-					_execute_command("close_menu")
+					if _build_menu_group != BUILD_MENU_GROUP_ROOT:
+						_execute_command("build_menu_back")
+					else:
+						_execute_command("close_menu")
 					return
 				if _pending_target_skill != "":
 					_pending_target_skill = ""
@@ -1490,21 +1498,26 @@ func _schedule_unit_command(unit_node: Node, command: RTSCommand) -> void:
 		return
 	if command == null:
 		return
+	var forced_locked_queue: bool = false
+	var is_internal_build_order: bool = _is_internal_build_order_command(command)
 	if unit_node.has_method("is_construction_locked") and bool(unit_node.call("is_construction_locked")):
 		if unit_node.has_method("get_construction_lock_mode"):
 			var lock_mode: String = str(unit_node.call("get_construction_lock_mode"))
-			if lock_mode == "incorporated":
+			if lock_mode == "cast" and not is_internal_build_order:
 				return
-			if lock_mode == "garrisoned" and not command.is_queue_command and not _is_internal_build_order_command(command):
+			if (lock_mode == "garrisoned" or lock_mode == "incorporated") and not command.is_queue_command and not is_internal_build_order:
 				command.is_queue_command = true
+				forced_locked_queue = true
 				_set_ui_notice("Worker is building: command queued after construction.", 0.9)
-	if not _is_internal_build_order_command(command):
+	if not is_internal_build_order:
 		if command.command_type == RTSCommand.CommandType.STOP:
 			_cancel_pending_construction_for_worker(unit_node, "stop")
 		elif not command.is_queue_command:
 			_cancel_pending_construction_for_worker(unit_node, "override")
 	if command.is_queue_command and unit_node.has_method("can_enqueue_command"):
-		if not bool(unit_node.call("can_enqueue_command")):
+		# Locked-mode non-Shift commands are "replace slot" semantics in unit.gd,
+		# so they should not be blocked by queue-cap precheck here.
+		if not forced_locked_queue and not bool(unit_node.call("can_enqueue_command")):
 			_queue_reject_feedback_timer = 1.1
 			return
 	_execution_queue.append({
@@ -2080,21 +2093,96 @@ func _active_research_hint_text() -> String:
 		return "Researching %s (%ds). +%d more active." % [tech_name, rounded_remaining, _active_research.size() - 1]
 	return "Researching %s (%ds remaining)." % [tech_name, rounded_remaining]
 
+func _open_build_menu() -> void:
+	_build_menu_open = true
+	_build_menu_group = BUILD_MENU_GROUP_ROOT
+	_pending_target_skill = ""
+
+func _close_build_menu() -> void:
+	_build_menu_open = false
+	_build_menu_group = BUILD_MENU_GROUP_ROOT
+
+func _set_build_menu_group(group: String) -> void:
+	_build_menu_group = _normalize_build_menu_group(group)
+	if _build_menu_group == BUILD_MENU_GROUP_ROOT:
+		_build_menu_open = true
+		return
+	if _build_menu_skill_ids().is_empty():
+		_build_menu_group = BUILD_MENU_GROUP_ROOT
+		_build_menu_open = true
+		return
+	_build_menu_open = true
+
+func _normalize_build_menu_group(group: String) -> String:
+	var normalized: String = group.strip_edges().to_lower()
+	if normalized == BUILD_MENU_GROUP_GARRISONED:
+		return BUILD_MENU_GROUP_GARRISONED
+	if normalized == BUILD_MENU_GROUP_SUMMONING:
+		return BUILD_MENU_GROUP_SUMMONING
+	if normalized == BUILD_MENU_GROUP_INCORPORATED:
+		return BUILD_MENU_GROUP_INCORPORATED
+	return BUILD_MENU_GROUP_ROOT
+
+func _build_menu_group_command_id(group: String) -> String:
+	match _normalize_build_menu_group(group):
+		BUILD_MENU_GROUP_GARRISONED:
+			return "build_menu_garrisoned"
+		BUILD_MENU_GROUP_SUMMONING:
+			return "build_menu_summoning"
+		BUILD_MENU_GROUP_INCORPORATED:
+			return "build_menu_incorporated"
+		_:
+			return ""
+
+func _build_menu_group_for_skill(skill_id: String) -> String:
+	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
+	if build_kind == "":
+		return BUILD_MENU_GROUP_ROOT
+	var paradigm: String = _building_construction_paradigm(build_kind)
+	match paradigm:
+		"summoning":
+			return BUILD_MENU_GROUP_SUMMONING
+		"incorporated":
+			return BUILD_MENU_GROUP_INCORPORATED
+		_:
+			return BUILD_MENU_GROUP_GARRISONED
+
+func _build_skill_detail_text(skill_id: String) -> String:
+	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
+	if build_kind == "":
+		return ""
+	var building_def: Dictionary = RTS_CATALOG.get_building_def(build_kind)
+	if building_def.is_empty():
+		return ""
+	var paradigm: String = str(building_def.get("construction_paradigm", "garrisoned")).strip_edges().to_lower()
+	var paradigm_label: String = paradigm.capitalize()
+	var build_time: float = maxf(0.0, float(building_def.get("build_time", 0.0)))
+	var refund_ratio: float = clampf(float(building_def.get("cancel_refund_ratio", 0.75)), 0.0, 1.0)
+	var refund_percent: int = int(round(refund_ratio * 100.0))
+	return "Type: %s | Build: %.1fs | Cancel Refund: %d%%" % [paradigm_label, build_time, refund_percent]
+
 func _build_menu_hint_text() -> String:
 	var parts: Array[String] = []
-	for skill_id in _build_menu_skill_ids():
+	var visible_skill_ids: Array[String] = _build_menu_skill_ids()
+	for skill_id in visible_skill_ids:
 		var skill_def: Dictionary = RTS_CATALOG.get_skill_def(skill_id)
 		var label: String = str(skill_def.get("label", skill_id.capitalize()))
 		var hotkey: String = str(skill_def.get("hotkey", "")).strip_edges().to_upper()
-		var building_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
-		var cost: int = _building_cost(building_kind)
-		var text: String = "%s (%d)" % [label, cost]
+		var text: String = label
 		if hotkey != "":
-			text = "%s %s (%d)" % [hotkey, label, cost]
+			text = "%s %s" % [hotkey, text]
 		parts.append(text)
 	if parts.is_empty():
-		return "Build Menu: No available build options | ESC Back"
-	return "Build Menu: %s | ESC Back" % ", ".join(parts)
+		return "Build Menu: No available options | ESC Back"
+	var section_label: String = "Categories"
+	match _build_menu_group:
+		BUILD_MENU_GROUP_GARRISONED:
+			section_label = "Garrisoned"
+		BUILD_MENU_GROUP_SUMMONING:
+			section_label = "Summoning"
+		BUILD_MENU_GROUP_INCORPORATED:
+			section_label = "Incorporated"
+	return "Build Menu [%s]: %s | ESC Back" % [section_label, ", ".join(parts)]
 
 func _build_command_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
@@ -2109,10 +2197,16 @@ func _build_command_entries() -> Array[Dictionary]:
 
 	if _build_menu_open:
 		if not _can_open_build_menu():
-			_build_menu_open = false
+			_close_build_menu()
 		else:
-			for skill_id in _build_menu_skill_ids():
+			var build_menu_entries: Array[String] = _build_menu_skill_ids()
+			if build_menu_entries.is_empty() and _build_menu_group != BUILD_MENU_GROUP_ROOT:
+				_build_menu_group = BUILD_MENU_GROUP_ROOT
+				build_menu_entries = _build_menu_skill_ids()
+			for skill_id in build_menu_entries:
 				entries.append(_build_menu_command_entry(skill_id))
+			if _build_menu_group != BUILD_MENU_GROUP_ROOT:
+				entries.append(_command_entry("build_menu_back"))
 			entries.append(_command_entry("close_menu"))
 			return entries
 
@@ -2142,10 +2236,40 @@ func _build_menu_command_entry(command_id: String) -> Dictionary:
 	return _command_entry(command_id, {
 		"enabled": enabled,
 		"cost_text": str(cost),
+		"detail_text": _build_skill_detail_text(command_id),
 		"disabled_reason": reason
 	})
 
 func _build_menu_skill_ids() -> Array[String]:
+	var available_skills: Array[String] = _build_menu_available_skill_ids()
+	if _build_menu_group == BUILD_MENU_GROUP_ROOT:
+		var root_entries: Array[String] = []
+		var has_garrisoned: bool = false
+		var has_summoning: bool = false
+		var has_incorporated: bool = false
+		for skill_id in available_skills:
+			match _build_menu_group_for_skill(skill_id):
+				BUILD_MENU_GROUP_SUMMONING:
+					has_summoning = true
+				BUILD_MENU_GROUP_INCORPORATED:
+					has_incorporated = true
+				_:
+					has_garrisoned = true
+		if has_garrisoned:
+			root_entries.append(_build_menu_group_command_id(BUILD_MENU_GROUP_GARRISONED))
+		if has_summoning:
+			root_entries.append(_build_menu_group_command_id(BUILD_MENU_GROUP_SUMMONING))
+		if has_incorporated:
+			root_entries.append(_build_menu_group_command_id(BUILD_MENU_GROUP_INCORPORATED))
+		return root_entries
+
+	var filtered: Array[String] = []
+	for skill_id in available_skills:
+		if _build_menu_group_for_skill(skill_id) == _build_menu_group:
+			filtered.append(skill_id)
+	return filtered
+
+func _build_menu_available_skill_ids() -> Array[String]:
 	var skill_ids: Array[String] = []
 	if not _can_open_build_menu():
 		return skill_ids
@@ -2234,6 +2358,7 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 		"build_menu":
 			var build_menu_enabled: bool = _can_open_build_menu()
 			overrides["enabled"] = build_menu_enabled
+			overrides["detail_text"] = "Open categorized build options (Garrisoned / Summoning / Incorporated)."
 			overrides["disabled_reason"] = "" if build_menu_enabled else _build_menu_disabled_reason()
 		"gather":
 			var gather_enabled: bool = _selection_has_worker()
@@ -2972,7 +3097,7 @@ func _remove_multi_role_entry_from_selection(target_node: Node) -> bool:
 		return false
 	if target_node.has_method("set_selected"):
 		target_node.call("set_selected", false)
-	_build_menu_open = false
+	_close_build_menu()
 	_pending_target_skill = ""
 	_refresh_subgroup_state()
 	return true
@@ -3003,12 +3128,27 @@ func _execute_command(command_id: String) -> void:
 	match command_id:
 		"build_menu":
 			if _can_open_build_menu():
-				_build_menu_open = true
-				_pending_target_skill = ""
+				_open_build_menu()
 				_refresh_hint_label()
 			return
+		"build_menu_garrisoned":
+			_set_build_menu_group(BUILD_MENU_GROUP_GARRISONED)
+			_refresh_hint_label()
+			return
+		"build_menu_summoning":
+			_set_build_menu_group(BUILD_MENU_GROUP_SUMMONING)
+			_refresh_hint_label()
+			return
+		"build_menu_incorporated":
+			_set_build_menu_group(BUILD_MENU_GROUP_INCORPORATED)
+			_refresh_hint_label()
+			return
+		"build_menu_back":
+			_set_build_menu_group(BUILD_MENU_GROUP_ROOT)
+			_refresh_hint_label()
+			return
 		"close_menu":
-			_build_menu_open = false
+			_close_build_menu()
 			_refresh_hint_label()
 			return
 		"placement_confirm":
@@ -3048,7 +3188,7 @@ func _execute_command(command_id: String) -> void:
 				return
 			if not _can_start_build_skill(command_id):
 				return
-			_build_menu_open = false
+			_close_build_menu()
 			_start_building_placement(build_kind)
 	_refresh_hint_label()
 
@@ -3059,7 +3199,7 @@ func _begin_target_skill(skill_id: String) -> void:
 		return
 	if skill_id == "gather" and not _selection_has_worker():
 		return
-	_build_menu_open = false
+	_close_build_menu()
 	_pending_target_skill = skill_id
 
 func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool = false) -> bool:
@@ -3091,7 +3231,7 @@ func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool 
 
 func _issue_context_command(screen_pos: Vector2, queue_command: bool = false) -> void:
 	_prune_invalid_selection()
-	_build_menu_open = false
+	_close_build_menu()
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return
 
@@ -3274,7 +3414,7 @@ func _is_player_dropoff_node(node: Node) -> bool:
 	return _is_player_owned(node)
 
 func _select_single(screen_pos: Vector2, additive: bool) -> void:
-	_build_menu_open = false
+	_close_build_menu()
 	_pending_target_skill = ""
 	if not additive:
 		_clear_selection()
@@ -3313,7 +3453,7 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 	_refresh_subgroup_state(true)
 
 func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> void:
-	_build_menu_open = false
+	_close_build_menu()
 	_pending_target_skill = ""
 	if not additive:
 		_clear_selection()
@@ -3863,7 +4003,7 @@ func _start_building_placement(kind: String) -> void:
 		return
 	_placing_building = true
 	_pending_target_skill = ""
-	_build_menu_open = false
+	_close_build_menu()
 	_placing_kind = kind
 	_placing_cost = build_cost
 	_placement_rotation_y = 0.0
@@ -4478,5 +4618,5 @@ func _clear_selection() -> void:
 	_selected_buildings.clear()
 	_active_subgroup_index = -1
 	_multi_matrix_page_index = 0
-	_build_menu_open = false
+	_close_build_menu()
 	_pending_target_skill = ""

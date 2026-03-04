@@ -322,27 +322,48 @@ theme_override_constants/separation = 3
 layout_mode = 2
 text = "No Selection"
 
-[node name="HealthLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=110138159]
-layout_mode = 2
-text = "Health"
-
 [node name="HealthBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=1217402375]
 layout_mode = 2
 value = 100.0
 
-[node name="ShieldLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=174649362]
-layout_mode = 2
-text = "Shield"
+[node name="HealthValueLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/HealthBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "HP 100%"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="ShieldBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=982109608]
 layout_mode = 2
 
-[node name="EnergyLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=136876789]
-layout_mode = 2
-text = "Energy"
+[node name="ShieldValueLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/ShieldBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "SH 0%"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="EnergyBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=581421425]
 layout_mode = 2
+
+[node name="EnergyValueLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/EnergyBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "EN 0%"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="SingleDetailRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer" unique_id=514579815]
 layout_mode = 2
@@ -473,27 +494,47 @@ text = "-"
 horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="CommandPanel" type="PanelContainer" parent="BottomHUD/BottomRow" unique_id=1878818253]
+[node name="CommandColumn" type="VBoxContainer" parent="BottomHUD/BottomRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 size_flags_stretch_ratio = 25.0
+theme_override_constants/separation = 6
 
-[node name="CommandContent" type="VBoxContainer" parent="BottomHUD/BottomRow/CommandPanel" unique_id=1127085611]
+[node name="CommandHoverPanel" type="PanelContainer" parent="BottomHUD/BottomRow/CommandColumn"]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+size_flags_vertical = 0
+mouse_filter = 2
+
+[node name="CommandHoverText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandHoverPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+text = "Hover command for details."
+autowrap_mode = 3
+mouse_filter = 2
+
+[node name="CommandPanel" type="PanelContainer" parent="BottomHUD/BottomRow/CommandColumn" unique_id=1878818253]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="CommandContent" type="VBoxContainer" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel" unique_id=1127085611]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="SubgroupText" type="Label" parent="BottomHUD/BottomRow/CommandPanel/CommandContent" unique_id=1993498507]
+[node name="SubgroupText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=1993498507]
 visible = false
 layout_mode = 2
 text = "Subgroup -"
 
-[node name="CommandGrid" type="GridContainer" parent="BottomHUD/BottomRow/CommandPanel/CommandContent" unique_id=2120930169]
+[node name="CommandGrid" type="GridContainer" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=2120930169]
 layout_mode = 2
 theme_override_constants/h_separation = 8
 theme_override_constants/v_separation = 8
 columns = 5
 
-[node name="CommandHintText" type="Label" parent="BottomHUD/BottomRow/CommandPanel/CommandContent" unique_id=2043072637]
+[node name="CommandHintText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=2043072637]
 layout_mode = 2
 text = "No active command card."
 autowrap_mode = 3

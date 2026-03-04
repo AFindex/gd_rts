@@ -227,14 +227,20 @@ func submit_command(command: RefCounted) -> bool:
 	var rts_command: RTSCommand = command as RTSCommand
 	if rts_command == null:
 		return false
+	var explicit_queue_input: bool = rts_command.is_queue_command
 	var is_internal_build_order: bool = false
 	if rts_command.payload is Dictionary:
 		is_internal_build_order = bool(rts_command.payload.get("internal_build_order", false))
 
-	if (_construction_lock_mode == ConstructionLockMode.INCORPORATED or _construction_lock_mode == ConstructionLockMode.CAST) and not is_internal_build_order:
+	if _construction_lock_mode == ConstructionLockMode.CAST and not is_internal_build_order:
 		return false
-	if _construction_lock_mode == ConstructionLockMode.GARRISONED and not is_internal_build_order and not rts_command.is_queue_command:
+
+	var locked_deferred_mode: bool = (_construction_lock_mode == ConstructionLockMode.GARRISONED or _construction_lock_mode == ConstructionLockMode.INCORPORATED) and not is_internal_build_order
+	if locked_deferred_mode and not rts_command.is_queue_command:
 		rts_command.is_queue_command = true
+	if locked_deferred_mode and not explicit_queue_input:
+		# In locked construction modes, non-Shift input keeps only one deferred command slot.
+		_clear_non_internal_deferred_commands()
 
 	if rts_command.is_queue_command:
 		if not can_enqueue_command():
@@ -252,6 +258,27 @@ func submit_command(command: RefCounted) -> bool:
 	_execute_rts_command(rts_command)
 	_emit_command_queue_changed()
 	return true
+
+func _clear_non_internal_deferred_commands() -> void:
+	var active_command: RTSCommand = _active_command as RTSCommand
+	if active_command != null and not _is_internal_build_order_command(active_command):
+		_active_command = null
+	for i in range(_command_queue.size() - 1, -1, -1):
+		var queued_value: Variant = _command_queue[i]
+		var queued_command: RTSCommand = queued_value as RTSCommand
+		if queued_command == null:
+			_command_queue.remove_at(i)
+			continue
+		if _is_internal_build_order_command(queued_command):
+			continue
+		_command_queue.remove_at(i)
+
+func _is_internal_build_order_command(command: RTSCommand) -> bool:
+	if command == null:
+		return false
+	if not (command.payload is Dictionary):
+		return false
+	return bool(command.payload.get("internal_build_order", false))
 
 func clear_pending_commands() -> void:
 	_command_queue.clear()
@@ -560,22 +587,29 @@ func _append_queue_point(points: Array[Dictionary], command: RTSCommand, queued:
 	var position: Vector3 = command.target_position
 	match command.command_type:
 		RTSCommand.CommandType.ATTACK:
-			var attack_target: Node3D = command.target_unit as Node3D
-			if attack_target != null and is_instance_valid(attack_target):
+			var attack_target: Node3D = _safe_node3d_ref(command.target_unit)
+			if attack_target != null:
 				position = attack_target.global_position
 		RTSCommand.CommandType.GATHER:
-			var resource_target: Node3D = command.payload.get("resource") as Node3D
-			if resource_target != null and is_instance_valid(resource_target):
+			var resource_target: Node3D = _safe_node3d_ref(command.payload.get("resource"))
+			if resource_target != null:
 				position = resource_target.global_position
 		RTSCommand.CommandType.RETURN_RESOURCE:
-			var dropoff_target: Node3D = command.payload.get("dropoff") as Node3D
-			if dropoff_target != null and is_instance_valid(dropoff_target):
+			var dropoff_target: Node3D = _safe_node3d_ref(command.payload.get("dropoff"))
+			if dropoff_target != null:
 				position = dropoff_target.global_position
 	points.append({
 		"position": position,
 		"command_type": command.command_type,
 		"queued": queued
 	})
+
+func _safe_node3d_ref(value: Variant) -> Node3D:
+	if not (value is Object):
+		return null
+	if not is_instance_valid(value):
+		return null
+	return value as Node3D
 
 func _emit_command_queue_changed() -> void:
 	emit_signal("command_queue_changed")
