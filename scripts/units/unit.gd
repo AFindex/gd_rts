@@ -37,6 +37,12 @@ enum UnitMode {
 	ATTACK_MOVE,
 }
 
+enum ConstructionLockMode {
+	NONE,
+	GARRISONED,
+	INCORPORATED,
+}
+
 var _mode: UnitMode = UnitMode.IDLE
 var _health: float = 100.0
 var _has_target: bool = false
@@ -62,6 +68,10 @@ var _default_collision_mask: int = 0
 var _worker_collection_profile_active: bool = false
 var _command_queue: Array[RefCounted] = []
 var _active_command: RefCounted = null
+var _construction_lock_mode: int = ConstructionLockMode.NONE
+var _construction_lock_building_path: NodePath = NodePath("")
+var _default_collision_layer: int = 0
+var _construction_hidden: bool = false
 
 signal command_queue_changed
 
@@ -71,6 +81,7 @@ func _ready() -> void:
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
+	_default_collision_layer = collision_layer
 	_default_collision_mask = collision_mask
 	_setup_navigation_agent()
 
@@ -100,10 +111,60 @@ func get_unit_kind() -> String:
 	return "worker" if is_worker else "soldier"
 
 func get_skill_ids() -> Array[String]:
+	if _construction_lock_mode == ConstructionLockMode.GARRISONED:
+		return ["construction_exit"]
+	if _construction_lock_mode == ConstructionLockMode.INCORPORATED:
+		return []
 	return RTS_CATALOG.get_unit_skill_ids(get_unit_kind())
 
 func get_build_skill_ids() -> Array[String]:
 	return RTS_CATALOG.get_unit_build_skill_ids(get_unit_kind())
+
+func is_construction_locked() -> bool:
+	return _construction_lock_mode != ConstructionLockMode.NONE
+
+func get_construction_lock_mode() -> String:
+	match _construction_lock_mode:
+		ConstructionLockMode.GARRISONED:
+			return "garrisoned"
+		ConstructionLockMode.INCORPORATED:
+			return "incorporated"
+		_:
+			return "none"
+
+func get_construction_building_path() -> NodePath:
+	return _construction_lock_building_path
+
+func enter_construction_lock(mode: String, building_path: NodePath = NodePath(""), hide_unit: bool = false) -> void:
+	var normalized_mode: String = mode.strip_edges().to_lower()
+	if normalized_mode == "incorporated":
+		_construction_lock_mode = ConstructionLockMode.INCORPORATED
+	elif normalized_mode == "garrisoned":
+		_construction_lock_mode = ConstructionLockMode.GARRISONED
+	else:
+		_construction_lock_mode = ConstructionLockMode.NONE
+	_construction_lock_building_path = building_path
+	_mode = UnitMode.IDLE
+	_has_target = false
+	velocity = Vector3.ZERO
+	_gather_target = null
+	_dropoff_target = null
+	_attack_target = null
+	_attack_timer = 0.0
+	_has_attack_move_point = false
+	_attack_move_point = Vector3.ZERO
+	_retarget_timer = 0.0
+	_gather_timer = 0.0
+	_reset_navigation_motion()
+	if hide_unit:
+		_set_construction_hidden(true)
+	else:
+		_set_construction_hidden(false)
+
+func exit_construction_lock() -> void:
+	_construction_lock_mode = ConstructionLockMode.NONE
+	_construction_lock_building_path = NodePath("")
+	_set_construction_hidden(false)
 
 func get_mode_label() -> String:
 	match _mode:
@@ -156,6 +217,14 @@ func submit_command(command: RefCounted) -> bool:
 	var rts_command: RTSCommand = command as RTSCommand
 	if rts_command == null:
 		return false
+	var is_internal_build_order: bool = false
+	if rts_command.payload is Dictionary:
+		is_internal_build_order = bool(rts_command.payload.get("internal_build_order", false))
+
+	if _construction_lock_mode == ConstructionLockMode.INCORPORATED and not is_internal_build_order:
+		return false
+	if _construction_lock_mode == ConstructionLockMode.GARRISONED and not is_internal_build_order and not rts_command.is_queue_command:
+		rts_command.is_queue_command = true
 
 	if rts_command.is_queue_command:
 		if not can_enqueue_command():
@@ -337,6 +406,8 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 	return true
 
 func _process_command_queue() -> void:
+	if _construction_lock_mode != ConstructionLockMode.NONE:
+		return
 	if _active_command != null:
 		var active_command: RTSCommand = _active_command as RTSCommand
 		if active_command == null or _is_command_complete(active_command):
@@ -821,6 +892,29 @@ func _play_hit_flash() -> void:
 	_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	var tween: Tween = create_tween()
 	tween.tween_property(_sprite, "modulate", _base_tint, 0.08)
+
+func _set_construction_hidden(hidden: bool) -> void:
+	if hidden == _construction_hidden:
+		return
+	_construction_hidden = hidden
+	visible = not hidden
+	_selection_ring.visible = false
+	if hidden:
+		if is_in_group("selectable_unit"):
+			remove_from_group("selectable_unit")
+		collision_layer = 0
+		collision_mask = 0
+		if _nav_agent != null:
+			_nav_agent.avoidance_enabled = false
+			_nav_agent.set_velocity_forced(Vector3.ZERO)
+		return
+	if not is_in_group("selectable_unit"):
+		add_to_group("selectable_unit")
+	collision_layer = _default_collision_layer
+	collision_mask = _default_collision_mask
+	if _nav_agent != null:
+		_nav_agent.avoidance_enabled = not _worker_collection_profile_active
+		_nav_agent.set_velocity_forced(Vector3.ZERO)
 
 func _setup_navigation_agent() -> void:
 	if _nav_agent == null:

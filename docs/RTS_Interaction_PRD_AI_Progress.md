@@ -57,6 +57,9 @@
 - 修复：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，修正多选同类型分页在状态刷新时被重置到第一页的问题（子组状态刷新不再每帧强制清零分页）。
 - 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，QueueTopSpacer/ControlGroupBar 透明容器改为鼠标穿透，恢复透明区域内框选响应。
 - 新增：[RTS_Worker_Construction_TaskPlan.md](D:/Godot/projs/gd_rts/docs/RTS_Worker_Construction_TaskPlan.md)，基于 Worker Construction System v1.2 的实施任务分解与进度看板。
+- 改造：[scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，新增施工中 Site 状态机与施工专用命令卡出口（Exit/Cancel/Select Worker）。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，Worker Build 从“到点后二次计时生成建筑”切为“到点即生成 Site 并自推进”，并接入施工命令执行与返还逻辑（75%）。
+- 改造：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd) + [scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd)，新增驻守/献祭建造锁定、献祭隐藏重现、施工命令技能定义。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 

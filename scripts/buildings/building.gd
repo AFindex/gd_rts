@@ -3,8 +3,12 @@ extends StaticBody3D
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 const RALLY_MAX_HOPS: int = 3
 const RALLY_ALERT_DURATION: float = 1.2
+const CONSTRUCTION_PARADIGM_SUMMONING: String = "summoning"
+const CONSTRUCTION_PARADIGM_GARRISONED: String = "garrisoned"
+const CONSTRUCTION_PARADIGM_INCORPORATED: String = "incorporated"
 
 signal production_finished(unit_kind: String, spawn_position: Vector3)
+signal construction_state_changed(event_type: String, payload: Dictionary)
 
 @export var building_kind: String = "base"
 @export var team_id: int = 1
@@ -14,6 +18,9 @@ signal production_finished(unit_kind: String, spawn_position: Vector3)
 @export var can_queue_soldier: bool = false
 @export var worker_build_time: float = 2.8
 @export var soldier_build_time: float = 4.6
+@export var construction_paradigm: String = CONSTRUCTION_PARADIGM_GARRISONED
+@export var construction_build_time: float = 0.0
+@export var construction_cancel_refund_ratio: float = 0.75
 @export var queue_limit: int = 6
 @export var spawn_offset: Vector3 = Vector3(3.2, 0.0, 0.0)
 @export var attack_range: float = 0.0
@@ -36,6 +43,15 @@ var _rally_target_node: Node = null
 var _rally_mode: String = "ground"
 var _rally_hops: Array[Dictionary] = []
 var _rally_alert_timer: float = 0.0
+var _construction_active: bool = false
+var _construction_paused: bool = false
+var _construction_paradigm: String = CONSTRUCTION_PARADIGM_GARRISONED
+var _construction_elapsed: float = 0.0
+var _construction_total_time: float = 0.0
+var _construction_assigned_worker_path: NodePath = NodePath("")
+var _construction_total_cost: int = 0
+var _construction_cancel_ratio: float = 0.75
+var _construction_pause_reason: String = ""
 
 func _ready() -> void:
 	add_to_group("selectable_building")
@@ -48,6 +64,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _rally_alert_timer > 0.0:
 		_rally_alert_timer = maxf(0.0, _rally_alert_timer - delta)
+	if _construction_active:
+		_process_construction(delta)
+		return
 
 	if _queue_unit_kinds.is_empty():
 		_production_timer = 0.0
@@ -91,11 +110,15 @@ func apply_damage(amount: float, _source: Node = null) -> void:
 		_die()
 
 func can_queue_worker_unit() -> bool:
+	if _construction_active:
+		return false
 	if not can_queue_worker:
 		return false
 	return not is_queue_full()
 
 func can_queue_soldier_unit() -> bool:
+	if _construction_active:
+		return false
 	if not can_queue_soldier:
 		return false
 	return not is_queue_full()
@@ -159,12 +182,189 @@ func get_building_role_tag() -> String:
 	return str(building_def.get("role_tag", "Building"))
 
 func get_skill_ids() -> Array[String]:
+	if _construction_active:
+		return _construction_skill_ids()
 	return RTS_CATALOG.get_building_skill_ids(building_kind)
 
 func get_build_skill_ids() -> Array[String]:
 	return RTS_CATALOG.get_building_build_skill_ids(building_kind)
 
+func is_under_construction() -> bool:
+	return _construction_active
+
+func is_construction_paused() -> bool:
+	return _construction_active and _construction_paused
+
+func get_construction_paradigm() -> String:
+	return _construction_paradigm
+
+func get_construction_progress() -> float:
+	if not _construction_active:
+		return 1.0
+	if _construction_total_time <= 0.0:
+		return 1.0
+	return clampf(_construction_elapsed / _construction_total_time, 0.0, 1.0)
+
+func get_construction_assigned_worker_path() -> NodePath:
+	return _construction_assigned_worker_path
+
+func has_construction_assigned_worker() -> bool:
+	return str(_construction_assigned_worker_path) != ""
+
+func start_construction(paradigm: String, build_time: float, assigned_worker: Node = null, build_cost: int = 0, cancel_refund_ratio: float = 0.75) -> void:
+	_queue_unit_kinds.clear()
+	_queue_build_times.clear()
+	_production_timer = 0.0
+	_construction_active = true
+	_construction_paused = false
+	_construction_pause_reason = ""
+	_construction_paradigm = _normalize_construction_paradigm(paradigm)
+	_construction_elapsed = 0.0
+	_construction_total_time = maxf(0.01, build_time)
+	_construction_total_cost = maxi(0, build_cost)
+	_construction_cancel_ratio = clampf(cancel_refund_ratio, 0.0, 1.0)
+	if assigned_worker != null and is_instance_valid(assigned_worker):
+		_construction_assigned_worker_path = assigned_worker.get_path()
+	else:
+		_construction_assigned_worker_path = NodePath("")
+	_apply_construction_visual(true)
+	emit_signal("construction_state_changed", "started", {
+		"paradigm": _construction_paradigm,
+		"worker_path": _construction_assigned_worker_path,
+		"build_time": _construction_total_time
+	})
+	if _construction_total_time <= 0.01:
+		_complete_construction()
+
+func assign_construction_worker(worker_node: Node = null) -> bool:
+	if not _construction_active:
+		return false
+	if _construction_paradigm != CONSTRUCTION_PARADIGM_GARRISONED:
+		return false
+	if worker_node == null or not is_instance_valid(worker_node):
+		return false
+	_construction_assigned_worker_path = worker_node.get_path()
+	_construction_paused = false
+	_construction_pause_reason = ""
+	emit_signal("construction_state_changed", "resumed", {
+		"paradigm": _construction_paradigm,
+		"worker_path": _construction_assigned_worker_path,
+		"progress": get_construction_progress()
+	})
+	return true
+
+func exit_construction() -> Dictionary:
+	if not _construction_active:
+		return {"ok": false, "reason": "not_under_construction"}
+	if _construction_paradigm != CONSTRUCTION_PARADIGM_GARRISONED:
+		return {"ok": false, "reason": "not_garrisoned"}
+	if _construction_paused:
+		return {"ok": false, "reason": "already_paused"}
+	_construction_paused = true
+	_construction_pause_reason = "worker_exit"
+	var payload: Dictionary = {
+		"ok": true,
+		"paradigm": _construction_paradigm,
+		"worker_path": _construction_assigned_worker_path,
+		"progress": get_construction_progress()
+	}
+	emit_signal("construction_state_changed", "paused", payload)
+	return payload
+
+func cancel_construction_and_destroy(eject_worker: bool = false) -> Dictionary:
+	if not _construction_active:
+		return {"ok": false, "reason": "not_under_construction"}
+	var payload: Dictionary = {
+		"ok": true,
+		"paradigm": _construction_paradigm,
+		"worker_path": _construction_assigned_worker_path,
+		"cost": _construction_total_cost,
+		"refund_ratio": _construction_cancel_ratio,
+		"eject_worker": eject_worker,
+		"progress": get_construction_progress(),
+		"position": global_position
+	}
+	emit_signal("construction_state_changed", "canceled", payload)
+	_reset_construction_state()
+	queue_free()
+	return payload
+
+func _construction_skill_ids() -> Array[String]:
+	if _construction_paradigm == CONSTRUCTION_PARADIGM_INCORPORATED:
+		return ["construction_cancel_eject"]
+	if _construction_paradigm == CONSTRUCTION_PARADIGM_GARRISONED:
+		var skill_ids: Array[String] = []
+		if str(_construction_assigned_worker_path) != "":
+			skill_ids.append("construction_select_worker")
+		skill_ids.append("construction_cancel_destroy")
+		return skill_ids
+	return ["construction_cancel_destroy"]
+
+func _normalize_construction_paradigm(paradigm: String) -> String:
+	var normalized: String = paradigm.strip_edges().to_lower()
+	if normalized == CONSTRUCTION_PARADIGM_SUMMONING:
+		return CONSTRUCTION_PARADIGM_SUMMONING
+	if normalized == CONSTRUCTION_PARADIGM_INCORPORATED:
+		return CONSTRUCTION_PARADIGM_INCORPORATED
+	return CONSTRUCTION_PARADIGM_GARRISONED
+
+func _process_construction(delta: float) -> void:
+	if _construction_paused:
+		return
+	if _construction_paradigm == CONSTRUCTION_PARADIGM_GARRISONED:
+		if str(_construction_assigned_worker_path) == "":
+			_construction_paused = true
+			_construction_pause_reason = "worker_missing"
+			return
+		var worker_node: Node = get_node_or_null(_construction_assigned_worker_path)
+		if worker_node == null or not is_instance_valid(worker_node):
+			_construction_paused = true
+			_construction_pause_reason = "worker_missing"
+			emit_signal("construction_state_changed", "paused", {
+				"paradigm": _construction_paradigm,
+				"worker_path": _construction_assigned_worker_path,
+				"reason": _construction_pause_reason,
+				"progress": get_construction_progress()
+			})
+			return
+	_construction_elapsed += delta
+	if _construction_elapsed >= _construction_total_time:
+		_complete_construction()
+
+func _complete_construction() -> void:
+	var payload: Dictionary = {
+		"paradigm": _construction_paradigm,
+		"worker_path": _construction_assigned_worker_path,
+		"cost": _construction_total_cost,
+		"position": global_position
+	}
+	_reset_construction_state()
+	emit_signal("construction_state_changed", "completed", payload)
+
+func _reset_construction_state() -> void:
+	_construction_active = false
+	_construction_paused = false
+	_construction_pause_reason = ""
+	_construction_elapsed = 0.0
+	_construction_total_time = 0.0
+	_construction_assigned_worker_path = NodePath("")
+	_construction_total_cost = 0
+	_construction_cancel_ratio = construction_cancel_refund_ratio
+	_apply_construction_visual(false)
+
+func _apply_construction_visual(under_construction: bool) -> void:
+	if _sprite == null:
+		return
+	if under_construction:
+		var tint: Color = _base_tint
+		tint.a = 0.58
+		_sprite.modulate = tint
+	else:
+		_sprite.modulate = _base_tint
+
 func supports_rally_point() -> bool:
+	if _construction_active:
+		return false
 	return can_queue_worker or can_queue_soldier
 
 func set_rally_point(target_position: Vector3, target_node: Node = null, mode: String = "ground", append_hop: bool = false) -> bool:
@@ -266,6 +466,7 @@ func configure_by_kind(kind: String) -> void:
 	_attack_target = null
 	_attack_timer = 0.0
 	clear_rally_point()
+	_reset_construction_state()
 	_health = max_health
 	_refresh_dropoff_group()
 	_apply_building_visual()
@@ -335,6 +536,10 @@ func _apply_building_config(kind: String) -> void:
 	can_queue_soldier = bool(building_def.get("can_queue_soldier", can_queue_soldier))
 	worker_build_time = float(building_def.get("worker_build_time", worker_build_time))
 	soldier_build_time = float(building_def.get("soldier_build_time", soldier_build_time))
+	construction_paradigm = _normalize_construction_paradigm(str(building_def.get("construction_paradigm", construction_paradigm)))
+	construction_build_time = maxf(0.0, float(building_def.get("build_time", construction_build_time)))
+	construction_cancel_refund_ratio = clampf(float(building_def.get("cancel_refund_ratio", construction_cancel_refund_ratio)), 0.0, 1.0)
+	_construction_cancel_ratio = construction_cancel_refund_ratio
 	queue_limit = int(building_def.get("queue_limit", queue_limit))
 	var configured_spawn_offset: Variant = building_def.get("spawn_offset", spawn_offset)
 	if configured_spawn_offset is Vector3:
@@ -415,6 +620,15 @@ func _flat_distance_sq(a: Vector3, b: Vector3) -> float:
 func _die() -> void:
 	_selection_ring.visible = false
 	_attack_target = null
+	if _construction_active:
+		var payload: Dictionary = {
+			"paradigm": _construction_paradigm,
+			"worker_path": _construction_assigned_worker_path,
+			"position": global_position,
+			"hp_penalty_ratio": 0.5 if _construction_paradigm == CONSTRUCTION_PARADIGM_INCORPORATED else 0.0
+		}
+		emit_signal("construction_state_changed", "forced_destroyed", payload)
+		_reset_construction_state()
 	queue_free()
 
 func _spawn_attack_vfx(target_position: Vector3) -> void:

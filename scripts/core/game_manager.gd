@@ -371,6 +371,9 @@ func _unhandled_input(event: InputEvent) -> void:
 					_pending_target_skill = ""
 					_refresh_hint_label()
 					return
+				if _selection_has_construction_exit_worker():
+					_execute_command("construction_exit")
+					return
 				if _cancel_pending_construction_for_selected_workers():
 					return
 			KEY_R:
@@ -1108,8 +1111,6 @@ func _cancel_pending_construction_for_worker(worker_node: Node, reason: String =
 		var builder_path: NodePath = order.get("builder_path", NodePath("")) as NodePath
 		if builder_path != worker_path:
 			continue
-		if bool(order.get("started", false)):
-			continue
 		var ghost_id: int = int(order.get("ghost_id", -1))
 		if ghost_id >= 0:
 			_remove_pending_construction_ghost(ghost_id)
@@ -1473,6 +1474,14 @@ func _schedule_unit_command(unit_node: Node, command: RTSCommand) -> void:
 		return
 	if command == null:
 		return
+	if unit_node.has_method("is_construction_locked") and bool(unit_node.call("is_construction_locked")):
+		if unit_node.has_method("get_construction_lock_mode"):
+			var lock_mode: String = str(unit_node.call("get_construction_lock_mode"))
+			if lock_mode == "incorporated":
+				return
+			if lock_mode == "garrisoned" and not command.is_queue_command and not _is_internal_build_order_command(command):
+				command.is_queue_command = true
+				_set_ui_notice("Worker is building: command queued after construction.", 0.9)
 	if not _is_internal_build_order_command(command):
 		if command.command_type == RTSCommand.CommandType.STOP:
 			_cancel_pending_construction_for_worker(unit_node, "stop")
@@ -1636,28 +1645,45 @@ func _build_hud_snapshot() -> Dictionary:
 				building_name = str(building.call("get_building_display_name"))
 			single_title = building_name
 			single_armor = "Armor Type: Structure"
-
-			var can_train_worker: bool = bool(building.call("can_queue_worker_unit")) if building.has_method("can_queue_worker_unit") else false
-			var can_train_soldier: bool = bool(building.call("can_queue_soldier_unit")) if building.has_method("can_queue_soldier_unit") else false
 			status_health = float(building.call("get_health_ratio")) if building.has_method("get_health_ratio") else 1.0
 			var building_hp_text: String = "%d%%" % int(round(status_health * 100.0))
-			single_detail = "Train Worker: %s\nTrain Soldier: %s" % [
-				"Yes" if can_train_worker else "No",
-				"Yes" if can_train_soldier else "No"
-			]
-			single_detail += "\nHP: %s" % building_hp_text
+			var under_construction: bool = building.has_method("is_under_construction") and bool(building.call("is_under_construction"))
+			if under_construction:
+				var construction_paradigm: String = str(building.call("get_construction_paradigm")) if building.has_method("get_construction_paradigm") else "garrisoned"
+				var construction_progress: float = clampf(float(building.call("get_construction_progress")) if building.has_method("get_construction_progress") else 0.0, 0.0, 1.0)
+				var paused: bool = building.has_method("is_construction_paused") and bool(building.call("is_construction_paused"))
+				single_detail = "Construction: %s\nParadigm: %s\nProgress: %d%%\nHP: %s" % [
+					"Paused" if paused else "Building",
+					construction_paradigm.capitalize(),
+					int(round(construction_progress * 100.0)),
+					building_hp_text
+				]
+				queue_size = 1
+				queue_progress = construction_progress
+				queue_preview.append("Constructing")
+				show_production = true
+				portrait_subtitle = "Constructing %d%%" % int(round(construction_progress * 100.0))
+			else:
+				var can_train_worker: bool = bool(building.call("can_queue_worker_unit")) if building.has_method("can_queue_worker_unit") else false
+				var can_train_soldier: bool = bool(building.call("can_queue_soldier_unit")) if building.has_method("can_queue_soldier_unit") else false
+				single_detail = "Train Worker: %s\nTrain Soldier: %s" % [
+					"Yes" if can_train_worker else "No",
+					"Yes" if can_train_soldier else "No"
+				]
+				single_detail += "\nHP: %s" % building_hp_text
 
-			queue_size = int(building.call("get_queue_size")) if building.has_method("get_queue_size") else 0
-			queue_progress = float(building.call("get_production_progress")) if building.has_method("get_production_progress") else 0.0
-			if building.has_method("get_queue_preview"):
-				var preview_variant: Variant = building.call("get_queue_preview", 5)
-				if preview_variant is Array:
-					for item in preview_variant:
-						queue_preview.append(str(item))
-			show_production = queue_size > 0
+				queue_size = int(building.call("get_queue_size")) if building.has_method("get_queue_size") else 0
+				queue_progress = float(building.call("get_production_progress")) if building.has_method("get_production_progress") else 0.0
+				if building.has_method("get_queue_preview"):
+					var preview_variant: Variant = building.call("get_queue_preview", 5)
+					if preview_variant is Array:
+						for item in preview_variant:
+							queue_preview.append(str(item))
+				show_production = queue_size > 0
 
 			portrait_title = building_name
-			portrait_subtitle = "Queue %d" % queue_size
+			if not under_construction:
+				portrait_subtitle = "Queue %d" % queue_size
 			if building.has_method("get_building_role_tag"):
 				portrait_glyph = str(building.call("get_building_role_tag")).substr(0, 1)
 			else:
@@ -1764,6 +1790,14 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
+		var selected_building: Node = _selected_buildings[0]
+		if selected_building != null and is_instance_valid(selected_building):
+			if selected_building.has_method("is_under_construction") and bool(selected_building.call("is_under_construction")):
+				var paradigm: String = str(selected_building.call("get_construction_paradigm")) if selected_building.has_method("get_construction_paradigm") else "garrisoned"
+				var progress: float = clampf(float(selected_building.call("get_construction_progress")) if selected_building.has_method("get_construction_progress") else 0.0, 0.0, 1.0)
+				var paused: bool = selected_building.has_method("is_construction_paused") and bool(selected_building.call("is_construction_paused"))
+				var state_label: String = "Paused" if paused else "Building"
+				return "Construction Site: %s %d%% | %s | Use command card to cancel/exit/select worker." % [state_label, int(round(progress * 100.0)), paradigm.capitalize()]
 		if _selection_has_rally_building():
 			if _input_state == InputState.QUEUE_INPUT:
 				return "Selected Building: %d queue item(s) | Shift held: RMB append rally relay hop (max %d) | Flag: M/G/A/F/R" % [queue_size, RALLY_MAX_HOPS]
@@ -1988,6 +2022,10 @@ func _build_command_hint() -> String:
 		return "Targeted skill armed. Left click world target, RMB/ESC to cancel."
 	if _input_state == InputState.QUEUE_INPUT:
 		return "Queue input active. Shift-held commands are appended."
+	if _selection_has_construction_exit_worker():
+		return "Worker is garrisoned in construction. ESC or Exit Build releases worker; other commands are queued."
+	if not _selected_construction_sites().is_empty():
+		return "Construction site selected. Use command card for cancel/eject/select-worker operations."
 	if not _pending_build_orders.is_empty():
 		return "Constructing: %d active worker build order(s)." % _pending_build_orders.size()
 	if not _active_research.is_empty():
@@ -2205,6 +2243,31 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 			overrides["cost_text"] = str(_soldier_cost)
 			overrides["cooldown_ratio"] = _selected_queue_cooldown_ratio("soldier")
 			overrides["disabled_reason"] = "" if train_soldier_enabled else _train_soldier_block_reason()
+		"construction_exit":
+			var can_exit_construction: bool = _selection_has_construction_exit_worker()
+			overrides["enabled"] = can_exit_construction
+			overrides["disabled_reason"] = "" if can_exit_construction else "Select a garrisoned worker to exit construction."
+		"construction_cancel_destroy":
+			var total_sites: int = _selected_construction_site_count()
+			var incorporated_sites: int = _selected_construction_site_count("incorporated")
+			var has_construction_site: bool = (total_sites - incorporated_sites) > 0
+			overrides["enabled"] = has_construction_site
+			overrides["disabled_reason"] = "" if has_construction_site else "Select a construction site."
+		"construction_cancel_eject":
+			var has_incorporated_site: bool = _selected_construction_site_count("incorporated") > 0
+			overrides["enabled"] = has_incorporated_site
+			overrides["disabled_reason"] = "" if has_incorporated_site else "Select an incorporated construction site."
+		"construction_select_worker":
+			var can_select_worker: bool = false
+			if _selected_buildings.size() == 1:
+				var selected_building: Node = _selected_buildings[0]
+				if selected_building != null and is_instance_valid(selected_building) and selected_building.has_method("get_construction_assigned_worker_path"):
+					var worker_path: NodePath = selected_building.call("get_construction_assigned_worker_path") as NodePath
+					if str(worker_path) != "":
+						var worker_node: Node = get_node_or_null(worker_path)
+						can_select_worker = worker_node != null and is_instance_valid(worker_node)
+			overrides["enabled"] = can_select_worker
+			overrides["disabled_reason"] = "" if can_select_worker else "Assigned worker is unavailable."
 	if overrides.is_empty():
 		var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
 		if tech_id != "":
@@ -2363,6 +2426,22 @@ func _selection_has_worker() -> bool:
 			return true
 	return false
 
+func _selection_has_construction_exit_worker() -> bool:
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			continue
+		if not selected_unit.has_method("is_construction_locked"):
+			continue
+		if not bool(selected_unit.call("is_construction_locked")):
+			continue
+		if not selected_unit.has_method("get_construction_lock_mode"):
+			continue
+		if str(selected_unit.call("get_construction_lock_mode")) == "garrisoned":
+			return true
+	return false
+
 func _selection_has_worker_cargo() -> bool:
 	for selected_unit in _command_units():
 		if not selected_unit.has_method("is_worker_unit"):
@@ -2394,6 +2473,8 @@ func _selection_has_rally_building() -> bool:
 func _can_open_build_menu() -> bool:
 	if _placing_building:
 		return false
+	if _selection_has_construction_exit_worker():
+		return false
 	if _selection_has_worker():
 		return true
 	if _selected_units.is_empty() and not _selected_buildings.is_empty():
@@ -2403,6 +2484,8 @@ func _can_open_build_menu() -> bool:
 func _build_menu_disabled_reason() -> String:
 	if _placing_building:
 		return "Finish or cancel current placement first."
+	if _selection_has_construction_exit_worker():
+		return "Worker is locked in construction. Exit first."
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return "Select a worker or builder building to open build commands."
 	if not _selected_units.is_empty() and not _selection_has_worker():
@@ -2928,6 +3011,14 @@ func _execute_command(command_id: String) -> void:
 			_issue_return_command(_is_queue_input_active())
 		"stop":
 			_issue_stop_command(_is_queue_input_active())
+		"construction_exit":
+			_issue_exit_construction_from_selection()
+		"construction_cancel_destroy":
+			_cancel_selected_construction_sites(false)
+		"construction_cancel_eject":
+			_cancel_selected_construction_sites(true)
+		"construction_select_worker":
+			_select_worker_from_construction_site()
 		"menu":
 			pass
 		_:
@@ -3357,6 +3448,131 @@ func _issue_stop_command(queue_command: bool = false) -> void:
 		var stop_command: RTSCommand = RTS_COMMAND.make_stop(queue_command)
 		_schedule_unit_command(unit_node, stop_command)
 
+func _selected_construction_sites() -> Array[Node]:
+	var sites: Array[Node] = []
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if not selected_building.has_method("is_under_construction"):
+			continue
+		if not bool(selected_building.call("is_under_construction")):
+			continue
+		sites.append(selected_building)
+	return sites
+
+func _selected_construction_site_count(paradigm_filter: String = "") -> int:
+	var normalized_filter: String = paradigm_filter.strip_edges().to_lower()
+	var count: int = 0
+	for site_node in _selected_construction_sites():
+		if normalized_filter == "":
+			count += 1
+			continue
+		if not site_node.has_method("get_construction_paradigm"):
+			continue
+		if str(site_node.call("get_construction_paradigm")).strip_edges().to_lower() != normalized_filter:
+			continue
+		count += 1
+	return count
+
+func _issue_exit_construction_from_selection() -> void:
+	var exited_count: int = 0
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			continue
+		if not selected_unit.has_method("is_construction_locked"):
+			continue
+		if not bool(selected_unit.call("is_construction_locked")):
+			continue
+		if not selected_unit.has_method("get_construction_lock_mode"):
+			continue
+		if str(selected_unit.call("get_construction_lock_mode")) != "garrisoned":
+			continue
+		var building_path: NodePath = selected_unit.call("get_construction_building_path") as NodePath
+		var site_node: Node = get_node_or_null(building_path)
+		if site_node != null and is_instance_valid(site_node) and site_node.has_method("exit_construction"):
+			var exit_value: Variant = site_node.call("exit_construction")
+			if exit_value is Dictionary and not bool((exit_value as Dictionary).get("ok", false)):
+				continue
+		if selected_unit.has_method("exit_construction_lock"):
+			selected_unit.call("exit_construction_lock")
+		exited_count += 1
+	if exited_count <= 0:
+		return
+	_set_ui_notice("Construction exit: %d worker(s) released." % exited_count, 1.1)
+	_play_feedback_tone("ground")
+	_refresh_hint_label()
+
+func _cancel_selected_construction_sites(eject_worker: bool) -> void:
+	var canceled_count: int = 0
+	var total_refund: int = 0
+	for site_node in _selected_construction_sites():
+		if site_node == null or not is_instance_valid(site_node):
+			continue
+		var site_paradigm: String = ""
+		if site_node.has_method("get_construction_paradigm"):
+			site_paradigm = str(site_node.call("get_construction_paradigm")).strip_edges().to_lower()
+		if eject_worker and site_paradigm != "incorporated":
+			continue
+		if not eject_worker and site_paradigm == "incorporated":
+			continue
+		if not site_node.has_method("cancel_construction_and_destroy"):
+			continue
+		var result_value: Variant = site_node.call("cancel_construction_and_destroy", eject_worker)
+		if not (result_value is Dictionary):
+			continue
+		var result: Dictionary = result_value as Dictionary
+		if not bool(result.get("ok", false)):
+			continue
+		var worker_path: NodePath = result.get("worker_path", NodePath("")) as NodePath
+		_release_worker_from_construction(worker_path, 0.0)
+		var build_cost: int = maxi(0, int(result.get("cost", 0)))
+		var refund_ratio: float = clampf(float(result.get("refund_ratio", 0.75)), 0.0, 1.0)
+		var refund_amount: int = maxi(0, int(floor(float(build_cost) * refund_ratio)))
+		if refund_amount > 0:
+			add_minerals(refund_amount)
+		total_refund += refund_amount
+		canceled_count += 1
+	_prune_invalid_selection()
+	if canceled_count <= 0:
+		_set_ui_notice("No matching construction site for this command.", 1.0)
+		_play_feedback_tone("error")
+		return
+	if total_refund > 0:
+		_set_ui_notice("Construction canceled: %d site(s), +%d minerals." % [canceled_count, total_refund], 1.2)
+	else:
+		_set_ui_notice("Construction canceled: %d site(s)." % canceled_count, 1.2)
+	_play_feedback_tone("error")
+	_refresh_hint_label()
+
+func _select_worker_from_construction_site() -> void:
+	if _selected_buildings.is_empty():
+		return
+	var site: Node = _selected_buildings[0]
+	if site == null or not is_instance_valid(site):
+		return
+	if not site.has_method("get_construction_assigned_worker_path"):
+		return
+	var worker_path: NodePath = site.call("get_construction_assigned_worker_path") as NodePath
+	if str(worker_path) == "":
+		_set_ui_notice("No assigned worker.")
+		_play_feedback_tone("error")
+		return
+	var worker_node: Node = get_node_or_null(worker_path)
+	if worker_node == null or not is_instance_valid(worker_node):
+		_set_ui_notice("Assigned worker is unavailable.")
+		_play_feedback_tone("error")
+		return
+	_clear_selection()
+	_add_selected_unit(worker_node)
+	_refresh_subgroup_state(true)
+	_set_ui_notice("Selected construction worker.", 1.1)
+	_play_feedback_tone("follow")
+	_refresh_hint_label()
+
 func _issue_follow_command(target_node: Node3D, queue_command: bool = false) -> void:
 	if target_node == null or not is_instance_valid(target_node):
 		return
@@ -3573,9 +3789,18 @@ func _worker_build_time_for(kind: String) -> float:
 	var def: Dictionary = RTS_CATALOG.get_building_def(kind)
 	return maxf(0.25, float(def.get("build_time", DEFAULT_WORKER_BUILD_TIME)))
 
+func _building_cancel_refund_ratio(kind: String) -> float:
+	if kind == "":
+		return 0.75
+	var def: Dictionary = RTS_CATALOG.get_building_def(kind)
+	return clampf(float(def.get("cancel_refund_ratio", 0.75)), 0.0, 1.0)
+
 func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int) -> void:
 	if builder == null or not is_instance_valid(builder):
 		return
+	var paradigm: String = _building_construction_paradigm(kind)
+	var build_time: float = _worker_build_time_for(kind)
+	var cancel_refund_ratio: float = _building_cancel_refund_ratio(kind)
 	_pending_build_orders.append({
 		"builder_path": builder.get_path(),
 		"kind": kind,
@@ -3584,9 +3809,9 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"cost": build_cost,
 		"ghost_id": ghost_id,
 		"spent": false,
-		"started": false,
-		"progress": 0.0,
-		"build_time": _worker_build_time_for(kind),
+		"paradigm": paradigm,
+		"build_time": build_time,
+		"cancel_refund_ratio": cancel_refund_ratio,
 		"move_repath_timer": 0.0,
 		"retry_timer": 0.0
 	})
@@ -3628,67 +3853,110 @@ func _process_pending_build_orders(delta: float) -> void:
 			_pending_build_orders.remove_at(i)
 			continue
 		var target_position: Vector3 = target_position_value as Vector3
-		var started: bool = bool(order.get("started", false))
-		if not started:
-			if ghost_id >= 0 and not _has_pending_construction_ghost(ghost_id):
-				_pending_build_orders.remove_at(i)
-				continue
+		if ghost_id >= 0 and not _has_pending_construction_ghost(ghost_id):
+			_pending_build_orders.remove_at(i)
+			continue
 
-			var repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
-			if repath_timer <= 0.0:
-				repath_timer = BUILD_ORDER_MOVE_REFRESH
-				var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
-				move_command.payload["internal_build_order"] = true
-				_schedule_unit_command(builder_node, move_command)
-			order["move_repath_timer"] = repath_timer
+		var repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
+		if repath_timer <= 0.0:
+			repath_timer = BUILD_ORDER_MOVE_REFRESH
+			var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+			move_command.payload["internal_build_order"] = true
+			_schedule_unit_command(builder_node, move_command)
+		order["move_repath_timer"] = repath_timer
 
-			if builder_node.global_position.distance_to(target_position) <= BUILD_ORDER_START_DISTANCE:
-				if build_cost > 0 and _minerals < build_cost:
-					var retry_timer: float = float(order.get("retry_timer", 0.0)) - delta
-					if retry_timer <= 0.0:
-						retry_timer = CONSTRUCTION_GHOST_RETRY_INTERVAL
-						_set_ui_notice("Not enough minerals for %s." % _building_display_name(kind), 1.1)
-						var stop_for_wait: RTSCommand = RTS_COMMAND.make_stop(false)
-						stop_for_wait.payload["internal_build_order"] = true
-						_schedule_unit_command(builder_node, stop_for_wait)
-					order["retry_timer"] = retry_timer
-					if ghost_id >= 0:
-						_set_pending_construction_ghost_invalid(ghost_id, true)
-					_pending_build_orders[i] = order
-					continue
+		if builder_node.global_position.distance_to(target_position) > BUILD_ORDER_START_DISTANCE:
+			_pending_build_orders[i] = order
+			continue
 
-				if build_cost > 0 and not try_spend_minerals(build_cost):
-					order["retry_timer"] = CONSTRUCTION_GHOST_RETRY_INTERVAL
-					if ghost_id >= 0:
-						_set_pending_construction_ghost_invalid(ghost_id, true)
-					_pending_build_orders[i] = order
-					continue
+		if build_cost > 0 and _minerals < build_cost:
+			var retry_timer: float = float(order.get("retry_timer", 0.0)) - delta
+			if retry_timer <= 0.0:
+				retry_timer = CONSTRUCTION_GHOST_RETRY_INTERVAL
+				_set_ui_notice("Not enough minerals for %s." % _building_display_name(kind), 1.1)
+				var stop_for_wait: RTSCommand = RTS_COMMAND.make_stop(false)
+				stop_for_wait.payload["internal_build_order"] = true
+				_schedule_unit_command(builder_node, stop_for_wait)
+			order["retry_timer"] = retry_timer
+			if ghost_id >= 0:
+				_set_pending_construction_ghost_invalid(ghost_id, true)
+			_pending_build_orders[i] = order
+			continue
 
-				order["spent"] = true
-				order["started"] = true
-				order["progress"] = 0.0
-				order["retry_timer"] = 0.0
-				order["move_repath_timer"] = 0.0
+		if build_cost > 0 and not spent:
+			if not try_spend_minerals(build_cost):
+				order["retry_timer"] = CONSTRUCTION_GHOST_RETRY_INTERVAL
 				if ghost_id >= 0:
-					_remove_pending_construction_ghost(ghost_id)
-				var stop_command: RTSCommand = RTS_COMMAND.make_stop(false)
-				stop_command.payload["internal_build_order"] = true
-				_schedule_unit_command(builder_node, stop_command)
-			_pending_build_orders[i] = order
-			continue
+					_set_pending_construction_ghost_invalid(ghost_id, true)
+				_pending_build_orders[i] = order
+				continue
+			spent = true
+			order["spent"] = true
 
-		var progress: float = float(order.get("progress", 0.0)) + delta
-		var build_time: float = maxf(0.25, float(order.get("build_time", DEFAULT_WORKER_BUILD_TIME)))
-		if progress < build_time:
-			order["progress"] = progress
-			_pending_build_orders[i] = order
-			continue
+		order["retry_timer"] = 0.0
+		order["move_repath_timer"] = 0.0
+		if ghost_id >= 0:
+			_remove_pending_construction_ghost(ghost_id)
 
 		var rotation_y: float = float(order.get("rotation_y", 0.0))
-		var spawned: Node3D = _spawn_building_instance(kind, target_position, rotation_y)
-		if spawned == null and spent and build_cost > 0:
-			add_minerals(build_cost)
+		var site: Node3D = _spawn_building_instance(kind, target_position, rotation_y)
+		if site == null:
+			if spent and build_cost > 0:
+				add_minerals(build_cost)
+			_pending_build_orders.remove_at(i)
+			continue
+
+		var paradigm: String = str(order.get("paradigm", _building_construction_paradigm(kind)))
+		var build_time: float = maxf(0.25, float(order.get("build_time", _worker_build_time_for(kind))))
+		var cancel_refund_ratio: float = clampf(float(order.get("cancel_refund_ratio", _building_cancel_refund_ratio(kind))), 0.0, 1.0)
+		if site.has_method("start_construction"):
+			site.call("start_construction", paradigm, build_time, builder_node, build_cost, cancel_refund_ratio)
+		_bind_worker_to_construction(builder_node, site, paradigm)
+		var stop_command: RTSCommand = RTS_COMMAND.make_stop(false)
+		stop_command.payload["internal_build_order"] = true
+		_schedule_unit_command(builder_node, stop_command)
+		if site.has_method("is_under_construction") and bool(site.call("is_under_construction")):
+			_set_ui_notice("Construction started: %s." % _building_display_name(kind), 1.0)
+
 		_pending_build_orders.remove_at(i)
+
+func _bind_worker_to_construction(builder_node: Node3D, site_node: Node3D, paradigm: String) -> void:
+	if builder_node == null or not is_instance_valid(builder_node):
+		return
+	if not builder_node.has_method("enter_construction_lock"):
+		return
+	var normalized: String = paradigm.strip_edges().to_lower()
+	var site_path: NodePath = NodePath("")
+	if site_node != null and is_instance_valid(site_node):
+		site_path = site_node.get_path()
+	if normalized == "garrisoned":
+		builder_node.call("enter_construction_lock", "garrisoned", site_path, false)
+	elif normalized == "incorporated":
+		builder_node.call("enter_construction_lock", "incorporated", site_path, true)
+		if _selected_units.has(builder_node):
+			_selected_units.erase(builder_node)
+			if builder_node.has_method("set_selected"):
+				builder_node.call("set_selected", false)
+	else:
+		if builder_node.has_method("exit_construction_lock"):
+			builder_node.call("exit_construction_lock")
+
+func _release_worker_from_construction(worker_path: NodePath, hp_penalty_ratio: float = 0.0) -> Node3D:
+	if str(worker_path) == "":
+		return null
+	var worker_node: Node3D = get_node_or_null(worker_path) as Node3D
+	if worker_node == null or not is_instance_valid(worker_node):
+		return null
+	if worker_node.has_method("exit_construction_lock"):
+		worker_node.call("exit_construction_lock")
+	var penalty: float = clampf(hp_penalty_ratio, 0.0, 1.0)
+	if penalty > 0.0 and worker_node.has_method("get_health_points") and worker_node.has_method("apply_damage"):
+		var max_hp: float = maxf(1.0, float(worker_node.get("max_health")))
+		var current_hp: float = float(worker_node.call("get_health_points"))
+		var target_hp: float = maxf(1.0, max_hp * (1.0 - penalty))
+		if current_hp > target_hp:
+			worker_node.call("apply_damage", current_hp - target_hp, null)
+	return worker_node
 
 func _spawn_building_instance(kind: String, world_position: Vector3, rotation_y: float) -> Node3D:
 	var instance: Node = BUILDING_SCENE.instantiate()
@@ -3758,11 +4026,14 @@ func _register_building(building_node: Node) -> void:
 	if building_node == null:
 		return
 	_track_navigation_dynamic_node(building_node)
-	if not building_node.has_signal("production_finished"):
-		return
-	var callback: Callable = Callable(self, "_on_building_production_finished").bind(building_node)
-	if not building_node.is_connected("production_finished", callback):
-		building_node.connect("production_finished", callback)
+	if building_node.has_signal("production_finished"):
+		var callback: Callable = Callable(self, "_on_building_production_finished").bind(building_node)
+		if not building_node.is_connected("production_finished", callback):
+			building_node.connect("production_finished", callback)
+	if building_node.has_signal("construction_state_changed"):
+		var construction_callback: Callable = Callable(self, "_on_building_construction_state_changed").bind(building_node)
+		if not building_node.is_connected("construction_state_changed", construction_callback):
+			building_node.connect("construction_state_changed", construction_callback)
 
 func _track_navigation_dynamic_node(nav_node: Node) -> void:
 	if nav_node == null:
@@ -3772,6 +4043,13 @@ func _track_navigation_dynamic_node(nav_node: Node) -> void:
 		nav_node.connect("tree_exited", callback)
 
 func _on_navigation_dynamic_node_exited(_node: Node) -> void:
+	if not is_inside_tree():
+		return
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	if tree.current_scene == null or not is_instance_valid(tree.current_scene):
+		return
 	_request_navmesh_rebake("dynamic_obstacle_removed")
 
 func _setup_runtime_navigation_baking() -> void:
@@ -3793,9 +4071,13 @@ func _setup_runtime_navigation_baking() -> void:
 		_nav_region.connect("bake_finished", callback)
 
 func _request_navmesh_rebake(_reason: String = "") -> void:
+	if not is_inside_tree():
+		return
 	if not nav_rebake_on_runtime:
 		return
 	if _nav_region == null:
+		return
+	if not _nav_region.is_inside_tree():
 		return
 	if _nav_region.navigation_mesh == null:
 		return
@@ -3814,6 +4096,22 @@ func _on_nav_region_bake_finished() -> void:
 
 func _on_building_production_finished(unit_kind: String, spawn_position: Vector3, source_building: Node = null) -> void:
 	_spawn_unit(unit_kind, spawn_position, source_building)
+
+func _on_building_construction_state_changed(event_type: String, payload: Dictionary, source_building: Node = null) -> void:
+	if source_building == null or not is_instance_valid(source_building):
+		return
+	var worker_path: NodePath = payload.get("worker_path", NodePath("")) as NodePath
+	match event_type:
+		"completed":
+			_release_worker_from_construction(worker_path)
+			_refresh_hint_label()
+		"forced_destroyed":
+			var penalty: float = clampf(float(payload.get("hp_penalty_ratio", 0.0)), 0.0, 1.0)
+			_release_worker_from_construction(worker_path, penalty)
+			if penalty > 0.0:
+				_set_ui_notice("Incorporated worker ejected at 50% HP.", 1.1)
+			_prune_invalid_selection()
+			_refresh_hint_label()
 
 func _spawn_unit(unit_kind: String, spawn_position: Vector3, source_building: Node = null) -> void:
 	if _units_root == null:

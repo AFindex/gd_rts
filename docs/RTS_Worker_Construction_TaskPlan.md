@@ -30,6 +30,11 @@
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，建造确认改为“先创建 Pending Ghost + 下达农民到位”，扣费后移到到位开工瞬间。
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，资源不足到位时进入红色闪烁等待并每3秒重试资源检查。
 - 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，落地 Ghost 基础清理触发：`Stop`、冲突覆盖命令、农民死亡/失效、`ESC` 手动取消（当前对选中农民生效）。
+- 改造：[scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，新增 Construction Site 状态机（施工中/暂停/完成）、动态施工命令卡（Exit/Cancel/Select Worker）与 `construction_state_changed` 信号。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，Pending Build 改为“到位即生成 Site，Site 自推进”，并接入 `construction_exit / construction_cancel_destroy / construction_select_worker / construction_cancel_eject` 命令分发。
+- 改造：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，新增建造锁定模式（Garrisoned/Incorporated）、驻守期默认队列化（近似默认 Shift）与献祭期隐藏/重现。
+- 改造：[scripts/core/rts_catalog.gd](D:/Godot/projs/gd_rts/scripts/core/rts_catalog.gd)，新增施工期命令定义（Exit/CancelDestroy/CancelEject/SelectWorker）。
+- 改造：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，接入建造中建筑被摧毁后的工人释放；献祭型按 50%HP 惩罚释放（基础版）。
 
 ---
 
@@ -126,7 +131,7 @@
 - `WCS-004` 增加 Ghost 可视节点（至少支持 pending/invalid 两种表现与清理特效）。  
 状态：`Done (基础版)`
 - `WCS-005` 落地 Ghost 清理触发器：Stop、覆盖指令、worker死亡、ESC/取消。  
-状态：`In Progress`（已接入 Stop/覆盖命令/worker失效/ESC，专用取消按钮待补）
+状态：`Done (基础版)`
 
 验收（M1）：
 - 仅左键确认不扣费。
@@ -136,13 +141,13 @@
 ### M2：Site 与取消层级（P0）
 
 - `WCS-006` 在 `building.gd` 新增建造中状态字段与 Site 进度推进。  
-状态：`Todo`
+状态：`Done`
 - `WCS-007` 增加 `cancel_construction_and_destroy()` 与统一 75% 返还。  
-状态：`Todo`
+状态：`Done`
 - `WCS-008` 增加 B 范式 `exit_construction()`（暂停保留进度，0%返还）。  
-状态：`Todo`
+状态：`Done (基础版)`
 - `WCS-009` 在 `game_manager.gd` 接入“敌方摧毁=0%返还”的强制摧毁分支。  
-状态：`Todo`
+状态：`Done (基础版)`
 
 验收（M2）：
 - 三层取消路径均可触发，返还规则正确。
@@ -268,8 +273,9 @@
 | WCS-002 | Pending Ghost 数据结构 | P0 | Done | `game_manager.gd` |
 | WCS-003 | placement 扣费时机改造 | P0 | Done | `game_manager.gd` |
 | WCS-004 | Ghost 可视节点与状态 | P0 | Done (基础版) | `game_manager.gd` |
-| WCS-005 | Ghost 生命周期清理触发器 | P0 | In Progress | `game_manager.gd` |
-| WCS-006~013 | Site/三范式/取消层级 | P0 | Todo | `building.gd` + `game_manager.gd` |
+| WCS-005 | Ghost 生命周期清理触发器 | P0 | Done (基础版) | `game_manager.gd` |
+| WCS-006~009 | Site/取消层级/强制摧毁分支 | P0 | Done (基础版) | `building.gd` + `game_manager.gd` |
+| WCS-010~013 | 三范式细节深化 | P0 | In Progress | `building.gd` + `game_manager.gd` + `unit.gd` |
 | WCS-014~016 | 采集循环 + Shift 队列 | P1 | Todo | `unit.gd` + `game_manager.gd` |
 | WCS-017~020 | UI与边界规则 | P1 | Todo | `rts_hud.gd` + 相关核心脚本 |
 | WCS-021 | 存档一致性 | P2 | Deferred | （待存档框架） |

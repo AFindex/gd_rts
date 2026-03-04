@@ -331,6 +331,34 @@ const SKILL_DEFS: Dictionary = {
 		"hotkey": "ESC",
 		"target_mode": "none"
 	},
+	"construction_exit": {
+		"id": "construction_exit",
+		"label": "Exit Build",
+		"icon_path": ICON_ROOT_UI + "ui_close_back.png",
+		"hotkey": "ESC",
+		"target_mode": "none"
+	},
+	"construction_cancel_destroy": {
+		"id": "construction_cancel_destroy",
+		"label": "Cancel+Destroy",
+		"icon_path": ICON_ROOT_UI + "ui_close_back.png",
+		"hotkey": "",
+		"target_mode": "none"
+	},
+	"construction_select_worker": {
+		"id": "construction_select_worker",
+		"label": "Select Worker",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_move.png",
+		"hotkey": "",
+		"target_mode": "none"
+	},
+	"construction_cancel_eject": {
+		"id": "construction_cancel_eject",
+		"label": "Cancel+Eject",
+		"icon_path": ICON_ROOT_UI + "ui_close_back.png",
+		"hotkey": "",
+		"target_mode": "none"
+	},
 	"train_worker": {
 		"id": "train_worker",
 		"label": "Train Worker",
