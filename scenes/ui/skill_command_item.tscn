@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/ui/skill_command_item.gd" id="1_script"]
 
 [node name="SkillCommandItem" type="Control"]
-custom_minimum_size = Vector2(58, 58)
+custom_minimum_size = Vector2(0, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3

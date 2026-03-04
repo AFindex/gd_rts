@@ -13,11 +13,12 @@ mouse_filter = 2
 script = ExtResource("1_script")
 
 [node name="NotificationPanel" type="PanelContainer" parent="." unique_id=1560147914]
+clip_contents = true
 layout_mode = 0
 offset_left = 14.0
 offset_top = 46.0
 offset_right = 279.395
-offset_bottom = 315.31
+offset_bottom = 250.0
 scale = Vector2(0.857, 1)
 
 [node name="NotificationList" type="VBoxContainer" parent="NotificationPanel" unique_id=180120513]
@@ -42,17 +43,15 @@ autowrap_mode = 3
 [node name="TopBar" type="PanelContainer" parent="." unique_id=1440881544]
 layout_mode = 1
 anchors_preset = 1
-anchor_left = 1.0
+anchor_left = 0.0
 anchor_right = 1.0
-offset_left = -772.0
+offset_left = 12.0
 offset_top = 12.0
 offset_right = -12.0
 offset_bottom = 71.405
-grow_horizontal = 0
 
-[node name="TopBarRow" type="HBoxContainer" parent="TopBar" unique_id=1245825834]
+[node name="TopBarRow" type="Control" parent="TopBar" unique_id=1245825834]
 layout_mode = 2
-theme_override_constants/separation = 8
 
 [node name="ResourcePanel" type="PanelContainer" parent="TopBar/TopBarRow" unique_id=1275658498]
 layout_mode = 2
@@ -140,7 +139,7 @@ anchor_bottom = 1.0
 offset_top = -326.0
 offset_bottom = -12.0
 
-[node name="BottomRow" type="HBoxContainer" parent="BottomHUD" unique_id=452074639]
+[node name="BottomRow" type="Control" parent="BottomHUD" unique_id=452074639]
 self_modulate = Color(1, 1, 1, 0)
 layout_mode = 0
 anchor_right = 1.0
@@ -149,7 +148,6 @@ offset_left = 8.0
 offset_top = 8.0
 offset_right = -8.0
 offset_bottom = -8.0
-theme_override_constants/separation = 8
 
 [node name="SelectionPanel" type="PanelContainer" parent="BottomHUD/BottomRow" unique_id=376722838]
 layout_mode = 2
@@ -205,13 +203,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Terrain"
 
-[node name="QueueColumn" type="VBoxContainer" parent="BottomHUD/BottomRow" unique_id=465028157]
+[node name="QueueColumn" type="Control" parent="BottomHUD/BottomRow" unique_id=465028157]
 self_modulate = Color(1, 1, 1, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 size_flags_stretch_ratio = 45.0
-theme_override_constants/separation = 0
 
 [node name="QueueTopSpacer" type="Control" parent="BottomHUD/BottomRow/QueueColumn" unique_id=1436523887]
 self_modulate = Color(1, 1, 1, 0)
@@ -294,29 +291,26 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="QueueContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel" unique_id=522090330]
+[node name="QueueContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel" unique_id=522090330]
 layout_mode = 2
 size_flags_vertical = 0
-theme_override_constants/separation = 6
 
 [node name="SelectionHintText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent" unique_id=1541801656]
 layout_mode = 2
 text = "No selection."
 autowrap_mode = 3
 
-[node name="SingleContainer" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent" unique_id=335850404]
+[node name="SingleContainer" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent" unique_id=335850404]
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 6
 
 [node name="SingleStatusRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer" unique_id=478067262]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 0.95
 
-[node name="SingleStatusContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot" unique_id=58574333]
+[node name="SingleStatusContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot" unique_id=58574333]
 layout_mode = 2
-theme_override_constants/separation = 3
 
 [node name="SingleNameText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=989872851]
 layout_mode = 2
@@ -370,9 +364,8 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.7
 
-[node name="SingleDetailContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot" unique_id=1352551765]
+[node name="SingleDetailContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot" unique_id=1352551765]
 layout_mode = 2
-theme_override_constants/separation = 4
 
 [node name="SingleDetailTitle" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent" unique_id=465014954]
 layout_mode = 2
@@ -393,9 +386,8 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.7
 
-[node name="ProductionContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot" unique_id=1361623097]
+[node name="ProductionContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot" unique_id=1361623097]
 layout_mode = 2
-theme_override_constants/separation = 4
 
 [node name="QueueSummaryText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent" unique_id=491742894]
 layout_mode = 2
@@ -413,42 +405,32 @@ visible = false
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="MultiMatrixContent" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot" unique_id=1017123371]
+[node name="MultiMatrixContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot" unique_id=1017123371]
 layout_mode = 2
-theme_override_constants/separation = 6
 
-[node name="MatrixBody" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
+[node name="MatrixBody" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 6
 
-[node name="MatrixFooter" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1831428208]
+[node name="MatrixFooter" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1831428208]
 visible = false
 custom_minimum_size = Vector2(52, 0)
 layout_mode = 2
-size_flags_vertical = 3
-theme_override_constants/separation = 4
 
-[node name="MatrixPageButtons" type="VBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody/MatrixFooter"]
+[node name="MatrixPageButtons" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody/MatrixFooter"]
 layout_mode = 2
-size_flags_horizontal = 1
-theme_override_constants/separation = 4
 
-[node name="MatrixGrid" type="GridContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1818788423]
+[node name="MatrixGrid" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1818788423]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/h_separation = 4
-theme_override_constants/v_separation = 4
-columns = 8
 
-[node name="PortraitColumn" type="VBoxContainer" parent="BottomHUD/BottomRow" unique_id=450057549]
+[node name="PortraitColumn" type="Control" parent="BottomHUD/BottomRow" unique_id=450057549]
 self_modulate = Color(1, 1, 1, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 size_flags_stretch_ratio = 9.0
-theme_override_constants/separation = 0
 
 [node name="PortraitTopSpacer" type="Control" parent="BottomHUD/BottomRow/PortraitColumn" unique_id=2005125402]
 self_modulate = Color(1, 1, 1, 0)
@@ -494,12 +476,11 @@ text = "-"
 horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="CommandColumn" type="VBoxContainer" parent="BottomHUD/BottomRow"]
+[node name="CommandColumn" type="Control" parent="BottomHUD/BottomRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 size_flags_stretch_ratio = 25.0
-theme_override_constants/separation = 6
 
 [node name="CommandHoverPanel" type="PanelContainer" parent="BottomHUD/BottomRow/CommandColumn"]
 custom_minimum_size = Vector2(0, 64)
@@ -519,20 +500,16 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="CommandContent" type="VBoxContainer" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel" unique_id=1127085611]
+[node name="CommandContent" type="Control" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel" unique_id=1127085611]
 layout_mode = 2
-theme_override_constants/separation = 6
 
 [node name="SubgroupText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=1993498507]
 visible = false
 layout_mode = 2
 text = "Subgroup -"
 
-[node name="CommandGrid" type="GridContainer" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=2120930169]
+[node name="CommandGrid" type="Control" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=2120930169]
 layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 8
-columns = 5
 
 [node name="CommandHintText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=2043072637]
 layout_mode = 2

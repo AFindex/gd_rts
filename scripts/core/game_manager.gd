@@ -54,6 +54,11 @@ enum InputState {
 @export var nav_region_path: NodePath = NodePath("World/NavRegion")
 @export var nav_rebake_on_runtime: bool = true
 @export var nav_rebake_on_thread: bool = true
+@export var debug_selection_hud_logs: bool = false
+@export var debug_selection_hud_verbose: bool = false
+@export var debug_selection_hud_max_entries: int = 8
+@export var debug_selection_log_burst_only: bool = true
+@export var debug_selection_log_burst_seconds: float = 1.0
 
 var _camera: Camera3D
 var _units_root: Node3D
@@ -121,6 +126,9 @@ var _ui_notice_text: String = ""
 var _ui_notice_timer: float = 0.0
 var _pending_build_orders: Array[Dictionary] = []
 var _pending_construction_resume_orders: Array[Dictionary] = []
+var _debug_hud_push_seq: int = 0
+var _debug_selection_seq: int = 0
+var _debug_log_burst_until_msec: float = 0.0
 
 func _ready() -> void:
 	add_to_group("game_manager")
@@ -166,19 +174,19 @@ func _connect_hud_signals() -> void:
 	if _hud == null:
 		return
 	if _hud.has_signal("command_pressed"):
-		var callback: Callable = Callable(self, "_on_hud_command_pressed")
+		var callback: Callable = Callable(self , "_on_hud_command_pressed")
 		if not _hud.is_connected("command_pressed", callback):
 			_hud.connect("command_pressed", callback)
 	if _hud.has_signal("multi_role_cell_pressed"):
-		var subgroup_callback: Callable = Callable(self, "_on_hud_multi_role_cell_pressed")
+		var subgroup_callback: Callable = Callable(self , "_on_hud_multi_role_cell_pressed")
 		if not _hud.is_connected("multi_role_cell_pressed", subgroup_callback):
 			_hud.connect("multi_role_cell_pressed", subgroup_callback)
 	if _hud.has_signal("control_group_pressed"):
-		var control_group_callback: Callable = Callable(self, "_on_hud_control_group_pressed")
+		var control_group_callback: Callable = Callable(self , "_on_hud_control_group_pressed")
 		if not _hud.is_connected("control_group_pressed", control_group_callback):
 			_hud.connect("control_group_pressed", control_group_callback)
 	if _hud.has_signal("matrix_page_selected"):
-		var matrix_page_callback: Callable = Callable(self, "_on_hud_matrix_page_selected")
+		var matrix_page_callback: Callable = Callable(self , "_on_hud_matrix_page_selected")
 		if not _hud.is_connected("matrix_page_selected", matrix_page_callback):
 			_hud.connect("matrix_page_selected", matrix_page_callback)
 
@@ -298,36 +306,63 @@ func _input(event: InputEvent) -> void:
 	var mouse_button: InputEventMouseButton = event as InputEventMouseButton
 	if mouse_button != null and mouse_button.button_index == MOUSE_BUTTON_LEFT:
 		if mouse_button.pressed:
+			var ui_control: Control = _pick_ui_control(mouse_button.position)
+			_gmhud_log("LMB down pos=%s shift=%s ctrl=%s alt=%s state=%s dragging=%s ui_pick=%s" % [
+				str(mouse_button.position),
+				str(Input.is_key_pressed(KEY_SHIFT)),
+				str(Input.is_key_pressed(KEY_CTRL)),
+				str(Input.is_key_pressed(KEY_ALT)),
+				_input_state_label(),
+				str(_dragging),
+				_ui_control_debug_name(ui_control)
+			], true)
 			if Input.is_key_pressed(KEY_ALT):
 				if _try_remove_queue_marker_at(mouse_button.position):
+					_gmhud_log("LMB alt-remove queue marker success at %s" % str(mouse_button.position), true)
 					_refresh_hint_label()
 					return
 			if _pending_target_skill != "":
-				if _pick_ui_control(mouse_button.position) != null:
+				if ui_control != null:
+					_gmhud_log("LMB down blocked by UI during pending target skill: %s" % _ui_control_debug_name(ui_control), true)
 					return
 				if _try_execute_pending_target_skill(mouse_button.position, _is_queue_input_active()):
 					_pending_target_skill = ""
+					_gmhud_log("pending target skill executed from LMB at %s" % str(mouse_button.position), true)
 				_refresh_hint_label()
 				return
 			if _placing_building:
+				_gmhud_log("LMB down ignored: placing building active.", true)
 				return
-			if _pick_ui_control(mouse_button.position) != null:
+			if ui_control != null:
+				_gmhud_log("LMB down blocked by UI: %s" % _ui_control_debug_name(ui_control))
 				return
 			_dragging = true
 			_drag_start = mouse_button.position
+			_gmhud_log("drag begin start=%s %s" % [str(_drag_start), _selection_counts_text()], true)
 			if _selection_overlay != null and _selection_overlay.has_method("begin_drag"):
 				_selection_overlay.call("begin_drag", _drag_start)
 		else:
 			if not _dragging:
+				_gmhud_log("LMB up ignored: not dragging.", true)
 				return
 			var drag_end: Vector2 = mouse_button.position
 			var drag_distance: float = _drag_start.distance_to(drag_end)
 			var additive: bool = Input.is_key_pressed(KEY_SHIFT)
-			if drag_distance < 8.0:
+			var is_box_select: bool = drag_distance >= 8.0
+			if is_box_select:
+				_begin_selection_debug_log_burst(5.0, "box_select_lmb_up distance=%.2f additive=%s" % [drag_distance, str(additive)])
+			_gmhud_log("LMB up end=%s drag_distance=%.2f additive=%s before=%s" % [
+				str(drag_end),
+				drag_distance,
+				str(additive),
+				_selection_counts_text()
+			])
+			if not is_box_select:
 				_select_single(drag_end, additive)
 			else:
 				_select_by_rect(_drag_start, drag_end, additive)
 			_dragging = false
+			_gmhud_log_selection("after LMB selection")
 			if _selection_overlay != null and _selection_overlay.has_method("end_drag"):
 				_selection_overlay.call("end_drag")
 			_refresh_hint_label()
@@ -335,6 +370,7 @@ func _input(event: InputEvent) -> void:
 
 	var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
 	if mouse_motion != null and _dragging:
+		_gmhud_log("drag update pos=%s start=%s" % [str(mouse_motion.position), str(_drag_start)], true)
 		if _selection_overlay != null and _selection_overlay.has_method("update_drag"):
 			_selection_overlay.call("update_drag", mouse_motion.position)
 
@@ -432,6 +468,76 @@ func _pick_ui_control(screen_pos: Vector2) -> Control:
 			return hovered
 
 	return null
+
+func _begin_selection_debug_log_burst(duration_sec: float = -1.0, reason: String = "") -> void:
+	var burst_seconds: float = duration_sec if duration_sec > 0.0 else maxf(0.1, debug_selection_log_burst_seconds)
+	_debug_log_burst_until_msec = float(Time.get_ticks_msec()) + burst_seconds * 1000.0
+	_gmhud_log("begin_selection_debug_log_burst duration=%.2fs reason=%s" % [burst_seconds, reason], false, true)
+	if _hud != null and _hud.has_method("begin_debug_log_burst"):
+		_hud.call("begin_debug_log_burst", burst_seconds, reason)
+
+func _is_selection_debug_log_burst_active() -> bool:
+	return float(Time.get_ticks_msec()) <= _debug_log_burst_until_msec
+
+func _gmhud_log(message: String, verbose_only: bool = false, force: bool = false) -> void:
+	if not debug_selection_hud_logs:
+		return
+	if not force and debug_selection_log_burst_only and not _is_selection_debug_log_burst_active():
+		return
+	if verbose_only and not debug_selection_hud_verbose:
+		return
+	var frame: int = Engine.get_process_frames()
+	var timestamp_sec: float = float(Time.get_ticks_msec()) / 1000.0
+	print("[GMHUD][f=%d][t=%.3f] %s" % [frame, timestamp_sec, message])
+
+func _selection_counts_text() -> String:
+	var total: int = _selected_units.size() + _selected_buildings.size()
+	return "units=%d buildings=%d total=%d subgroup_index=%d page_index=%d" % [
+		_selected_units.size(),
+		_selected_buildings.size(),
+		total,
+		_active_subgroup_index,
+		_multi_matrix_page_index
+	]
+
+func _multi_entries_preview_text(limit: int = 8) -> String:
+	var entries: Array[Dictionary] = _build_multi_role_entries()
+	if entries.is_empty():
+		return "[]"
+	var max_items: int = mini(entries.size(), maxi(0, limit))
+	var preview_parts: Array[String] = []
+	for i in max_items:
+		var entry: Dictionary = entries[i]
+		preview_parts.append("%d:%s/%s" % [i, str(entry.get("role", "")), str(entry.get("kind", ""))])
+	if entries.size() > max_items:
+		preview_parts.append("+%d" % (entries.size() - max_items))
+	return "[%s]" % ", ".join(preview_parts)
+
+func _ui_control_debug_name(control: Control) -> String:
+	if control == null:
+		return "null"
+	return "%s(%s mf=%d mod_a=%.2f self_a=%.2f vis=%s)" % [
+		control.name,
+		control.get_class(),
+		control.mouse_filter,
+		control.modulate.a,
+		control.self_modulate.a,
+		str(control.visible)
+	]
+
+func _gmhud_log_selection(tag: String, verbose_only: bool = false) -> void:
+	if not debug_selection_hud_logs:
+		return
+	if debug_selection_log_burst_only and not _is_selection_debug_log_burst_active():
+		return
+	if verbose_only and not debug_selection_hud_verbose:
+		return
+	_gmhud_log("%s %s active_kind=%s entries=%s" % [
+		tag,
+		_selection_counts_text(),
+		_active_subgroup_kind(),
+		_multi_entries_preview_text(debug_selection_hud_max_entries)
+	], verbose_only)
 
 func _try_execute_build_hotkey(keycode: int) -> bool:
 	for skill_id in _build_menu_skill_ids():
@@ -1597,10 +1703,29 @@ func _refresh_hint_label() -> void:
 
 func _push_hud_update() -> void:
 	if _hud == null or not _hud.has_method("update_hud"):
+		_gmhud_log("push_hud_update skipped: hud missing or no update_hud method.", true)
 		return
-	_hud.call("update_hud", _build_hud_snapshot())
+	_debug_hud_push_seq += 1
+	var push_seq: int = _debug_hud_push_seq
+	var snapshot: Dictionary = _build_hud_snapshot()
+	var mode: String = str(snapshot.get("mode", "none"))
+	var roles_count: int = 0
+	var roles_variant: Variant = snapshot.get("multi_roles", [])
+	if roles_variant is Array:
+		roles_count = (roles_variant as Array).size()
+	_gmhud_log("push_hud_update#%d mode=%s selection_total=%d roles=%d page=%d/%d active_kind=%s" % [
+		push_seq,
+		mode,
+		int(snapshot.get("selection_total", 0)),
+		roles_count,
+		int(snapshot.get("matrix_page_index", 0)) + 1,
+		maxi(1, int(snapshot.get("matrix_page_count", 1))),
+		str(snapshot.get("active_subgroup_kind", ""))
+	])
+	_hud.call("update_hud", snapshot)
 
 func _build_hud_snapshot() -> Dictionary:
+	_gmhud_log("build_hud_snapshot begin %s" % _selection_counts_text(), true)
 	_prune_invalid_selection()
 	var selected_worker_count: int = 0
 	var selected_soldier_count: int = 0
@@ -1740,8 +1865,7 @@ func _build_hud_snapshot() -> Dictionary:
 	var queued_units: int = _count_total_queued_units()
 	var supply_used: int = total_units + queued_units
 	var top_legacy_text: String = "M: %d   G: 0   Supply: %d/%d" % [_minerals, supply_used, SUPPLY_CAP]
-
-	return {
+	var snapshot: Dictionary = {
 		"minerals": _minerals,
 		"gas": 0,
 		"supply_used": supply_used,
@@ -1770,10 +1894,22 @@ func _build_hud_snapshot() -> Dictionary:
 		"portrait_subtitle": portrait_subtitle,
 		"active_subgroup_kind": _active_subgroup_kind(),
 		"subgroup_text": _build_subgroup_text(mode, selection_total),
+		"selection_total": selection_total,
 		"command_hint": _build_command_hint(),
 		"command_entries": _build_command_entries(),
 		"notifications": _build_notifications()
 	}
+	_gmhud_log("build_hud_snapshot end mode=%s selection_total=%d workers=%d soldiers=%d buildings=%d page=%d/%d multi_roles=%d" % [
+		mode,
+		selection_total,
+		selected_worker_count,
+		selected_soldier_count,
+		selected_building_count,
+		matrix_page_index + 1,
+		matrix_page_count,
+		multi_roles.size()
+	], true)
+	return snapshot
 
 func _selection_mode(selection_total: int) -> String:
 	if selection_total <= 0:
@@ -1852,15 +1988,24 @@ func _build_subgroup_text(mode: String, selection_total: int) -> String:
 
 func _refresh_subgroup_state(reset_to_all: bool = false) -> void:
 	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
+	_gmhud_log("refresh_subgroup_state reset_to_all=%s subgroup_keys=%s before_index=%d before_page=%d" % [
+		str(reset_to_all),
+		str(subgroup_keys),
+		_active_subgroup_index,
+		_multi_matrix_page_index
+	], true)
 	if subgroup_keys.size() <= 1:
 		_active_subgroup_index = -1
+		_gmhud_log("refresh_subgroup_state -> no mixed subgroup. index reset to -1, page=%d" % _multi_matrix_page_index, true)
 		return
 	if reset_to_all:
 		_active_subgroup_index = -1
 		_multi_matrix_page_index = 0
+		_gmhud_log("refresh_subgroup_state -> reset_to_all true, force page_index=0", true)
 		return
 	if _active_subgroup_index >= subgroup_keys.size():
 		_active_subgroup_index = -1
+		_gmhud_log("refresh_subgroup_state -> active index overflow, reset to -1", true)
 
 func _cycle_unit_subgroup() -> bool:
 	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
@@ -1911,14 +2056,22 @@ func _cycle_multi_matrix_page(step: int) -> bool:
 func _set_multi_matrix_page(page_index: int) -> bool:
 	var selection_total: int = _selected_units.size() + _selected_buildings.size()
 	if _selection_mode(selection_total) != "multi":
+		_gmhud_log("set_multi_matrix_page ignored: mode=%s selection_total=%d request=%d" % [
+			_selection_mode(selection_total),
+			selection_total,
+			page_index
+		], true)
 		return false
 	var page_count: int = _multi_role_page_count()
 	if page_count <= 1:
 		_multi_matrix_page_index = 0
+		_gmhud_log("set_multi_matrix_page ignored: single page only.", true)
 		return false
 	var clamped_index: int = clampi(page_index, 0, page_count - 1)
 	if clamped_index == _multi_matrix_page_index:
+		_gmhud_log("set_multi_matrix_page no-op: already at page=%d/%d" % [_multi_matrix_page_index + 1, page_count], true)
 		return false
+	_gmhud_log("set_multi_matrix_page %d -> %d (page_count=%d)" % [_multi_matrix_page_index, clamped_index, page_count], true)
 	_multi_matrix_page_index = clamped_index
 	_set_ui_notice("Selection matrix page %d/%d." % [_multi_matrix_page_index + 1, page_count], 1.1)
 	_play_feedback_tone("ground")
@@ -2509,7 +2662,15 @@ func _build_multi_role_page_snapshot(active_subgroup_kind: String = "") -> Dicti
 	var page_count: int = 1
 	if total_entries > 0:
 		page_count = maxi(1, int(ceil(float(total_entries) / float(HUD_MULTI_MAX))))
+	var before_page_index: int = _multi_matrix_page_index
 	_multi_matrix_page_index = clampi(_multi_matrix_page_index, 0, page_count - 1)
+	if before_page_index != _multi_matrix_page_index:
+		_gmhud_log("build_multi_role_page_snapshot clamped page_index %d -> %d (page_count=%d total_entries=%d)" % [
+			before_page_index,
+			_multi_matrix_page_index,
+			page_count,
+			total_entries
+		], true)
 	var start_index: int = _multi_matrix_page_index * HUD_MULTI_MAX
 	var end_index: int = mini(total_entries, start_index + HUD_MULTI_MAX)
 	var roles: Array[String] = []
@@ -2526,6 +2687,14 @@ func _build_multi_role_page_snapshot(active_subgroup_kind: String = "") -> Dicti
 		page_text += " | PgUp/PgDn"
 	if active_subgroup_kind != "":
 		page_text += " | Active %s" % _subgroup_kind_label(active_subgroup_kind)
+	_gmhud_log("build_multi_role_page_snapshot page=%d/%d range=%d-%d total=%d active_kind=%s" % [
+		_multi_matrix_page_index + 1,
+		page_count,
+		start_index + 1 if total_entries > 0 else 0,
+		end_index,
+		total_entries,
+		active_subgroup_kind
+	], true)
 	return {
 		"roles": roles,
 		"kinds": kinds,
@@ -2994,8 +3163,16 @@ func _on_hud_command_pressed(command_id: String) -> void:
 	_execute_command(command_id)
 
 func _on_hud_multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_pressed: bool) -> void:
+	_gmhud_log("hud_multi_role_cell_pressed cell=%d shift=%s ctrl=%s page=%d %s" % [
+		cell_index,
+		str(shift_pressed),
+		str(ctrl_pressed),
+		_multi_matrix_page_index,
+		_selection_counts_text()
+	], true)
 	var entry: Dictionary = _resolve_multi_role_entry_from_cell(cell_index)
 	if entry.is_empty():
+		_gmhud_log("hud_multi_role_cell_pressed ignored: empty entry for cell=%d page=%d" % [cell_index, _multi_matrix_page_index], true)
 		return
 	var target_node: Node = entry.get("node") as Node
 	if target_node == null or not is_instance_valid(target_node):
@@ -3007,6 +3184,7 @@ func _on_hud_multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_
 			_set_ui_notice("Removed: %s." % _multi_role_kind_label(entry_kind, target_node), 1.1)
 			_play_feedback_tone("ground")
 			_refresh_hint_label()
+			_gmhud_log_selection("hud_multi_role_cell_pressed ctrl-remove")
 		return
 
 	if shift_pressed:
@@ -3015,20 +3193,36 @@ func _on_hud_multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_
 			_set_ui_notice("Selected: %s x%d." % [_multi_role_kind_label(entry_kind, target_node), selected_count], 1.1)
 			_play_feedback_tone("follow")
 			_refresh_hint_label()
+			_gmhud_log_selection("hud_multi_role_cell_pressed shift-select")
 		return
 
 	if _select_only_multi_role_entry(target_node):
 		_set_ui_notice("Selected: %s." % _multi_role_kind_label(entry_kind, target_node), 1.1)
 		_play_feedback_tone("ground")
 		_refresh_hint_label()
+		_gmhud_log_selection("hud_multi_role_cell_pressed single-select")
 
 func _resolve_multi_role_entry_from_cell(cell_index: int) -> Dictionary:
 	if cell_index < 0 or cell_index >= HUD_MULTI_MAX:
+		_gmhud_log("resolve_multi_role_entry_from_cell invalid cell_index=%d" % cell_index, true)
 		return {}
 	var entries: Array[Dictionary] = _build_multi_role_entries()
 	var global_index: int = _multi_matrix_page_index * HUD_MULTI_MAX + cell_index
 	if global_index < 0 or global_index >= entries.size():
+		_gmhud_log("resolve_multi_role_entry_from_cell out of range: cell=%d global=%d page=%d entries=%d" % [
+			cell_index,
+			global_index,
+			_multi_matrix_page_index,
+			entries.size()
+		], true)
 		return {}
+	_gmhud_log("resolve_multi_role_entry_from_cell cell=%d global=%d page=%d kind=%s role=%s" % [
+		cell_index,
+		global_index,
+		_multi_matrix_page_index,
+		str(entries[global_index].get("kind", "")),
+		str(entries[global_index].get("role", ""))
+	], true)
 	return entries[global_index]
 
 func _select_only_multi_role_entry(target_node: Node) -> bool:
@@ -3049,6 +3243,7 @@ func _select_same_multi_role_kind(entry_kind: String) -> int:
 	if kind_key == "":
 		return 0
 	var previous_page_index: int = _multi_matrix_page_index
+	_gmhud_log("select_same_multi_role_kind kind=%s previous_page=%d %s" % [kind_key, previous_page_index, _selection_counts_text()], true)
 
 	var matched_units: Array[Node] = []
 	for selected_unit in _selected_units:
@@ -3078,6 +3273,12 @@ func _select_same_multi_role_kind(entry_kind: String) -> int:
 	_refresh_subgroup_state()
 	var page_count: int = _multi_role_page_count()
 	_multi_matrix_page_index = clampi(previous_page_index, 0, page_count - 1)
+	_gmhud_log("select_same_multi_role_kind result units=%d buildings=%d new_page=%d page_count=%d" % [
+		matched_units.size(),
+		matched_buildings.size(),
+		_multi_matrix_page_index,
+		page_count
+	], true)
 	return matched_units.size() + matched_buildings.size()
 
 func _remove_multi_role_entry_from_selection(target_node: Node) -> bool:
@@ -3120,6 +3321,7 @@ func _on_hud_control_group_pressed(group_id: int) -> void:
 	_refresh_hint_label()
 
 func _on_hud_matrix_page_selected(page_index: int) -> void:
+	_gmhud_log("hud_matrix_page_selected request=%d current=%d" % [page_index, _multi_matrix_page_index], true)
 	if _set_multi_matrix_page(page_index):
 		_refresh_hint_label()
 
@@ -3414,6 +3616,14 @@ func _is_player_dropoff_node(node: Node) -> bool:
 	return _is_player_owned(node)
 
 func _select_single(screen_pos: Vector2, additive: bool) -> void:
+	_debug_selection_seq += 1
+	var selection_seq: int = _debug_selection_seq
+	_gmhud_log("select_single#%d begin pos=%s additive=%s before=%s" % [
+		selection_seq,
+		str(screen_pos),
+		str(additive),
+		_selection_counts_text()
+	])
 	_close_build_menu()
 	_pending_target_skill = ""
 	if not additive:
@@ -3421,11 +3631,13 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 
 	var result: Dictionary = _raycast_from_screen(screen_pos)
 	if result.is_empty():
+		_gmhud_log("select_single#%d no collider hit; after=%s" % [selection_seq, _selection_counts_text()])
 		return
 
 	var collider: Node = result.get("collider") as Node
 	if collider == null:
 		_last_click_unit_kind = ""
+		_gmhud_log("select_single#%d collider is null; after=%s" % [selection_seq, _selection_counts_text()])
 		return
 
 	if collider.is_in_group("selectable_unit"):
@@ -3436,10 +3648,12 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 			_last_click_unit_kind = unit_kind
 			_last_click_time_sec = now_sec
 			if is_double_click:
+				_gmhud_log("select_single#%d double-click kind=%s ctrl=%s" % [selection_seq, unit_kind, str(Input.is_key_pressed(KEY_CTRL))], true)
 				_select_units_by_kind(unit_kind, Input.is_key_pressed(KEY_CTRL))
 			else:
 				_add_selected_unit(collider)
 		_refresh_subgroup_state(true)
+		_gmhud_log_selection("select_single#%d unit hit result" % selection_seq)
 		return
 
 	if collider.is_in_group("selectable_building"):
@@ -3447,12 +3661,23 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 			_add_selected_building(collider)
 		_last_click_unit_kind = ""
 		_refresh_subgroup_state(true)
+		_gmhud_log_selection("select_single#%d building hit result" % selection_seq)
 		return
 
 	_last_click_unit_kind = ""
 	_refresh_subgroup_state(true)
+	_gmhud_log_selection("select_single#%d other collider result" % selection_seq)
 
 func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> void:
+	_debug_selection_seq += 1
+	var selection_seq: int = _debug_selection_seq
+	_gmhud_log("select_by_rect#%d begin start=%s end=%s additive=%s before=%s" % [
+		selection_seq,
+		str(start_pos),
+		str(end_pos),
+		str(additive),
+		_selection_counts_text()
+	])
 	_close_build_menu()
 	_pending_target_skill = ""
 	if not additive:
@@ -3468,7 +3693,13 @@ func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> vo
 		candidates = _units_root.get_children()
 	else:
 		candidates = get_tree().get_nodes_in_group("selectable_unit")
+	_gmhud_log("select_by_rect#%d rect=%s candidate_count=%d" % [
+		selection_seq,
+		str(rect),
+		candidates.size()
+	], true)
 
+	var selected_hits: int = 0
 	for node in candidates:
 		var unit: Node3D = node as Node3D
 		if unit == null:
@@ -3480,7 +3711,10 @@ func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> vo
 		var projected_pos: Vector2 = _camera.unproject_position(unit.global_position)
 		if rect.has_point(projected_pos):
 			_add_selected_unit(unit)
+			selected_hits += 1
 	_refresh_subgroup_state(true)
+	_gmhud_log("select_by_rect#%d selected_hits=%d after=%s" % [selection_seq, selected_hits, _selection_counts_text()])
+	_gmhud_log_selection("select_by_rect#%d snapshot" % selection_seq, true)
 
 func _queue_worker_from_selection() -> void:
 	if _train_worker_block_reason() != "":
@@ -4358,18 +4592,18 @@ func _register_building(building_node: Node) -> void:
 		return
 	_track_navigation_dynamic_node(building_node)
 	if building_node.has_signal("production_finished"):
-		var callback: Callable = Callable(self, "_on_building_production_finished").bind(building_node)
+		var callback: Callable = Callable(self , "_on_building_production_finished").bind(building_node)
 		if not building_node.is_connected("production_finished", callback):
 			building_node.connect("production_finished", callback)
 	if building_node.has_signal("construction_state_changed"):
-		var construction_callback: Callable = Callable(self, "_on_building_construction_state_changed").bind(building_node)
+		var construction_callback: Callable = Callable(self , "_on_building_construction_state_changed").bind(building_node)
 		if not building_node.is_connected("construction_state_changed", construction_callback):
 			building_node.connect("construction_state_changed", construction_callback)
 
 func _track_navigation_dynamic_node(nav_node: Node) -> void:
 	if nav_node == null:
 		return
-	var callback: Callable = Callable(self, "_on_navigation_dynamic_node_exited").bind(nav_node)
+	var callback: Callable = Callable(self , "_on_navigation_dynamic_node_exited").bind(nav_node)
 	if not nav_node.is_connected("tree_exited", callback):
 		nav_node.connect("tree_exited", callback)
 
@@ -4397,7 +4631,7 @@ func _setup_runtime_navigation_baking() -> void:
 	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
 	nav_mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
 	nav_mesh.geometry_source_group_name = NAV_SOURCE_GROUP
-	var callback: Callable = Callable(self, "_on_nav_region_bake_finished")
+	var callback: Callable = Callable(self , "_on_nav_region_bake_finished")
 	if not _nav_region.is_connected("bake_finished", callback):
 		_nav_region.connect("bake_finished", callback)
 

@@ -72,7 +72,32 @@
 - 调整：[scripts/ui/skill_command_item.gd](D:/Godot/projs/gd_rts/scripts/ui/skill_command_item.gd) + [scenes/ui/skill_command_item.tscn](D:/Godot/projs/gd_rts/scenes/ui/skill_command_item.tscn) + [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，命令格改为“图标优先”显示（隐藏按钮内名称/费用），名称、费用和建造详情移到悬浮 Tooltip 显示。
 - 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scripts/ui/skill_command_item.gd](D:/Godot/projs/gd_rts/scripts/ui/skill_command_item.gd)，命令悬浮信息改为固定面板：在 `CommandPanel` 上方新增同宽 `CommandHoverPanel`，按钮改为发出 `hover_started/hover_ended` 信号，HUD 固定位置渲染名称/费用/描述/热键/禁用原因。
 - 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，`SingleStatusContent` 的 `HP/SH/EN` 数值标签内嵌到各自 `ProgressBar`（`HealthBar/ShieldBar/EnergyBar`）内部展示，移除外置独立标签布局。
+- 新增：[RTS_HUD_Manual_Layout_PRD.md](D:/Godot/projs/gd_rts/docs/RTS_HUD_Manual_Layout_PRD.md)，建立 HUD 从自动布局迁移到手动布局的专项 PRD（分阶段：外层骨架 → 子布局 → 网格）。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，启动 HUD 手动布局 P1：`TopBarRow/BottomRow` 切为 `Control`，新增顶部三分区（Resource/Center/System）与底部四区块（Selection/Queue/Portrait/Command）手动 `reflow`，并接入窗口尺寸变化重排。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，推进 HUD 手动布局到列级壳层：`QueueColumn/PortraitColumn/CommandColumn` 切为 `Control`，并新增列内手动分区计算（QueueTopSpacer+QueuePanel、PortraitTopSpacer+PortraitPanel、CommandHoverPanel+CommandPanel）。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，推进 Queue 子布局手动化：`QueueContent` 切为 `Control`，新增内容区手动计算（提示行 + `SingleContainer`/`MultiMatrixRoot` 主区），并在 HUD 快照刷新后同步重排。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，推进 Command 子布局手动化：`CommandContent` 切为 `Control`，新增内容区手动计算（`SubgroupText` + `CommandGrid` + `CommandHintText`），并接入快照刷新后的同步重排。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，继续推进 Queue 深层手动布局：`SingleContainer`、`MultiMatrixContent`、`MatrixBody` 切为 `Control`，新增 `SingleStatus/Detail/Production` 分栏与 `MatrixFooter/Grid` 分栏手动计算。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，继续推进 Queue 单体区深层手动布局：`SingleStatusContent`、`SingleDetailContent`、`ProductionContent` 切为 `Control`，并新增三块纵向结构手动计算（状态条、详情文本、生产队列）。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，推进 Command 网格手动化：`CommandGrid` 切为 `Control`，新增 5 列参数化命令卡手动格子布局（间距/尺寸可配置）。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，推进 Matrix 网格手动化：`MatrixGrid` 切为 `Control`，新增 8 列参数化多选矩阵手动格子布局（间距/尺寸可配置）。
+- 改造：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn) + [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，推进 Matrix 分页区手动化：`MatrixFooter/MatrixPageButtons` 切为 `Control`，新增页码按钮纵向手动布局（高度/间距/宽度参数化）。
 - 验证：执行 `godot --headless --path d:\\Godot\\projs\\gd_rts --quit --verbose`，当前无脚本解析错误。
+- 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，单体信息区分栏改为最小宽度约束 + 比例修正（`manual_single_status_ratio`/`manual_single_aux_ratio` + `manual_single_status_min_width`/`manual_single_aux_min_width`），缓解 `SingleStatus/Detail` 在窄宽度下挤压重叠。
+- 调整：[scenes/ui/rts_hud.tscn](D:/Godot/projs/gd_rts/scenes/ui/rts_hud.tscn)，TopBar 改为全宽锚定（`anchor_left=0`、`offset_left=12`、`offset_right=-12`），并对 NotificationPanel 启用 `clip_contents` 与高度收敛，避免通知文字越界覆盖。
+- 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，手动布局刷新链路增加重入保护（`_is_applying_manual_layout`）并移除高风险递归补帧逻辑；`_set_manual_rect` 改为安全判定+最小变更写入，修复启动时 `CommandGrid -> _set_manual_rect` 触发的 `signal 11` 崩溃。
+- 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，手动布局增加启动 warmup 重排（前3帧强制刷新），修复首帧尺寸未稳定导致 `QueueContent/CommandGrid` 维度错误（0高/异常高）问题。
+- 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，底部四区比例改为 `18/40/10/32`，并下调命令/矩阵网格间距，提升命令卡可用尺寸（默认窗口下命令格宽由约58提升到约65）。
+- 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) + [scenes/ui/skill_command_item.tscn](D:/Godot/projs/gd_rts/scenes/ui/skill_command_item.tscn)，命令格与矩阵格改为“填充可用网格空间”排版；同时移除 `custom_minimum_size` 约束（命令项与矩阵单元），修复格子重叠/挤压（尤其多选矩阵8列场景）与“小格子堆在一角”问题。
+- 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，多选矩阵首帧抖动根因修正：关闭矩阵格 Label 自动换行并启用裁剪（`AUTOWRAP_OFF + clip_text`），避免 `PanelContainer` 被文本最小高度（51/77）反向撑高导致切换帧“格子二次跳位”。
+- 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，新增 `none/single -> multi` 过渡保护（默认开启）：切换到多选矩阵时先隐藏 1 帧并在下一帧 reveal + reflow，抹掉玩家可见的中间布局帧（margin/位置重算过程）。
+- 验证：执行 `godot --headless --path d:\\Godot\\projs\\gd_rts --quit --verbose`，当前通过（无崩溃、无脚本解析错误）。
+- 调试：新增矩阵抖动链路日志（默认开启），覆盖 [scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd) 的 `update_hud -> manual layout -> matrix grid` 全流程（日志前缀 `[HUDJIT]`），以及 [scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) 的 `LMB输入 -> 框选/单选 -> subgroup/page -> push_hud_update/snapshot` 链路（日志前缀 `[GMHUD]`），用于定位 `none -> multi` 切换帧中的时序问题。
+- 调试优化：日志改为“框选左键抬起后 5 秒突发窗口”模式（`debug_*_log_burst_only=true`，默认 5s），常态不刷日志；触发点在 `GameManager._input` 的 `box select` 分支，并同步通知 HUD 开启同窗日志，减少噪声同时保留问题帧链路。
+- 修复（基于日志）：`none -> multi` 过渡不再使用 `MultiMatrixRoot.visible=false` 的 0 高度中间态；改为“保持可布局 + 透明隐藏 + reveal 时恢复不透明”，避免首帧先塌缩再展开导致的矩阵跳位可见。
+- 调试体验：框选抬起触发日志窗口固定为 5 秒（代码内强制 `5.0s`），并将 `*_verbose` 默认回落为 `false`，避免高频帧日志刷屏。
+- 调整：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，`CommandHoverPanel` 改为“底边固定、向上扩展”布局：根据 Tooltip 文本动态估算高度并只向上增高，避免向下拉伸时被下方 `CommandPanel` 覆盖。
+- 修复：[scripts/ui/rts_hud.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_hud.gd)，命令悬浮文本变化时改为“立即重排 CommandColumn”（非等待下一帧），消除 hover 切换瞬间先向下拉伸、下一帧再回到向上扩展的闪动。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
 
