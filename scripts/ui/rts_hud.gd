@@ -20,15 +20,17 @@ const HUD_FONT_BUTTON: int = 13
 const HUD_FONT_GLYPH: int = 16
 
 @export var use_manual_bottom_layout: bool = true
+@export var manual_bottom_height_scale: float = 0.8
+@export var manual_bottom_min_height: float = 180.0
 @export var manual_bottom_gap: float = 2.0
 @export var manual_bottom_padding: Vector2 = Vector2(0.0, 0.0)
-@export var manual_bottom_section_ratios: Vector4 = Vector4(18.0, 40.0, 10.0, 32.0)
-@export var manual_queue_top_height: float = 84.0
+@export var manual_bottom_section_ratios: Vector4 = Vector4(24.0, 36.0, 12.0, 28.0)
+@export var manual_queue_top_height: float = 24.0
 @export var manual_queue_gap: float = 0.0
 @export var manual_queue_content_padding: Vector2 = Vector2(6.0, 6.0)
 @export var manual_queue_content_right_extra_width: float = 58.0
 @export var manual_queue_content_gap: float = 2.0
-@export var manual_queue_hint_height: float = 26.0
+@export var manual_queue_hint_height: float = 20.0
 @export var manual_single_container_padding: Vector2 = Vector2(0.0, 0.0)
 @export var manual_single_container_gap: float = 2.0
 @export var manual_single_status_ratio: float = 1.25
@@ -59,9 +61,9 @@ const HUD_FONT_GLYPH: int = 16
 @export var manual_matrix_h_gap: float = 2.0
 @export var manual_matrix_v_gap: float = 2.0
 @export var manual_matrix_cell_min_size: Vector2 = Vector2(50.0, 50.0)
-@export var manual_portrait_top_height: float = 84.0
+@export var manual_portrait_top_height: float = 0.0
 @export var manual_portrait_gap: float = 0.0
-@export var manual_command_hover_height: float = 64.0
+@export var manual_command_hover_height: float = 28.0
 @export var manual_command_hover_extra_padding: float = 6.0
 @export var manual_command_gap: float = 2.0
 @export var manual_command_content_padding: Vector2 = Vector2(4.0, 4.0)
@@ -72,6 +74,10 @@ const HUD_FONT_GLYPH: int = 16
 @export var manual_command_grid_h_gap: float = 2.0
 @export var manual_command_grid_v_gap: float = 2.0
 @export var manual_command_grid_cell_min_size: Vector2 = Vector2(58.0, 58.0)
+@export var manual_selection_button_column_width: float = 46.0
+@export var manual_selection_button_gap: float = 4.0
+@export var manual_selection_button_min_height: float = 22.0
+@export var manual_selection_minimap_gap: float = 4.0
 @export var use_manual_top_layout: bool = true
 @export var manual_top_gap: float = 2.0
 @export var manual_top_padding: Vector2 = Vector2(0.0, 0.0)
@@ -91,8 +97,11 @@ const HUD_FONT_GLYPH: int = 16
 @onready var _bottom_hud: Control = $BottomHUD
 @onready var _bottom_row: Control = $BottomHUD/BottomRow
 @onready var _selection_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel
+@onready var _selection_content: Control = $BottomHUD/BottomRow/SelectionPanel/SelectionContent
+@onready var _global_button_row: Control = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/GlobalButtonRow
 @onready var _minimap_panel: PanelContainer = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel
 @onready var _minimap_view: Control = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/MinimapPanel/MiniMapView
+@onready var _bottom_button_row: Control = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/BottomButtonRow
 @onready var _ping_button: Button = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/BottomButtonRow/PingButton
 @onready var _queue_column: Control = $BottomHUD/BottomRow/QueueColumn
 @onready var _queue_panel: PanelContainer = $BottomHUD/BottomRow/QueueColumn/QueuePanel
@@ -181,6 +190,10 @@ var _debug_hud_update_seq: int = 0
 var _debug_layout_seq: int = 0
 var _debug_log_burst_until_msec: float = 0.0
 var _minimap_ping_armed: bool = false
+var _selection_layout_root: Control
+var _selection_button_strip: Control
+var _selection_side_buttons: Array[Button] = []
+var _bottom_hud_base_height: float = -1.0
 
 func _t(message: String) -> String:
 	return tr(message)
@@ -251,6 +264,7 @@ func _ready() -> void:
 	_connect_ping_button()
 	_connect_minimap_view()
 	_configure_bottom_layout_nodes()
+	_prepare_selection_panel_layout()
 	_apply_bottom_helper_transparency()
 	_apply_bottom_helper_mouse_filters()
 	_collect_notification_labels()
@@ -547,6 +561,8 @@ func _cache_control_group_buttons() -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		button.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.custom_minimum_size = Vector2.ZERO
+		button.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_set_font_size(button, HUD_FONT_TINY)
 		button.text = ""
 		button.tooltip_text = ""
@@ -917,6 +933,76 @@ func _configure_bottom_layout_nodes() -> void:
 		_command_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_command_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
+func _prepare_selection_panel_layout() -> void:
+	if _selection_panel == null:
+		return
+	if _selection_layout_root == null or not is_instance_valid(_selection_layout_root):
+		_selection_layout_root = _selection_panel.get_node_or_null("SelectionLayout") as Control
+		if _selection_layout_root == null:
+			_selection_layout_root = Control.new()
+			_selection_layout_root.name = "SelectionLayout"
+			_selection_layout_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_selection_panel.add_child(_selection_layout_root)
+	_selection_layout_root.layout_mode = 0
+	_selection_layout_root.anchor_left = 0.0
+	_selection_layout_root.anchor_top = 0.0
+	_selection_layout_root.anchor_right = 0.0
+	_selection_layout_root.anchor_bottom = 0.0
+
+	if _selection_button_strip == null or not is_instance_valid(_selection_button_strip):
+		_selection_button_strip = _selection_layout_root.get_node_or_null("SelectionButtonStrip") as Control
+		if _selection_button_strip == null:
+			_selection_button_strip = Control.new()
+			_selection_button_strip.name = "SelectionButtonStrip"
+			_selection_button_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_selection_layout_root.add_child(_selection_button_strip)
+	_selection_button_strip.layout_mode = 0
+	_selection_button_strip.anchor_left = 0.0
+	_selection_button_strip.anchor_top = 0.0
+	_selection_button_strip.anchor_right = 0.0
+	_selection_button_strip.anchor_bottom = 0.0
+
+	if _minimap_panel != null and _minimap_panel.get_parent() != _selection_layout_root:
+		var parent_node: Node = _minimap_panel.get_parent()
+		if parent_node != null:
+			parent_node.remove_child(_minimap_panel)
+		_selection_layout_root.add_child(_minimap_panel)
+	_minimap_panel.layout_mode = 0
+	_minimap_panel.anchor_left = 0.0
+	_minimap_panel.anchor_top = 0.0
+	_minimap_panel.anchor_right = 0.0
+	_minimap_panel.anchor_bottom = 0.0
+
+	_selection_side_buttons.clear()
+	var buttons: Array[Button] = [_idle_worker_button, _army_button, _warp_button, _ping_button, _terrain_button]
+	for button in buttons:
+		if button == null:
+			continue
+		if button.get_parent() != _selection_button_strip:
+			var button_parent: Node = button.get_parent()
+			if button_parent != null:
+				button_parent.remove_child(button)
+			_selection_button_strip.add_child(button)
+		button.layout_mode = 0
+		button.anchor_left = 0.0
+		button.anchor_top = 0.0
+		button.anchor_right = 0.0
+		button.anchor_bottom = 0.0
+		button.size_flags_horizontal = 0
+		button.size_flags_vertical = 0
+		button.custom_minimum_size = Vector2.ZERO
+		_selection_side_buttons.append(button)
+
+	if _selection_content != null:
+		_selection_content.visible = false
+		_selection_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if _global_button_row != null:
+		_global_button_row.visible = false
+		_global_button_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if _bottom_button_row != null:
+		_bottom_button_row.visible = false
+		_bottom_button_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
 func _request_manual_bottom_layout_refresh() -> void:
 	if not use_manual_bottom_layout and not use_manual_top_layout:
 		_hudjit_log("request_layout_refresh skipped: manual top/bottom disabled.", true)
@@ -991,6 +1077,10 @@ func _apply_manual_bottom_layout() -> void:
 	], true)
 	_manual_layout_refresh_pending = false
 	_is_applying_manual_layout = true
+	if _apply_bottom_hud_height():
+		_is_applying_manual_layout = false
+		_request_manual_bottom_layout_refresh()
+		return
 	if use_manual_top_layout:
 		_apply_manual_top_layout()
 	if use_manual_bottom_layout:
@@ -1098,9 +1188,62 @@ func _apply_manual_bottom_row_layout() -> void:
 	x += section_widths[2] + gap
 	_set_manual_rect(_command_column, Vector2(x, y), Vector2(section_widths[3], usable_height))
 
+	_apply_manual_selection_panel_layout()
 	_apply_manual_queue_column_layout()
 	_apply_manual_portrait_column_layout()
 	_apply_manual_command_column_layout()
+
+func _apply_manual_selection_panel_layout() -> void:
+	if _selection_panel == null:
+		return
+	if _selection_layout_root == null or not is_instance_valid(_selection_layout_root):
+		_prepare_selection_panel_layout()
+	if _selection_layout_root == null:
+		return
+	var panel_rect: Rect2 = _get_panel_content_rect(_selection_panel)
+	_set_manual_rect(_selection_layout_root, panel_rect.position, panel_rect.size)
+	var content_size: Vector2 = panel_rect.size
+	if content_size.x <= 1.0 or content_size.y <= 1.0:
+		return
+
+	var gap: float = maxf(0.0, manual_selection_minimap_gap)
+	var strip_width: float = clampf(manual_selection_button_column_width, 0.0, content_size.x)
+	var minimap_width: float = maxf(0.0, content_size.x - strip_width - gap)
+
+	_set_manual_rect(_minimap_panel, Vector2(0.0, 0.0), Vector2(minimap_width, content_size.y))
+	_set_manual_rect(_selection_button_strip, Vector2(minimap_width + gap, 0.0), Vector2(strip_width, content_size.y))
+
+	if _selection_side_buttons.is_empty():
+		return
+	var button_gap: float = maxf(0.0, manual_selection_button_gap)
+	var count: int = _selection_side_buttons.size()
+	var available_height: float = maxf(0.0, content_size.y - button_gap * float(maxi(0, count - 1)))
+	var raw_height: float = floor(available_height / float(count)) if count > 0 else 0.0
+	var button_height: float = maxf(manual_selection_button_min_height, raw_height)
+	if button_height * float(count) + button_gap * float(maxi(0, count - 1)) > content_size.y:
+		button_height = maxf(4.0, floor((content_size.y - button_gap * float(maxi(0, count - 1))) / float(count)))
+	var y: float = 0.0
+	for button in _selection_side_buttons:
+		if button == null:
+			continue
+		_set_manual_rect(button, Vector2(0.0, y), Vector2(strip_width, button_height))
+		y += button_height + button_gap
+
+func _apply_bottom_hud_height() -> bool:
+	if _bottom_hud == null:
+		return false
+	var current_height: float = _bottom_hud.size.y
+	if current_height <= 1.0:
+		return false
+	if _bottom_hud_base_height <= 0.0:
+		_bottom_hud_base_height = current_height
+	var target_height: float = maxf(manual_bottom_min_height, _bottom_hud_base_height * manual_bottom_height_scale)
+	var bottom_offset: float = _bottom_hud.offset_bottom
+	var desired_top: float = bottom_offset - target_height
+	if absf(_bottom_hud.offset_top - desired_top) > 0.5:
+		_bottom_hud.offset_top = desired_top
+		return true
+	return false
 
 func _apply_manual_queue_column_layout() -> void:
 	if _queue_column == null:
@@ -1112,6 +1255,16 @@ func _apply_manual_queue_column_layout() -> void:
 	var gap: float = maxf(0.0, manual_queue_gap)
 	var panel_height: float = maxf(0.0, area_size.y - top_height - gap)
 	_set_manual_rect(_queue_top_spacer, Vector2(0.0, 0.0), Vector2(area_size.x, top_height))
+	if _control_group_bar != null and is_instance_valid(_control_group_bar):
+		_control_group_bar.layout_mode = 0
+		_control_group_bar.anchor_left = 0.0
+		_control_group_bar.anchor_top = 0.0
+		_control_group_bar.anchor_right = 0.0
+		_control_group_bar.anchor_bottom = 0.0
+		var bar_height: float = minf(24.0, top_height)
+		var bar_width: float = maxf(0.0, area_size.x - 8.0)
+		var bar_y: float = maxf(0.0, (top_height - bar_height) * 0.5)
+		_set_manual_rect(_control_group_bar, Vector2(4.0, bar_y), Vector2(bar_width, bar_height))
 	_set_manual_rect(_queue_panel, Vector2(0.0, top_height + gap), Vector2(area_size.x, panel_height))
 	var queue_content_rect: Rect2 = _get_panel_content_rect(_queue_panel)
 	_set_manual_rect(_queue_content, queue_content_rect.position, queue_content_rect.size)
@@ -1582,8 +1735,9 @@ func _apply_manual_command_grid_layout() -> void:
 
 	var cell_width: float = maxf(1.0, floor(available_width / float(columns)))
 	var cell_height: float = maxf(1.0, floor(available_height / float(rows)))
-	var used_width: float = cell_width * float(columns) + h_gap * float(columns - 1)
-	var used_height: float = cell_height * float(rows) + v_gap * float(rows - 1)
+	var cell_size: float = maxf(1.0, minf(cell_width, cell_height))
+	var used_width: float = cell_size * float(columns) + h_gap * float(columns - 1)
+	var used_height: float = cell_size * float(rows) + v_gap * float(rows - 1)
 	var start_x: float = floor(maxf(0.0, (grid_size.x - used_width) * 0.5))
 	var start_y: float = floor(maxf(0.0, (grid_size.y - used_height) * 0.5))
 
@@ -1593,9 +1747,9 @@ func _apply_manual_command_grid_layout() -> void:
 			continue
 		var col: int = i % columns
 		var row: int = i / columns
-		var x: float = start_x + float(col) * (cell_width + h_gap)
-		var y: float = start_y + float(row) * (cell_height + v_gap)
-		_set_manual_rect(item, Vector2(x, y), Vector2(cell_width, cell_height))
+		var x: float = start_x + float(col) * (cell_size + h_gap)
+		var y: float = start_y + float(row) * (cell_size + v_gap)
+		_set_manual_rect(item, Vector2(x, y), Vector2(cell_size, cell_size))
 
 func _get_panel_content_rect(panel: PanelContainer) -> Rect2:
 	if panel == null or not is_instance_valid(panel):
