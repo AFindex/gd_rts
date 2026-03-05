@@ -76,6 +76,7 @@ var _dragging: bool = false
 var _drag_start: Vector2 = Vector2.ZERO
 var _selected_units: Array[Node] = []
 var _selected_buildings: Array[Node] = []
+var _hovered_unit: Node = null
 
 var _minerals: int = 220
 var _worker_cost: int = WORKER_COST
@@ -225,6 +226,7 @@ func _process(delta: float) -> void:
 	_process_pending_construction_ghosts(delta)
 	if _placing_building:
 		_update_placement_preview()
+	_update_hovered_unit_from_mouse()
 
 	_process_match_rules(delta)
 	_process_active_research(delta)
@@ -517,6 +519,44 @@ func _pick_ui_control(screen_pos: Vector2) -> Control:
 			return hovered
 
 	return null
+
+func _update_hovered_unit_from_mouse() -> void:
+	if _camera == null:
+		_set_hovered_unit(null)
+		return
+	if _dragging:
+		_set_hovered_unit(null)
+		return
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		_set_hovered_unit(null)
+		return
+	var mouse_pos: Vector2 = viewport.get_mouse_position()
+	var hovered_unit: Node = _resolve_hovered_unit_from_screen(mouse_pos)
+	_set_hovered_unit(hovered_unit)
+
+func _resolve_hovered_unit_from_screen(screen_pos: Vector2) -> Node:
+	var ui_control: Control = _pick_ui_control(screen_pos)
+	if ui_control != null:
+		return null
+	var result: Dictionary = _raycast_from_screen(screen_pos)
+	if result.is_empty():
+		return null
+	var collider: Node = result.get("collider") as Node
+	if collider == null:
+		return null
+	if not collider.is_in_group("selectable_unit"):
+		return null
+	return collider
+
+func _set_hovered_unit(unit: Node) -> void:
+	if _hovered_unit == unit:
+		return
+	if _hovered_unit != null and is_instance_valid(_hovered_unit) and _hovered_unit.has_method("set_hovered"):
+		_hovered_unit.call("set_hovered", false)
+	_hovered_unit = unit
+	if _hovered_unit != null and is_instance_valid(_hovered_unit) and _hovered_unit.has_method("set_hovered"):
+		_hovered_unit.call("set_hovered", true)
 
 func _begin_selection_debug_log_burst(duration_sec: float = -1.0, reason: String = "") -> void:
 	var burst_seconds: float = duration_sec if duration_sec > 0.0 else maxf(0.1, debug_selection_log_burst_seconds)
@@ -2445,6 +2485,14 @@ func _selected_unit_subgroup_keys() -> Array[String]:
 		keys.append(kind)
 	return keys
 
+func _selection_contains_non_player_units() -> bool:
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			return true
+	return false
+
 func _unit_kind_id(unit_node: Node) -> String:
 	if unit_node == null or not is_instance_valid(unit_node):
 		return ""
@@ -3510,11 +3558,6 @@ func _prune_invalid_selection() -> void:
 		var node: Node = _selected_units[i]
 		if node == null or not is_instance_valid(node):
 			_selected_units.remove_at(i)
-			continue
-		if not _is_player_owned(node):
-			if node.has_method("set_selected"):
-				node.call("set_selected", false)
-			_selected_units.remove_at(i)
 	for i in range(_selected_buildings.size() - 1, -1, -1):
 		var node: Node = _selected_buildings[i]
 		if node == null or not is_instance_valid(node):
@@ -3524,6 +3567,8 @@ func _prune_invalid_selection() -> void:
 			if node.has_method("set_selected"):
 				node.call("set_selected", false)
 			_selected_buildings.remove_at(i)
+	if _hovered_unit != null and not is_instance_valid(_hovered_unit):
+		_hovered_unit = null
 
 func _on_hud_command_pressed(command_id: String) -> void:
 	_execute_command(command_id)
@@ -4045,7 +4090,15 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 		return
 
 	if collider.is_in_group("selectable_unit"):
-		if _is_player_owned(collider):
+		var is_owned_unit: bool = _is_player_owned(collider)
+		if not is_owned_unit:
+			# Enemy/neutral units are selectable for inspection, but always as single selection.
+			_clear_selection()
+			_add_selected_unit(collider, true)
+			_last_click_unit_kind = ""
+		else:
+			if additive and _selection_contains_non_player_units():
+				_clear_selection()
 			var unit_kind: String = _unit_kind_id(collider)
 			var now_sec: float = float(Time.get_ticks_msec()) / 1000.0
 			var is_double_click: bool = unit_kind != "" and _last_click_unit_kind == unit_kind and (now_sec - _last_click_time_sec) <= SELECTION_DOUBLE_CLICK_WINDOW
@@ -4062,6 +4115,8 @@ func _select_single(screen_pos: Vector2, additive: bool) -> void:
 
 	if collider.is_in_group("selectable_building"):
 		if _is_player_owned(collider):
+			if additive and _selection_contains_non_player_units():
+				_clear_selection()
 			_add_selected_building(collider)
 		_last_click_unit_kind = ""
 		_refresh_subgroup_state(true)
@@ -4092,32 +4147,73 @@ func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> vo
 		Vector2(absf(end_pos.x - start_pos.x), absf(end_pos.y - start_pos.y))
 	)
 
-	var candidates: Array[Node]
+	if additive and _selection_contains_non_player_units():
+		# Enemy/neutral selection is single-only; drag selection switches back to player-owned group selection.
+		_clear_selection()
+
+	var unit_candidates: Array[Node]
 	if _units_root != null:
-		candidates = _units_root.get_children()
+		unit_candidates = _units_root.get_children()
 	else:
-		candidates = get_tree().get_nodes_in_group("selectable_unit")
-	_gmhud_log("select_by_rect#%d rect=%s candidate_count=%d" % [
+		unit_candidates = get_tree().get_nodes_in_group("selectable_unit")
+	var building_candidates: Array[Node]
+	if _buildings_root != null:
+		building_candidates = _buildings_root.get_children()
+	else:
+		building_candidates = get_tree().get_nodes_in_group("selectable_building")
+	_gmhud_log("select_by_rect#%d rect=%s unit_candidates=%d building_candidates=%d" % [
 		selection_seq,
 		str(rect),
-		candidates.size()
+		unit_candidates.size(),
+		building_candidates.size()
 	], true)
 
-	var selected_hits: int = 0
-	for node in candidates:
+	var selected_unit_hits: int = 0
+	var selected_building_hits: int = 0
+	var has_player_unit_overlap: bool = false
+	var has_non_player_unit_overlap: bool = false
+	for node in unit_candidates:
 		var unit: Node3D = node as Node3D
 		if unit == null:
 			continue
+		if not unit.is_in_group("selectable_unit"):
+			continue
 		if _camera.is_position_behind(unit.global_position):
 			continue
-		if not _is_player_owned(unit):
-			continue
 		var projected_pos: Vector2 = _camera.unproject_position(unit.global_position)
-		if rect.has_point(projected_pos):
-			_add_selected_unit(unit)
-			selected_hits += 1
+		if not rect.has_point(projected_pos):
+			continue
+		if not _is_player_owned(unit):
+			has_non_player_unit_overlap = true
+			continue
+		has_player_unit_overlap = true
+		_add_selected_unit(unit)
+		selected_unit_hits += 1
+	if not has_player_unit_overlap:
+		for node in building_candidates:
+			var building: Node3D = node as Node3D
+			if building == null:
+				continue
+			if not building.is_in_group("selectable_building"):
+				continue
+			if _camera.is_position_behind(building.global_position):
+				continue
+			if not _is_player_owned(building):
+				continue
+			var projected_pos: Vector2 = _camera.unproject_position(building.global_position)
+			if rect.has_point(projected_pos):
+				_add_selected_building(building)
+				selected_building_hits += 1
 	_refresh_subgroup_state(true)
-	_gmhud_log("select_by_rect#%d selected_hits=%d after=%s" % [selection_seq, selected_hits, _selection_counts_text()])
+	_gmhud_log("select_by_rect#%d selected_hits=%d (units=%d buildings=%d player_unit_overlap=%s enemy_or_neutral_overlap=%s) after=%s" % [
+		selection_seq,
+		selected_unit_hits + selected_building_hits,
+		selected_unit_hits,
+		selected_building_hits,
+		str(has_player_unit_overlap),
+		str(has_non_player_unit_overlap),
+		_selection_counts_text()
+	])
 	_gmhud_log_selection("select_by_rect#%d snapshot" % selection_seq, true)
 
 func _queue_worker_from_selection() -> void:
@@ -5245,8 +5341,8 @@ func _raycast_from_screen(screen_pos: Vector2, include_queue_markers: bool = fal
 	query.collision_mask = collision_mask
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
-func _add_selected_unit(unit: Node) -> void:
-	if not _is_player_owned(unit):
+func _add_selected_unit(unit: Node, allow_non_player: bool = false) -> void:
+	if not allow_non_player and not _is_player_owned(unit):
 		return
 	if _selected_units.has(unit):
 		return

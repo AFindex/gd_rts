@@ -88,6 +88,8 @@ var _health_bar_root: Node3D = null
 var _health_bar_background: MeshInstance3D = null
 var _health_bar_fill: MeshInstance3D = null
 var _health_bar_fill_full_width: float = maxf(0.02, HEALTH_BAR_WIDTH - HEALTH_BAR_PADDING * 2.0)
+var _is_selected: bool = false
+var _is_hovered: bool = false
 
 signal command_queue_changed
 
@@ -713,7 +715,17 @@ func apply_damage(amount: float, _source: Node = null) -> void:
 		_die()
 
 func set_selected(selected: bool) -> void:
-	_selection_ring.visible = selected
+	_is_selected = selected
+	_refresh_selection_ring_visual()
+
+func set_hovered(hovered: bool) -> void:
+	_is_hovered = hovered
+	_refresh_selection_ring_visual()
+
+func _refresh_selection_ring_visual() -> void:
+	if _selection_ring == null:
+		return
+	_selection_ring.visible = _is_selected or _is_hovered
 
 func _process_worker_cycle(delta: float) -> void:
 	if _mode == UnitMode.GATHER_RESOURCE:

@@ -108,6 +108,8 @@
 - 调整：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，农民修理接入右键智能施法：当选中农民且无矿物携带时，右键受损友方可修目标默认解析为 `Repair`（支持单位/建筑目标）。
 - 调整：[scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，为场景中单位新增世界空间血条（背景+前景），并在受伤/修理/兵种配置刷新时同步更新血条长度与颜色。
 - 调整：[scripts/buildings/building.gd](D:/Godot/projs/gd_rts/scripts/buildings/building.gd)，为场景中建筑新增世界空间血条（背景+前景），并在受伤/修理/建筑类型重配时同步更新血条长度、颜色与高度。
+- 调整：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/units/unit.gd](D:/Godot/projs/gd_rts/scripts/units/unit.gd)，新增单位 hover 选中圈高亮；放开敌方/中立单位单选（仅单选，不参与多选/框选扩展）；框选同步纳入己方建筑候选，修复“敌/中立单位与己方建筑同框时无法框中己方建筑”的选择逻辑。
+- 调整：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd)，框选新增组合优先级规则：当框选区域内命中己方单位时，己方建筑不参与本次框选（单位优先）；若区域内仅有己方建筑 + 敌方/中立单位（无己方单位），则允许框选己方建筑。
 - 调整：[scripts/core/game_manager.gd](D:/Godot/projs/gd_rts/scripts/core/game_manager.gd) + [scripts/ui/rts_minimap_view.gd](D:/Godot/projs/gd_rts/scripts/ui/rts_minimap_view.gd)，新增“己方建筑受击警报 ping”：按固定巡检间隔检测建筑掉血并按建筑级冷却触发自动警报 ping；小地图警报 ping 使用红色系显示，与手动 ping 的黄色系区分。
 
 ### 1.2 本轮输入路径测试清单（待编辑器内验证）
