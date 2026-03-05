@@ -143,8 +143,18 @@ var _debug_hud_push_seq: int = 0
 var _debug_selection_seq: int = 0
 var _debug_log_burst_until_msec: float = 0.0
 
+func _t(message: String) -> String:
+	return tr(message)
+
+func _tf(message: String, args: Array = []) -> String:
+	var translated: String = _t(message)
+	if args.is_empty():
+		return translated
+	return translated % args
+
 func _ready() -> void:
 	add_to_group("game_manager")
+	TranslationServer.set_locale("zh_CN")
 	_camera = get_node_or_null(camera_path) as Camera3D
 	_units_root = get_node_or_null(units_root_path) as Node3D
 	_buildings_root = get_node_or_null(buildings_root_path) as Node3D
@@ -324,7 +334,7 @@ func _trigger_match_rule(rule: Dictionary) -> void:
 	_match_outcome_rule_id = str(rule.get("id", "match_outcome"))
 	var notice: String = str(rule.get("notice", "")).strip_edges()
 	if notice == "":
-		notice = "Match outcome triggered: %s" % _match_outcome_rule_id
+		notice = _tf("Match outcome triggered: %s", [_match_outcome_rule_id])
 	_match_notice = notice
 	_refresh_hint_label()
 	if not _match_notify_only:
@@ -682,7 +692,7 @@ func _assign_control_group_from_selection(group_id: int, append: bool) -> void:
 	if group_id < 0 or group_id >= CONTROL_GROUP_COUNT:
 		return
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
-		_set_ui_notice("Control Group %d: no selection." % group_id)
+		_set_ui_notice(_tf("Control Group %d: no selection.", [group_id]))
 		_play_feedback_tone("error")
 		return
 
@@ -749,9 +759,9 @@ func _assign_control_group_from_selection(group_id: int, append: bool) -> void:
 
 	var total_count: int = unit_paths.size() + building_paths.size()
 	if append:
-		_set_ui_notice("Control Group %d appended (+%d, total %d)." % [group_id, added_count, total_count])
+		_set_ui_notice(_tf("Control Group %d appended (+%d, total %d).", [group_id, added_count, total_count]))
 	else:
-		_set_ui_notice("Control Group %d set (%d)." % [group_id, total_count])
+		_set_ui_notice(_tf("Control Group %d set (%d).", [group_id, total_count]))
 	_play_feedback_tone("ground")
 
 func _select_control_group(group_id: int) -> void:
@@ -759,7 +769,7 @@ func _select_control_group(group_id: int) -> void:
 		return
 	var entry_value: Variant = _control_groups.get(group_id, null)
 	if not (entry_value is Dictionary):
-		_set_ui_notice("Control Group %d is empty." % group_id)
+		_set_ui_notice(_tf("Control Group %d is empty.", [group_id]))
 		_play_feedback_tone("error")
 		return
 	var entry: Dictionary = entry_value as Dictionary
@@ -794,7 +804,7 @@ func _select_control_group(group_id: int) -> void:
 
 	_refresh_subgroup_state(true)
 	if selected_count <= 0:
-		_set_ui_notice("Control Group %d has no valid units." % group_id)
+		_set_ui_notice(_tf("Control Group %d has no valid units.", [group_id]))
 		_play_feedback_tone("error")
 		return
 
@@ -805,9 +815,9 @@ func _select_control_group(group_id: int) -> void:
 
 	if is_double_tap:
 		_focus_camera_on_current_selection()
-		_set_ui_notice("Control Group %d selected (%d), camera centered." % [group_id, selected_count])
+		_set_ui_notice(_tf("Control Group %d selected (%d), camera centered.", [group_id, selected_count]))
 	else:
-		_set_ui_notice("Control Group %d selected (%d)." % [group_id, selected_count])
+		_set_ui_notice(_tf("Control Group %d selected (%d).", [group_id, selected_count]))
 	_play_feedback_tone("ground")
 
 func _build_control_group_entries() -> Array[Dictionary]:
@@ -1044,11 +1054,11 @@ func _set_ui_notice(text: String, duration: float = 1.4) -> void:
 func _on_worker_queue_transition(_worker_node: Node, event_type: String) -> void:
 	match event_type:
 		"queued_checkpoint":
-			_set_ui_notice("Worker queue accepted: will switch after current gather/return.", 1.1)
+			_set_ui_notice(_t("Worker queue accepted: will switch after current gather/return."), 1.1)
 		"interrupt_checkpoint":
-			_set_ui_notice("Work interrupted: executing queued orders.", 1.0)
+			_set_ui_notice(_t("Work interrupted: executing queued orders."), 1.0)
 		"interrupt_immediate":
-			_set_ui_notice("Worker switched to queued orders.", 1.0)
+			_set_ui_notice(_t("Worker switched to queued orders."), 1.0)
 
 func _process_queue_feedback(delta: float) -> void:
 	if _queue_reject_feedback_timer > 0.0:
@@ -1433,7 +1443,7 @@ func _cancel_pending_construction_for_worker(worker_node: Node, reason: String =
 
 	if not changed:
 		return false
-	_set_ui_notice("Pending construction canceled (%s)." % reason, 1.1)
+	_set_ui_notice(_tf("Pending construction canceled (%s).", [reason]), 1.1)
 	return true
 
 func _cancel_pending_construction_for_selected_workers() -> bool:
@@ -1785,7 +1795,7 @@ func _schedule_unit_command(unit_node: Node, command: RTSCommand) -> void:
 			if (lock_mode == "garrisoned" or lock_mode == "incorporated") and not command.is_queue_command and not is_internal_build_order:
 				command.is_queue_command = true
 				forced_locked_queue = true
-				_set_ui_notice("Worker is building: command queued after construction.", 0.9)
+				_set_ui_notice(_t("Worker is building: command queued after construction."), 0.9)
 	if not is_internal_build_order:
 		if command.command_type == RTSCommand.CommandType.STOP:
 			_cancel_pending_construction_for_worker(unit_node, "stop")
@@ -2008,7 +2018,7 @@ func _set_ping_mode_active(active: bool) -> void:
 	if _hud != null and _hud.has_method("set_ping_mode_armed"):
 		_hud.call("set_ping_mode_armed", active)
 	if active:
-		_set_ui_notice("Ping mode: Left click world/minimap to place ping. RMB/ESC cancel.", 1.6)
+		_set_ui_notice(_t("Ping mode: Left click world/minimap to place ping. RMB/ESC cancel."), 1.6)
 
 func _emit_ping(world_position: Vector3, ping_kind: String = "manual", show_notice: bool = true) -> void:
 	var map_half_size: Vector2 = _camera_map_half_size()
@@ -2032,7 +2042,7 @@ func _emit_ping(world_position: Vector3, ping_kind: String = "manual", show_noti
 	})
 	_push_minimap_update()
 	if show_notice:
-		_set_ui_notice("Ping sent.", 0.8)
+		_set_ui_notice(_t("Ping sent."), 0.8)
 
 func _create_ping_visual(world_position: Vector3, ping_kind: String = "manual") -> Node3D:
 	var root: Node3D = Node3D.new()
@@ -2117,9 +2127,9 @@ func _build_hud_snapshot() -> Dictionary:
 	var selection_total: int = _selected_units.size() + selected_building_count
 	var mode: String = _selection_mode(selection_total)
 
-	var single_title: String = "No Selection"
-	var single_detail: String = "Select a unit or building to inspect details."
-	var single_armor: String = "Armor Type: --"
+	var single_title: String = _t("No Selection")
+	var single_detail: String = _t("Select a unit or building to inspect details.")
+	var single_armor: String = _t("Armor Type: --")
 	var status_health: float = 1.0
 	var status_shield: float = 0.0
 	var status_energy: float = 0.0
@@ -2129,7 +2139,7 @@ func _build_hud_snapshot() -> Dictionary:
 	var queue_progress: float = 0.0
 	var queue_preview: Array[String] = []
 
-	var portrait_title: String = "No Selection"
+	var portrait_title: String = _t("No Selection")
 	var portrait_subtitle: String = "-"
 	var portrait_glyph: String = "?"
 	var multi_roles: Array[String] = []
@@ -2141,37 +2151,37 @@ func _build_hud_snapshot() -> Dictionary:
 	if mode == "single":
 		if _selected_units.size() == 1 and _selected_units[0] != null:
 			var unit: Node = _selected_units[0]
-			var unit_name: String = "Unit"
+			var unit_name: String = _t("Unit")
 			if unit.has_method("get_unit_display_name"):
 				unit_name = str(unit.call("get_unit_display_name"))
 			single_title = unit_name
 
-			var unit_state: String = "Idle"
+			var unit_state: String = _t("Idle")
 			if unit.has_method("get_mode_label"):
 				unit_state = str(unit.call("get_mode_label"))
-			var unit_role: String = "Soldier"
+			var unit_role: String = _t("Soldier")
 			var is_worker: bool = false
 			if unit.has_method("is_worker_unit"):
 				is_worker = bool(unit.call("is_worker_unit"))
 			if is_worker:
-				unit_role = "Worker"
+				unit_role = _t("Worker")
 				status_energy = float(unit.call("get_carry_fill_ratio")) if unit.has_method("get_carry_fill_ratio") else 0.0
 			status_health = float(unit.call("get_health_ratio")) if unit.has_method("get_health_ratio") else 1.0
 			var unit_hp_text: String = "%d%%" % int(round(status_health * 100.0))
 			var pending_commands: int = int(unit.call("get_pending_command_count")) if unit.has_method("get_pending_command_count") else 0
-			single_detail = "Role: %s\nState: %s\nHP: %s\nCmd Queue: %d" % [unit_role, unit_state, unit_hp_text, pending_commands]
-			single_armor = "Armor Type: Light"
+			single_detail = _tf("Role: %s\nState: %s\nHP: %s\nCmd Queue: %d", [unit_role, unit_state, unit_hp_text, pending_commands])
+			single_armor = _t("Armor Type: Light")
 
 			portrait_title = unit_name
 			portrait_subtitle = unit_state
 			portrait_glyph = "W" if is_worker else "S"
 		elif _selected_buildings.size() == 1 and _selected_buildings[0] != null:
 			var building: Node = _selected_buildings[0]
-			var building_name: String = "Building"
+			var building_name: String = _t("Building")
 			if building.has_method("get_building_display_name"):
 				building_name = str(building.call("get_building_display_name"))
 			single_title = building_name
-			single_armor = "Armor Type: Structure"
+			single_armor = _t("Armor Type: Structure")
 			status_health = float(building.call("get_health_ratio")) if building.has_method("get_health_ratio") else 1.0
 			var building_hp_text: String = "%d%%" % int(round(status_health * 100.0))
 			var under_construction: bool = building.has_method("is_under_construction") and bool(building.call("is_under_construction"))
@@ -2179,25 +2189,25 @@ func _build_hud_snapshot() -> Dictionary:
 				var construction_paradigm: String = str(building.call("get_construction_paradigm")) if building.has_method("get_construction_paradigm") else "garrisoned"
 				var construction_progress: float = clampf(float(building.call("get_construction_progress")) if building.has_method("get_construction_progress") else 0.0, 0.0, 1.0)
 				var paused: bool = building.has_method("is_construction_paused") and bool(building.call("is_construction_paused"))
-				single_detail = "Construction: %s\nParadigm: %s\nProgress: %d%%\nHP: %s" % [
-					"Paused" if paused else "Building",
-					construction_paradigm.capitalize(),
+				single_detail = _tf("Construction: %s\nParadigm: %s\nProgress: %d%%\nHP: %s", [
+					_t("Paused") if paused else _t("Building"),
+					_t(construction_paradigm.capitalize()),
 					int(round(construction_progress * 100.0)),
 					building_hp_text
-				]
+				])
 				queue_size = 1
 				queue_progress = construction_progress
-				queue_preview.append("Constructing")
+				queue_preview.append(_t("Constructing"))
 				show_production = true
-				portrait_subtitle = "Constructing %d%%" % int(round(construction_progress * 100.0))
+				portrait_subtitle = _tf("Constructing %d%%", [int(round(construction_progress * 100.0))])
 			else:
 				var can_train_worker: bool = bool(building.call("can_queue_worker_unit")) if building.has_method("can_queue_worker_unit") else false
 				var can_train_soldier: bool = bool(building.call("can_queue_soldier_unit")) if building.has_method("can_queue_soldier_unit") else false
-				single_detail = "Train Worker: %s\nTrain Soldier: %s" % [
-					"Yes" if can_train_worker else "No",
-					"Yes" if can_train_soldier else "No"
-				]
-				single_detail += "\nHP: %s" % building_hp_text
+				single_detail = _tf("Train Worker: %s\nTrain Soldier: %s", [
+					_t("Yes") if can_train_worker else _t("No"),
+					_t("Yes") if can_train_soldier else _t("No")
+				])
+				single_detail += _tf("\nHP: %s", [building_hp_text])
 
 				queue_size = int(building.call("get_queue_size")) if building.has_method("get_queue_size") else 0
 				queue_progress = float(building.call("get_production_progress")) if building.has_method("get_production_progress") else 0.0
@@ -2210,7 +2220,7 @@ func _build_hud_snapshot() -> Dictionary:
 
 			portrait_title = building_name
 			if not under_construction:
-				portrait_subtitle = "Queue %d" % queue_size
+				portrait_subtitle = _tf("Queue %d", [queue_size])
 			if building.has_method("get_building_role_tag"):
 				portrait_glyph = str(building.call("get_building_role_tag")).substr(0, 1)
 			else:
@@ -2227,17 +2237,17 @@ func _build_hud_snapshot() -> Dictionary:
 				multi_role_kinds.append(str(kind_value))
 		matrix_page_index = int(page_snapshot.get("page_index", 0))
 		matrix_page_count = int(page_snapshot.get("page_count", 1))
-		portrait_title = "%d Selected" % selection_total
-		portrait_subtitle = "W %d  S %d  B %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
+		portrait_title = _tf("%d Selected", [selection_total])
+		portrait_subtitle = _tf("W %d  S %d  B %d", [selected_worker_count, selected_soldier_count, selected_building_count])
 		var active_subgroup_kind: String = _active_subgroup_kind()
 		if active_subgroup_kind != "":
-			portrait_subtitle += " | Active %s" % _subgroup_kind_label(active_subgroup_kind)
+			portrait_subtitle += _tf(" | Active %s", [_subgroup_kind_label(active_subgroup_kind)])
 		portrait_glyph = "%d" % selection_total
 
 	var total_units: int = _count_total_units()
 	var queued_units: int = _count_total_queued_units()
 	var supply_used: int = total_units + queued_units
-	var top_legacy_text: String = "M: %d   G: 0   Supply: %d/%d" % [_minerals, supply_used, SUPPLY_CAP]
+	var top_legacy_text: String = _tf("M: %d   G: 0   Supply: %d/%d", [_minerals, supply_used, SUPPLY_CAP])
 	var snapshot: Dictionary = {
 		"minerals": _minerals,
 		"gas": 0,
@@ -2306,12 +2316,12 @@ func _input_state_label() -> String:
 
 func _build_selection_hint(selected_worker_count: int, selected_soldier_count: int, selected_building_count: int, queue_size: int) -> String:
 	if _placing_building:
-		var placement_state: String = "Valid" if _placement_can_place else "Invalid"
+		var placement_state: String = _t("Valid") if _placement_can_place else _t("Invalid")
 		var placing_name: String = _placing_kind.capitalize()
 		var placing_def: Dictionary = RTS_CATALOG.get_building_def(_placing_kind)
 		if not placing_def.is_empty():
 			placing_name = str(placing_def.get("display_name", placing_name))
-		return "Placing %s (%d): %s | LMB Confirm | Shift+LMB Chain | R Rotate | RMB/ESC Cancel" % [placing_name, _placing_cost, placement_state]
+		return _tf("Placing %s (%d): %s | LMB Confirm | Shift+LMB Chain | R Rotate | RMB/ESC Cancel", [placing_name, _placing_cost, placement_state])
 	if _build_menu_open:
 		return _build_menu_hint_text()
 	if _pending_target_skill != "":
@@ -2319,16 +2329,16 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 		var skill_label: String = str(skill_info.get("label", _pending_target_skill.capitalize()))
 		var target_mode: String = str(skill_info.get("target_mode", "none"))
 		if target_mode == "resource":
-			return "Targeting %s | Left Click Resource | RMB/ESC Cancel" % skill_label
+			return _tf("Targeting %s | Left Click Resource | RMB/ESC Cancel", [skill_label])
 		if target_mode == "ground":
-			return "Targeting %s | Left Click Ground | RMB/ESC Cancel" % skill_label
+			return _tf("Targeting %s | Left Click Ground | RMB/ESC Cancel", [skill_label])
 		if target_mode == "friendly_building":
-			return "Targeting %s | Left Click Damaged Friendly Unit/Building | RMB/ESC Cancel" % skill_label
+			return _tf("Targeting %s | Left Click Damaged Friendly Unit/Building | RMB/ESC Cancel", [skill_label])
 		if target_mode == "unit_or_building":
-			return "Targeting %s | Left Click Enemy for focus fire, or Ground for attack-move | RMB/ESC Cancel" % skill_label
-		return "Targeting %s | RMB/ESC Cancel" % skill_label
+			return _tf("Targeting %s | Left Click Enemy for focus fire, or Ground for attack-move | RMB/ESC Cancel", [skill_label])
+		return _tf("Targeting %s | RMB/ESC Cancel", [skill_label])
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
-		return "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
+		return _t("No selection | Select worker/builder to open Build Menu | Left drag: Box Select")
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		var selected_building: Node = _selected_buildings[0]
 		if selected_building != null and is_instance_valid(selected_building):
@@ -2336,16 +2346,16 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 				var paradigm: String = str(selected_building.call("get_construction_paradigm")) if selected_building.has_method("get_construction_paradigm") else "garrisoned"
 				var progress: float = clampf(float(selected_building.call("get_construction_progress")) if selected_building.has_method("get_construction_progress") else 0.0, 0.0, 1.0)
 				var paused: bool = selected_building.has_method("is_construction_paused") and bool(selected_building.call("is_construction_paused"))
-				var state_label: String = "Paused" if paused else "Building"
-				return "Construction Site: %s %d%% | %s | Use command card to cancel/exit/select worker." % [state_label, int(round(progress * 100.0)), paradigm.capitalize()]
+				var state_label: String = _t("Paused") if paused else _t("Building")
+				return _tf("Construction Site: %s %d%% | %s | Use command card to cancel/exit/select worker.", [state_label, int(round(progress * 100.0)), _t(paradigm.capitalize())])
 		if _selection_has_rally_building():
 			if _input_state == InputState.QUEUE_INPUT:
-				return "Selected Building: %d queue item(s) | Shift held: RMB append rally relay hop (max %d) | Flag: M/G/A/F/R" % [queue_size, RALLY_MAX_HOPS]
-			return "Selected Building: %d queue item(s) | R/T Train | RMB Set Rally | Shift+RMB Append Relay | Flag: M/G/A/F/R" % queue_size
-		return "Selected Building: %d queue item(s) | R/T: Train by building type" % queue_size
+				return _tf("Selected Building: %d queue item(s) | Shift held: RMB append rally relay hop (max %d) | Flag: M/G/A/F/R", [queue_size, RALLY_MAX_HOPS])
+			return _tf("Selected Building: %d queue item(s) | R/T Train | RMB Set Rally | Shift+RMB Append Relay | Flag: M/G/A/F/R", [queue_size])
+		return _tf("Selected Building: %d queue item(s) | R/T: Train by building type", [queue_size])
 	if _input_state == InputState.QUEUE_INPUT:
-		return "Queue Input: Shift held | Alt+LMB queue marker trims this and later points | W%d S%d B%d" % [selected_worker_count, selected_soldier_count, selected_building_count]
-	return "Selected -> Worker %d | Soldier %d | Building %d" % [selected_worker_count, selected_soldier_count, selected_building_count]
+		return _tf("Queue Input: Shift held | Alt+LMB queue marker trims this and later points | W%d S%d B%d", [selected_worker_count, selected_soldier_count, selected_building_count])
+	return _tf("Selected -> Worker %d | Soldier %d | Building %d", [selected_worker_count, selected_soldier_count, selected_building_count])
 
 func _build_subgroup_text(mode: String, selection_total: int) -> String:
 	var page_suffix: String = _multi_matrix_page_suffix()
@@ -2354,12 +2364,12 @@ func _build_subgroup_text(mode: String, selection_total: int) -> String:
 		if subgroup_keys.size() > 1:
 			var active_kind: String = _active_subgroup_kind()
 			if active_kind != "":
-				return "Subgroup: %s (%d/%d) | Tab Cycle%s" % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size(), page_suffix]
-			return "Subgroup: All (%d types) | Tab Cycle%s" % [subgroup_keys.size(), page_suffix]
-		return "Subgroup: %d Units%s" % [selection_total, page_suffix]
+				return _tf("Subgroup: %s (%d/%d) | Tab Cycle%s", [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size(), page_suffix])
+			return _tf("Subgroup: All (%d types) | Tab Cycle%s", [subgroup_keys.size(), page_suffix])
+		return _tf("Subgroup: %d Units%s", [selection_total, page_suffix])
 	if mode == "single":
-		return "Subgroup: Single"
-	return "Subgroup: None"
+		return _t("Subgroup: Single")
+	return _t("Subgroup: None")
 
 func _refresh_subgroup_state(reset_to_all: bool = false) -> void:
 	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
@@ -2386,7 +2396,7 @@ func _cycle_unit_subgroup() -> bool:
 	var subgroup_keys: Array[String] = _selected_unit_subgroup_keys()
 	if subgroup_keys.size() <= 1:
 		_active_subgroup_index = -1
-		_set_ui_notice("No mixed unit subgroup to cycle.")
+		_set_ui_notice(_t("No mixed unit subgroup to cycle."))
 		_play_feedback_tone("error")
 		return false
 	if _active_subgroup_index < 0:
@@ -2395,7 +2405,7 @@ func _cycle_unit_subgroup() -> bool:
 		_active_subgroup_index = (_active_subgroup_index + 1) % subgroup_keys.size()
 	var active_kind: String = _active_subgroup_kind()
 	_focus_multi_matrix_page_for_subgroup(active_kind)
-	_set_ui_notice("Subgroup active: %s (%d/%d)." % [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size()])
+	_set_ui_notice(_tf("Subgroup active: %s (%d/%d).", [_subgroup_kind_label(active_kind), _active_subgroup_index + 1, subgroup_keys.size()]))
 	_play_feedback_tone("follow")
 	return true
 
@@ -2404,7 +2414,7 @@ func _multi_matrix_page_suffix() -> String:
 	if page_count <= 1:
 		return ""
 	var page_index: int = clampi(_multi_matrix_page_index, 0, page_count - 1)
-	return " | Page %d/%d PgUp/PgDn" % [page_index + 1, page_count]
+	return _tf(" | Page %d/%d PgUp/PgDn", [page_index + 1, page_count])
 
 func _cycle_multi_matrix_page(step: int) -> bool:
 	if step == 0:
@@ -2415,7 +2425,7 @@ func _cycle_multi_matrix_page(step: int) -> bool:
 	var page_count: int = _multi_role_page_count()
 	if page_count <= 1:
 		_multi_matrix_page_index = 0
-		_set_ui_notice("Selection matrix has only one page.")
+		_set_ui_notice(_t("Selection matrix has only one page."))
 		_play_feedback_tone("error")
 		return true
 	_multi_matrix_page_index += step
@@ -2423,7 +2433,7 @@ func _cycle_multi_matrix_page(step: int) -> bool:
 		_multi_matrix_page_index += page_count
 	while _multi_matrix_page_index >= page_count:
 		_multi_matrix_page_index -= page_count
-	_set_ui_notice("Selection matrix page %d/%d." % [_multi_matrix_page_index + 1, page_count], 1.1)
+	_set_ui_notice(_tf("Selection matrix page %d/%d.", [_multi_matrix_page_index + 1, page_count]), 1.1)
 	_play_feedback_tone("ground")
 	_push_hud_update()
 	return true
@@ -2448,7 +2458,7 @@ func _set_multi_matrix_page(page_index: int) -> bool:
 		return false
 	_gmhud_log("set_multi_matrix_page %d -> %d (page_count=%d)" % [_multi_matrix_page_index, clamped_index, page_count], true)
 	_multi_matrix_page_index = clamped_index
-	_set_ui_notice("Selection matrix page %d/%d." % [_multi_matrix_page_index + 1, page_count], 1.1)
+	_set_ui_notice(_tf("Selection matrix page %d/%d.", [_multi_matrix_page_index + 1, page_count]), 1.1)
 	_play_feedback_tone("ground")
 	_push_hud_update()
 	return true
@@ -2463,12 +2473,12 @@ func _active_subgroup_kind() -> String:
 
 func _subgroup_kind_label(kind: String) -> String:
 	if kind == "":
-		return "All"
+		return _t("All")
 	if kind == "worker":
-		return "Worker"
+		return _t("Worker")
 	if kind == "soldier":
-		return "Soldier"
-	return kind.capitalize()
+		return _t("Soldier")
+	return _t(kind.capitalize())
 
 func _selected_unit_subgroup_keys() -> Array[String]:
 	var keys: Array[String] = []
@@ -2525,7 +2535,7 @@ func _select_units_by_kind(unit_kind: String, global_scope: bool) -> int:
 				continue
 			_add_selected_unit(unit_node)
 			selected_count += 1
-		_set_ui_notice("Global selected: %s x%d." % [_subgroup_kind_label(unit_kind), selected_count])
+		_set_ui_notice(_tf("Global selected: %s x%d.", [_subgroup_kind_label(unit_kind), selected_count]))
 		_play_feedback_tone("ground")
 		return selected_count
 
@@ -2553,7 +2563,7 @@ func _select_units_by_kind(unit_kind: String, global_scope: bool) -> int:
 			continue
 		_add_selected_unit(unit_3d)
 		selected_count += 1
-	_set_ui_notice("Screen selected: %s x%d." % [_subgroup_kind_label(unit_kind), selected_count])
+	_set_ui_notice(_tf("Screen selected: %s x%d.", [_subgroup_kind_label(unit_kind), selected_count]))
 	_play_feedback_tone("ground")
 	return selected_count
 
@@ -2574,39 +2584,39 @@ func _build_command_hint() -> String:
 	if _ui_notice_timer > 0.0 and _ui_notice_text != "":
 		return _ui_notice_text
 	if _queue_reject_feedback_timer > 0.0:
-		return "Queue is full (max 32). Command rejected."
+		return _t("Queue is full (max 32). Command rejected.")
 	if _rally_reject_feedback_timer > 0.0:
-		return "Rally relay chain is full (max %d hops)." % RALLY_MAX_HOPS
+		return _tf("Rally relay chain is full (max %d hops).", [RALLY_MAX_HOPS])
 	if _match_notice != "":
 		return _match_notice
 	if _placing_building:
-		return "Placement mode active. LMB confirm, Shift+LMB chain build, R rotate, RMB/ESC cancel."
+		return _t("Placement mode active. LMB confirm, Shift+LMB chain build, R rotate, RMB/ESC cancel.")
 	if _build_menu_open:
-		return "Build menu open. Select a building option or press ESC to close."
+		return _t("Build menu open. Select a building option or press ESC to close.")
 	if _pending_target_skill != "":
-		return "Targeted skill armed. Left click world target, RMB/ESC to cancel."
+		return _t("Targeted skill armed. Left click world target, RMB/ESC to cancel.")
 	if _ping_targeting_active:
-		return "Ping mode active. Left click world/minimap to ping, RMB/ESC cancel."
+		return _t("Ping mode active. Left click world/minimap to ping, RMB/ESC cancel.")
 	if _input_state == InputState.QUEUE_INPUT:
-		return "Queue input active. Shift-held commands are appended."
+		return _t("Queue input active. Shift-held commands are appended.")
 	if _selection_has_construction_exit_worker():
-		return "Worker is garrisoned in construction. ESC or Exit Build releases worker; other commands are queued."
+		return _t("Worker is garrisoned in construction. ESC or Exit Build releases worker; other commands are queued.")
 	if not _selected_construction_sites().is_empty():
-		return "Construction site selected. Use command card for cancel/eject/select-worker operations."
+		return _t("Construction site selected. Use command card for cancel/eject/select-worker operations.")
 	if not _pending_build_orders.is_empty():
-		return "Constructing: %d active worker build order(s)." % _pending_build_orders.size()
+		return _tf("Constructing: %d active worker build order(s).", [_pending_build_orders.size()])
 	if not _active_research.is_empty():
 		return _active_research_hint_text()
 	if _selected_buildings.size() == 1 and _selected_units.is_empty():
 		if _selection_has_rally_building():
-			return "Click command cards / hotkeys for production. RMB sets rally point (M/G/A/F/R flag + tone)."
-		return "Click command cards or use hotkeys for production/build commands."
+			return _t("Click command cards / hotkeys for production. RMB sets rally point (M/G/A/F/R flag + tone).")
+		return _t("Click command cards or use hotkeys for production/build commands.")
 	if not _selected_units.is_empty():
 		var active_kind: String = _active_subgroup_kind()
 		if active_kind != "":
-			return "Subgroup active: %s | Tab cycles subgroup | Commands apply to active subgroup only." % _subgroup_kind_label(active_kind)
-		return "RMB context command or click move/gather/stop in command card."
-	return "Select something to open context commands."
+			return _tf("Subgroup active: %s | Tab cycles subgroup | Commands apply to active subgroup only.", [_subgroup_kind_label(active_kind)])
+		return _t("RMB context command or click move/gather/stop in command card.")
+	return _t("Select something to open context commands.")
 
 func _active_research_hint_text() -> String:
 	if _active_research.is_empty():
@@ -2624,12 +2634,12 @@ func _active_research_hint_text() -> String:
 			best_tech_id = tech_id
 			best_remaining = remaining
 	if best_tech_id == "":
-		return "Research in progress."
+		return _t("Research in progress.")
 	var tech_name: String = _tech_display_name(best_tech_id)
 	var rounded_remaining: int = int(ceil(best_remaining))
 	if _active_research.size() > 1:
-		return "Researching %s (%ds). +%d more active." % [tech_name, rounded_remaining, _active_research.size() - 1]
-	return "Researching %s (%ds remaining)." % [tech_name, rounded_remaining]
+		return _tf("Researching %s (%ds). +%d more active.", [tech_name, rounded_remaining, _active_research.size() - 1])
+	return _tf("Researching %s (%ds remaining).", [tech_name, rounded_remaining])
 
 func _open_build_menu() -> void:
 	_build_menu_open = true
@@ -2693,11 +2703,11 @@ func _build_skill_detail_text(skill_id: String) -> String:
 	if building_def.is_empty():
 		return ""
 	var paradigm: String = str(building_def.get("construction_paradigm", "garrisoned")).strip_edges().to_lower()
-	var paradigm_label: String = paradigm.capitalize()
+	var paradigm_label: String = _t(paradigm.capitalize())
 	var build_time: float = maxf(0.0, float(building_def.get("build_time", 0.0)))
 	var refund_ratio: float = clampf(float(building_def.get("cancel_refund_ratio", 0.75)), 0.0, 1.0)
 	var refund_percent: int = int(round(refund_ratio * 100.0))
-	return "Type: %s | Build: %.1fs | Cancel Refund: %d%%" % [paradigm_label, build_time, refund_percent]
+	return _tf("Type: %s | Build: %.1fs | Cancel Refund: %d%%", [paradigm_label, build_time, refund_percent])
 
 func _build_menu_hint_text() -> String:
 	var parts: Array[String] = []
@@ -2711,16 +2721,16 @@ func _build_menu_hint_text() -> String:
 			text = "%s %s" % [hotkey, text]
 		parts.append(text)
 	if parts.is_empty():
-		return "Build Menu: No available options | ESC Back"
-	var section_label: String = "Categories"
+		return _t("Build Menu: No available options | ESC Back")
+	var section_label: String = _t("Categories")
 	match _build_menu_group:
 		BUILD_MENU_GROUP_GARRISONED:
-			section_label = "Garrisoned"
+			section_label = _t("Garrisoned")
 		BUILD_MENU_GROUP_SUMMONING:
-			section_label = "Summoning"
+			section_label = _t("Summoning")
 		BUILD_MENU_GROUP_INCORPORATED:
-			section_label = "Incorporated"
-	return "Build Menu [%s]: %s | ESC Back" % [section_label, ", ".join(parts)]
+			section_label = _t("Incorporated")
+	return _tf("Build Menu [%s]: %s | ESC Back", [section_label, ", ".join(parts)])
 
 func _build_command_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
@@ -2896,24 +2906,24 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 		"build_menu":
 			var build_menu_enabled: bool = _can_open_build_menu()
 			overrides["enabled"] = build_menu_enabled
-			overrides["detail_text"] = "Open categorized build options (Garrisoned / Summoning / Incorporated)."
+			overrides["detail_text"] = _t("Open categorized build options (Garrisoned / Summoning / Incorporated).")
 			overrides["disabled_reason"] = "" if build_menu_enabled else _build_menu_disabled_reason()
 		"gather":
 			var gather_enabled: bool = _selection_has_worker()
 			overrides["enabled"] = gather_enabled
-			overrides["disabled_reason"] = "" if gather_enabled else "Requires at least one worker in selection."
+			overrides["disabled_reason"] = "" if gather_enabled else _t("Requires at least one worker in selection.")
 		"repair":
 			var repair_enabled: bool = _selection_has_worker()
 			overrides["enabled"] = repair_enabled
-			overrides["disabled_reason"] = "" if repair_enabled else "Requires at least one worker in selection."
+			overrides["disabled_reason"] = "" if repair_enabled else _t("Requires at least one worker in selection.")
 		"return_resource":
 			var has_worker_cargo: bool = _selection_has_worker_cargo()
 			overrides["enabled"] = has_worker_cargo
-			overrides["disabled_reason"] = "" if has_worker_cargo else "Selected workers are not carrying minerals."
+			overrides["disabled_reason"] = "" if has_worker_cargo else _t("Selected workers are not carrying minerals.")
 		"attack":
 			var attack_enabled: bool = _selection_has_combat_unit()
 			overrides["enabled"] = attack_enabled
-			overrides["disabled_reason"] = "" if attack_enabled else "Requires at least one combat unit."
+			overrides["disabled_reason"] = "" if attack_enabled else _t("Requires at least one combat unit.")
 		"train_worker":
 			var train_worker_enabled: bool = _can_train_worker_from_selection()
 			overrides["enabled"] = train_worker_enabled
@@ -2929,17 +2939,17 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 		"construction_exit":
 			var can_exit_construction: bool = _selection_has_construction_exit_worker()
 			overrides["enabled"] = can_exit_construction
-			overrides["disabled_reason"] = "" if can_exit_construction else "Select a garrisoned worker to exit construction."
+			overrides["disabled_reason"] = "" if can_exit_construction else _t("Select a garrisoned worker to exit construction.")
 		"construction_cancel_destroy":
 			var total_sites: int = _selected_construction_site_count()
 			var incorporated_sites: int = _selected_construction_site_count("incorporated")
 			var has_construction_site: bool = (total_sites - incorporated_sites) > 0
 			overrides["enabled"] = has_construction_site
-			overrides["disabled_reason"] = "" if has_construction_site else "Select a construction site."
+			overrides["disabled_reason"] = "" if has_construction_site else _t("Select a construction site.")
 		"construction_cancel_eject":
 			var has_incorporated_site: bool = _selected_construction_site_count("incorporated") > 0
 			overrides["enabled"] = has_incorporated_site
-			overrides["disabled_reason"] = "" if has_incorporated_site else "Select an incorporated construction site."
+			overrides["disabled_reason"] = "" if has_incorporated_site else _t("Select an incorporated construction site.")
 		"construction_select_worker":
 			var can_select_worker: bool = false
 			if _selected_buildings.size() == 1:
@@ -2950,7 +2960,7 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 						var worker_node: Node = get_node_or_null(worker_path)
 						can_select_worker = worker_node != null and is_instance_valid(worker_node)
 			overrides["enabled"] = can_select_worker
-			overrides["disabled_reason"] = "" if can_select_worker else "Assigned worker is unavailable."
+			overrides["disabled_reason"] = "" if can_select_worker else _t("Assigned worker is unavailable.")
 	if overrides.is_empty():
 		var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
 		if tech_id != "":
@@ -2964,36 +2974,36 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 
 func _build_notifications() -> Array[String]:
 	var lines: Array[String] = [
-		"B: Build Menu | Open build options from selected builder",
-		"R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Tab: Subgroup Cycle" % [_worker_cost, _soldier_cost],
-		"RMB Smart: Attack>Gather>Return>Repair>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus | Matrix: LMB isolate / Shift+LMB same type / Ctrl+LMB remove"
+		_t("B: Build Menu | Open build options from selected builder"),
+		_tf("R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Tab: Subgroup Cycle", [_worker_cost, _soldier_cost]),
+		_t("RMB Smart: Attack>Gather>Return>Repair>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus | Matrix: LMB isolate / Shift+LMB same type / Ctrl+LMB remove")
 	]
 	if _multi_role_page_count() > 1:
-		lines[2] += " | PgUp/PgDn Selection Page"
+		lines[2] += _t(" | PgUp/PgDn Selection Page")
 	if _queue_reject_feedback_timer > 0.0:
-		lines[0] = "Queue full: max 32 commands per unit."
+		lines[0] = _t("Queue full: max 32 commands per unit.")
 	if _rally_reject_feedback_timer > 0.0:
-		lines[0] = "Rally relay full: max %d hops per building." % RALLY_MAX_HOPS
+		lines[0] = _tf("Rally relay full: max %d hops per building.", [RALLY_MAX_HOPS])
 	if _ui_notice_timer > 0.0 and _ui_notice_text != "":
 		lines[0] = _ui_notice_text
 	if _match_notice != "":
 		lines[0] = _match_notice
-		lines[1] = "Match Rule: %s" % _match_outcome_rule_id
-		lines[2] = "Notify-only mode for testing."
+		lines[1] = _tf("Match Rule: %s", [_match_outcome_rule_id])
+		lines[2] = _t("Notify-only mode for testing.")
 		return lines
 	if _placing_building:
-		var state: String = "valid" if _placement_can_place else "invalid"
-		lines[0] = "Placement %s | Cost: %d | R Rotate | Shift+LMB Chain" % [state, _placing_cost]
+		var state: String = _t("valid") if _placement_can_place else _t("invalid")
+		lines[0] = _tf("Placement %s | Cost: %d | R Rotate | Shift+LMB Chain", [state, _placing_cost])
 	elif not _pending_build_orders.is_empty():
-		lines[0] = "Worker construction active: %d order(s)." % _pending_build_orders.size()
+		lines[0] = _tf("Worker construction active: %d order(s).", [_pending_build_orders.size()])
 	elif _build_menu_open:
 		lines[0] = _build_menu_hint_text()
 	elif _pending_target_skill != "":
 		var skill_info: Dictionary = RTS_CATALOG.get_skill_def(_pending_target_skill)
-		lines[0] = "Targeting: %s" % str(skill_info.get("label", _pending_target_skill))
+		lines[0] = _tf("Targeting: %s", [str(skill_info.get("label", _pending_target_skill))])
 	elif not _active_research.is_empty():
 		lines[0] = _active_research_hint_text()
-		lines[1] = "Unlocked Tech: %d | Active Research: %d" % [_unlocked_techs.size(), _active_research.size()]
+		lines[1] = _tf("Unlocked Tech: %d | Active Research: %d", [_unlocked_techs.size(), _active_research.size()])
 	return lines
 
 func _build_multi_role_entries() -> Array[Dictionary]:
@@ -3017,7 +3027,7 @@ func _build_multi_role_entries() -> Array[Dictionary]:
 			continue
 		if not _is_player_owned(selected_building):
 			continue
-		var role: String = "Building"
+		var role: String = _t("Building")
 		if selected_building.has_method("get_building_role_tag"):
 			role = str(selected_building.call("get_building_role_tag"))
 		entries.append({
@@ -3069,13 +3079,13 @@ func _build_multi_role_page_snapshot(active_subgroup_kind: String = "") -> Dicti
 		roles.append(str(entry.get("role", "")))
 		kinds.append(str(entry.get("kind", "")))
 
-	var page_text: String = "Page %d/%d" % [_multi_matrix_page_index + 1, page_count]
+	var page_text: String = _tf("Page %d/%d", [_multi_matrix_page_index + 1, page_count])
 	if total_entries > 0:
-		page_text += " (%d-%d/%d)" % [start_index + 1, end_index, total_entries]
+		page_text += _tf(" (%d-%d/%d)", [start_index + 1, end_index, total_entries])
 	if page_count > 1:
-		page_text += " | PgUp/PgDn"
+		page_text += _t(" | PgUp/PgDn")
 	if active_subgroup_kind != "":
-		page_text += " | Active %s" % _subgroup_kind_label(active_subgroup_kind)
+		page_text += _tf(" | Active %s", [_subgroup_kind_label(active_subgroup_kind)])
 	_gmhud_log("build_multi_role_page_snapshot page=%d/%d range=%d-%d total=%d active_kind=%s" % [
 		_multi_matrix_page_index + 1,
 		page_count,
@@ -3182,15 +3192,15 @@ func _can_open_build_menu() -> bool:
 
 func _build_menu_disabled_reason() -> String:
 	if _placing_building:
-		return "Finish or cancel current placement first."
+		return _t("Finish or cancel current placement first.")
 	if _selection_has_construction_exit_worker():
-		return "Worker is locked in construction. Exit first."
+		return _t("Worker is locked in construction. Exit first.")
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
-		return "Select a worker or builder building to open build commands."
+		return _t("Select a worker or builder building to open build commands.")
 	if not _selected_units.is_empty() and not _selection_has_worker():
-		return "Requires at least one worker in selection."
+		return _t("Requires at least one worker in selection.")
 	if _selected_units.is_empty() and not _selected_buildings.is_empty() and not _building_selection_has_skill("build_menu"):
-		return "Selected buildings cannot build structures."
+		return _t("Selected buildings cannot build structures.")
 	return ""
 
 func _building_selection_has_skill(skill_id: String) -> bool:
@@ -3249,13 +3259,13 @@ func _requirements_reason_from_lists(required_buildings: Array[Dictionary], requ
 	var parts: Array[String] = []
 	var missing_buildings: Array[String] = _missing_required_buildings(required_buildings)
 	if not missing_buildings.is_empty():
-		parts.append("Buildings: %s" % ", ".join(missing_buildings))
+		parts.append(_tf("Buildings: %s", [", ".join(missing_buildings)]))
 	var missing_techs: Array[String] = _missing_required_techs(required_techs)
 	if not missing_techs.is_empty():
-		parts.append("Tech: %s" % ", ".join(missing_techs))
+		parts.append(_tf("Tech: %s", [", ".join(missing_techs)]))
 	if parts.is_empty():
 		return ""
-	return "Locked - %s" % " | ".join(parts)
+	return _tf("Locked - %s", [" | ".join(parts)])
 
 func _missing_required_buildings(requirements: Array[Dictionary]) -> Array[String]:
 	var missing: Array[String] = []
@@ -3268,7 +3278,7 @@ func _missing_required_buildings(requirements: Array[Dictionary]) -> Array[Strin
 		if current_count >= required_count:
 			continue
 		var display_name: String = _building_display_name(kind)
-		missing.append("%s (%d/%d)" % [display_name, current_count, required_count])
+		missing.append(_tf("%s (%d/%d)", [display_name, current_count, required_count]))
 	return missing
 
 func _missing_required_techs(required_techs: Array[String]) -> Array[String]:
@@ -3301,11 +3311,11 @@ func _player_owned_building_count(building_kind: String) -> int:
 
 func _building_display_name(building_kind: String) -> String:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
-	return str(building_def.get("display_name", building_kind.capitalize()))
+	return str(building_def.get("display_name", _t(building_kind.capitalize())))
 
 func _tech_display_name(tech_id: String) -> String:
 	var tech_def: Dictionary = RTS_CATALOG.get_tech_def(tech_id)
-	return str(tech_def.get("display_name", tech_id.capitalize()))
+	return str(tech_def.get("display_name", _t(tech_id.capitalize())))
 
 func _requirements_reason_for_tech(tech_id: String) -> String:
 	var required_buildings: Array[Dictionary] = RTS_CATALOG.get_tech_requires_buildings(tech_id)
@@ -3326,21 +3336,21 @@ func _is_tech_researching(tech_id: String) -> bool:
 func _research_skill_block_reason(skill_id: String) -> String:
 	var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
 	if tech_id == "":
-		return "Unknown research command."
+		return _t("Unknown research command.")
 	if not _selection_has_skill(skill_id):
-		return "Selected buildings cannot perform this research."
+		return _t("Selected buildings cannot perform this research.")
 	if has_tech(tech_id):
-		return "Already researched."
+		return _t("Already researched.")
 	if _is_tech_researching(tech_id):
-		return "Research in progress."
+		return _t("Research in progress.")
 	var requirement_reason: String = _requirements_reason_for_tech(tech_id)
 	if requirement_reason != "":
 		return requirement_reason
 	var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
 	if research_cost <= 0:
-		return "Invalid research cost."
+		return _t("Invalid research cost.")
 	if _minerals < research_cost:
-		return "Not enough minerals."
+		return _t("Not enough minerals.")
 	return ""
 
 func _research_skill_cooldown_ratio(skill_id: String) -> float:
@@ -3383,28 +3393,28 @@ func _build_skill_block_reason(skill_id: String) -> String:
 		return _build_menu_disabled_reason()
 	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(skill_id)
 	if build_kind == "":
-		return "Unknown build skill."
+		return _t("Unknown build skill.")
 	var requirement_reason: String = _requirements_reason_for_building_kind(build_kind)
 	if requirement_reason != "":
 		return requirement_reason
 	var build_cost: int = _building_cost(build_kind)
 	if build_cost <= 0:
-		return "Invalid build cost."
+		return _t("Invalid build cost.")
 	if _minerals < build_cost:
-		return "Not enough minerals."
+		return _t("Not enough minerals.")
 	return ""
 
 func _can_train_worker_from_selection() -> bool:
-	return _train_block_reason("worker", "Worker", _worker_cost) == ""
+	return _train_block_reason("worker", _t("Worker"), _worker_cost) == ""
 
 func _can_train_soldier_from_selection() -> bool:
-	return _train_block_reason("soldier", "Soldier", _soldier_cost) == ""
+	return _train_block_reason("soldier", _t("Soldier"), _soldier_cost) == ""
 
 func _train_worker_block_reason() -> String:
-	return _train_block_reason("worker", "Worker", _worker_cost)
+	return _train_block_reason("worker", _t("Worker"), _worker_cost)
 
 func _train_soldier_block_reason() -> String:
-	return _train_block_reason("soldier", "Soldier", _soldier_cost)
+	return _train_block_reason("soldier", _t("Soldier"), _soldier_cost)
 
 func _selected_queue_cooldown_ratio(unit_kind: String) -> float:
 	if _selected_buildings.size() != 1 or not _selected_units.is_empty():
@@ -3424,18 +3434,18 @@ func _selected_queue_cooldown_ratio(unit_kind: String) -> float:
 
 func _train_block_reason(unit_kind: String, label: String, cost: int) -> String:
 	if not _has_trainer_for_kind(unit_kind):
-		return "No selected building can train %s." % label
+		return _tf("No selected building can train %s.", [label])
 	var requirement_reason: String = _requirements_reason_for_unit_kind(unit_kind)
 	if requirement_reason != "":
 		return requirement_reason
 	if _all_trainers_queue_full(unit_kind):
-		return "All production queues are full."
+		return _t("All production queues are full.")
 	if _minerals < cost:
-		return "Not enough minerals."
+		return _t("Not enough minerals.")
 	if not _has_supply_for(1):
-		return "Supply is capped."
+		return _t("Supply is capped.")
 	if not _has_available_trainer_for_kind(unit_kind):
-		return "No available trainer for %s." % label
+		return _tf("No available trainer for %s.", [label])
 	return ""
 
 func _has_trainer_for_kind(unit_kind: String) -> bool:
@@ -3592,7 +3602,7 @@ func _on_hud_multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_
 
 	if ctrl_pressed:
 		if _remove_multi_role_entry_from_selection(target_node):
-			_set_ui_notice("Removed: %s." % _multi_role_kind_label(entry_kind, target_node), 1.1)
+			_set_ui_notice(_tf("Removed: %s.", [_multi_role_kind_label(entry_kind, target_node)]), 1.1)
 			_play_feedback_tone("ground")
 			_refresh_hint_label()
 			_gmhud_log_selection("hud_multi_role_cell_pressed ctrl-remove")
@@ -3601,14 +3611,14 @@ func _on_hud_multi_role_cell_pressed(cell_index: int, shift_pressed: bool, ctrl_
 	if shift_pressed:
 		var selected_count: int = _select_same_multi_role_kind(entry_kind)
 		if selected_count > 0:
-			_set_ui_notice("Selected: %s x%d." % [_multi_role_kind_label(entry_kind, target_node), selected_count], 1.1)
+			_set_ui_notice(_tf("Selected: %s x%d.", [_multi_role_kind_label(entry_kind, target_node), selected_count]), 1.1)
 			_play_feedback_tone("follow")
 			_refresh_hint_label()
 			_gmhud_log_selection("hud_multi_role_cell_pressed shift-select")
 		return
 
 	if _select_only_multi_role_entry(target_node):
-		_set_ui_notice("Selected: %s." % _multi_role_kind_label(entry_kind, target_node), 1.1)
+		_set_ui_notice(_tf("Selected: %s.", [_multi_role_kind_label(entry_kind, target_node)]), 1.1)
 		_play_feedback_tone("ground")
 		_refresh_hint_label()
 		_gmhud_log_selection("hud_multi_role_cell_pressed single-select")
@@ -3720,11 +3730,11 @@ func _multi_role_kind_label(entry_kind: String, target_node: Node = null) -> Str
 		if target_node != null and target_node.has_method("get_building_display_name"):
 			return str(target_node.call("get_building_display_name"))
 		var suffix: String = normalized.trim_prefix("building:")
-		return suffix.capitalize()
+		return _t(suffix.capitalize())
 	if normalized == "building":
 		if target_node != null and target_node.has_method("get_building_display_name"):
 			return str(target_node.call("get_building_display_name"))
-		return "Building"
+		return _t("Building")
 	return _subgroup_kind_label(normalized)
 
 func _on_hud_control_group_pressed(group_id: int) -> void:
@@ -3864,7 +3874,7 @@ func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool 
 				return false
 			var collider: Node = ray_result.get("collider") as Node
 			if collider == null or not _is_repairable_friendly_target(collider):
-				_set_ui_notice("Repair requires a damaged friendly unit/building.", 0.9)
+				_set_ui_notice(_t("Repair requires a damaged friendly unit/building."), 0.9)
 				_play_feedback_tone("error")
 				return false
 			_issue_repair_command(collider as Node3D, screen_pos, queue_command)
@@ -4313,7 +4323,7 @@ func _issue_repair_command(target_node: Node3D, _fallback_screen_pos: Vector2, q
 		_schedule_unit_command(unit_node, repair_command)
 		issued_count += 1
 	if issued_count <= 0:
-		_set_ui_notice("No available worker to repair target.", 1.0)
+		_set_ui_notice(_t("No available worker to repair target."), 1.0)
 		_play_feedback_tone("error")
 
 func _issue_attack_command(target_node: Node3D, fallback_screen_pos: Vector2, queue_command: bool = false) -> void:
@@ -4470,12 +4480,12 @@ func _issue_resume_construction_command(site_node: Node3D, queue_command: bool =
 		return
 	var worker_node: Node3D = _nearest_available_worker_for_construction(site_node.global_position)
 	if worker_node == null:
-		_set_ui_notice("No available worker to resume construction.", 1.0)
+		_set_ui_notice(_t("No available worker to resume construction."), 1.0)
 		_play_feedback_tone("error")
 		return
 	if not _schedule_construction_resume_order(worker_node, site_node, queue_command):
 		return
-	_set_ui_notice("Worker assigned to resume construction.", 1.0)
+	_set_ui_notice(_t("Worker assigned to resume construction."), 1.0)
 	_play_feedback_tone("follow")
 
 func _process_pending_construction_resume_orders(delta: float) -> void:
@@ -4526,7 +4536,7 @@ func _process_pending_construction_resume_orders(delta: float) -> void:
 		var stop_command: RTSCommand = RTS_COMMAND.make_stop(false)
 		stop_command.payload["internal_build_order"] = true
 		_schedule_unit_command(worker_node, stop_command)
-		_set_ui_notice("Construction resumed.", 1.0)
+		_set_ui_notice(_t("Construction resumed."), 1.0)
 		_pending_construction_resume_orders.remove_at(i)
 
 func _selected_construction_sites() -> Array[Node]:
@@ -4583,7 +4593,7 @@ func _issue_exit_construction_from_selection() -> void:
 		exited_count += 1
 	if exited_count <= 0:
 		return
-	_set_ui_notice("Construction exit: %d worker(s) released." % exited_count, 1.1)
+	_set_ui_notice(_tf("Construction exit: %d worker(s) released.", [exited_count]), 1.1)
 	_play_feedback_tone("ground")
 	_refresh_hint_label()
 
@@ -4619,13 +4629,13 @@ func _cancel_selected_construction_sites(eject_worker: bool) -> void:
 		canceled_count += 1
 	_prune_invalid_selection()
 	if canceled_count <= 0:
-		_set_ui_notice("No matching construction site for this command.", 1.0)
+		_set_ui_notice(_t("No matching construction site for this command."), 1.0)
 		_play_feedback_tone("error")
 		return
 	if total_refund > 0:
-		_set_ui_notice("Construction canceled: %d site(s), +%d minerals." % [canceled_count, total_refund], 1.2)
+		_set_ui_notice(_tf("Construction canceled: %d site(s), +%d minerals.", [canceled_count, total_refund]), 1.2)
 	else:
-		_set_ui_notice("Construction canceled: %d site(s)." % canceled_count, 1.2)
+		_set_ui_notice(_tf("Construction canceled: %d site(s).", [canceled_count]), 1.2)
 	_play_feedback_tone("error")
 	_refresh_hint_label()
 
@@ -4639,18 +4649,18 @@ func _select_worker_from_construction_site() -> void:
 		return
 	var worker_path: NodePath = site.call("get_construction_assigned_worker_path") as NodePath
 	if str(worker_path) == "":
-		_set_ui_notice("No assigned worker.")
+		_set_ui_notice(_t("No assigned worker."))
 		_play_feedback_tone("error")
 		return
 	var worker_node: Node = get_node_or_null(worker_path)
 	if worker_node == null or not is_instance_valid(worker_node):
-		_set_ui_notice("Assigned worker is unavailable.")
+		_set_ui_notice(_t("Assigned worker is unavailable."))
 		_play_feedback_tone("error")
 		return
 	_clear_selection()
 	_add_selected_unit(worker_node)
 	_refresh_subgroup_state(true)
-	_set_ui_notice("Selected construction worker.", 1.1)
+	_set_ui_notice(_t("Selected construction worker."), 1.1)
 	_play_feedback_tone("follow")
 	_refresh_hint_label()
 
@@ -4954,7 +4964,7 @@ func _process_pending_build_orders(delta: float) -> void:
 			var retry_timer: float = float(order.get("retry_timer", 0.0)) - delta
 			if retry_timer <= 0.0:
 				retry_timer = CONSTRUCTION_GHOST_RETRY_INTERVAL
-				_set_ui_notice("Not enough minerals for %s." % _building_display_name(kind), 1.1)
+				_set_ui_notice(_tf("Not enough minerals for %s.", [_building_display_name(kind)]), 1.1)
 				var stop_for_wait: RTSCommand = RTS_COMMAND.make_stop(false)
 				stop_for_wait.payload["internal_build_order"] = true
 				_schedule_unit_command(builder_node, stop_for_wait)
@@ -4997,7 +5007,7 @@ func _process_pending_build_orders(delta: float) -> void:
 		stop_command.payload["internal_build_order"] = true
 		_schedule_unit_command(builder_node, stop_command)
 		if site.has_method("is_under_construction") and bool(site.call("is_under_construction")):
-			_set_ui_notice("Construction started: %s." % _building_display_name(kind), 1.0)
+			_set_ui_notice(_tf("Construction started: %s.", [_building_display_name(kind)]), 1.0)
 
 		_pending_build_orders.remove_at(i)
 
@@ -5187,7 +5197,7 @@ func _on_building_construction_state_changed(event_type: String, payload: Dictio
 	match event_type:
 		"summoning_cast_complete":
 			_release_worker_from_construction(worker_path)
-			_set_ui_notice("Summoning cast complete: worker released.", 1.0)
+			_set_ui_notice(_t("Summoning cast complete: worker released."), 1.0)
 			_refresh_hint_label()
 		"completed":
 			_release_worker_from_construction(worker_path)
@@ -5196,7 +5206,7 @@ func _on_building_construction_state_changed(event_type: String, payload: Dictio
 			var penalty: float = clampf(float(payload.get("hp_penalty_ratio", 0.0)), 0.0, 1.0)
 			_release_worker_from_construction(worker_path, penalty)
 			if penalty > 0.0:
-				_set_ui_notice("Incorporated worker ejected at 50% HP.", 1.1)
+				_set_ui_notice(_t("Incorporated worker ejected at 50% HP."), 1.1)
 			_prune_invalid_selection()
 			_refresh_hint_label()
 

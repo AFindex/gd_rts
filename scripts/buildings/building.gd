@@ -211,11 +211,11 @@ func get_queue_preview(max_items: int = 5) -> Array[String]:
 
 func get_building_display_name() -> String:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
-	return str(building_def.get("display_name", "Building"))
+	return str(building_def.get("display_name", tr("Building")))
 
 func get_building_role_tag() -> String:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
-	return str(building_def.get("role_tag", "Building"))
+	return str(building_def.get("role_tag", tr("Building")))
 
 func get_skill_ids() -> Array[String]:
 	if _construction_active:
@@ -632,10 +632,10 @@ func _apply_building_visual() -> void:
 
 func _format_unit_kind(unit_kind: String) -> String:
 	if unit_kind == "worker":
-		return "Worker"
+		return tr("Worker")
 	if unit_kind == "soldier":
-		return "Soldier"
-	return unit_kind.capitalize()
+		return tr("Soldier")
+	return tr(unit_kind.capitalize())
 
 func _apply_building_config(kind: String) -> void:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(kind)

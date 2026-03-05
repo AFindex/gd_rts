@@ -122,7 +122,7 @@ func is_worker_unit() -> bool:
 func get_unit_display_name() -> String:
 	var unit_kind: String = get_unit_kind()
 	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
-	return str(unit_def.get("display_name", "Worker" if is_worker else "Soldier"))
+	return str(unit_def.get("display_name", tr("Worker") if is_worker else tr("Soldier")))
 
 func get_unit_role_tag() -> String:
 	var unit_kind: String = get_unit_kind()
@@ -200,19 +200,19 @@ func exit_construction_lock() -> void:
 func get_mode_label() -> String:
 	match _mode:
 		UnitMode.MOVE:
-			return "Moving"
+			return tr("Moving")
 		UnitMode.GATHER_RESOURCE:
-			return "Gathering"
+			return tr("Gathering")
 		UnitMode.RETURN_RESOURCE:
-			return "Returning"
+			return tr("Returning")
 		UnitMode.ATTACK:
-			return "Attacking"
+			return tr("Attacking")
 		UnitMode.ATTACK_MOVE:
-			return "Attack-Move"
+			return tr("Attack-Move")
 		UnitMode.REPAIR:
-			return "Repairing"
+			return tr("Repairing")
 		_:
-			return "Idle"
+			return tr("Idle")
 
 func get_team_id() -> int:
 	return team_id

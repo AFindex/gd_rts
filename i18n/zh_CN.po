@@ -1,0 +1,716 @@
+msgid ""
+msgstr ""
+"Language: zh_CN\\n"
+"Content-Type: text/plain; charset=UTF-8\\n"
+
+msgid " (%d-%d/%d)"
+msgstr " (%d-%d/%d)"
+
+msgid " | Active %s"
+msgstr " | 当前 %s"
+
+msgid " | Page %d/%d PgUp/PgDn"
+msgstr " | 第 %d/%d 页 PgUp/PgDn"
+
+msgid " | PgUp/PgDn"
+msgstr " | PgUp/PgDn"
+
+msgid " | PgUp/PgDn Selection Page"
+msgstr " | PgUp/PgDn 选择页"
+
+msgid "%d Selected"
+msgstr "已选中 %d"
+
+msgid "%s (%d/%d)"
+msgstr "%s (%d/%d)"
+
+msgid "[DEFEAT] Main Base destroyed (test notice)."
+msgstr "[失败] 主基地被摧毁（测试提示）。"
+
+msgid "[VICTORY] Enemy core destroyed (test notice)."
+msgstr "[胜利] 敌方核心被摧毁（测试提示）。"
+
+msgid "\\\\nHP: %s"
+msgstr "\\\\n生命: %s"
+
+msgid "A: Attack / S: Stop"
+msgstr "A: 攻击 / S: 停止"
+
+msgid "Academy"
+msgstr "学院"
+
+msgid "Advanced Targeting"
+msgstr "高级瞄准"
+
+msgid "All"
+msgstr "全部"
+
+msgid "All production queues are full."
+msgstr "所有生产队列已满。"
+
+msgid "Already researched."
+msgstr "已完成研究。"
+
+msgid "Armor I"
+msgstr "护甲 I"
+
+msgid "Armor Type: --"
+msgstr "护甲类型: --"
+
+msgid "Armor Type: Light"
+msgstr "护甲类型: 轻型"
+
+msgid "Armor Type: Structure"
+msgstr "护甲类型: 建筑"
+
+msgid "Army (F2)"
+msgstr "军队 (F2)"
+
+msgid "Assigned worker is unavailable."
+msgstr "指派工人不可用。"
+
+msgid "Attack"
+msgstr "攻击"
+
+msgid "Attacking"
+msgstr "攻击中"
+
+msgid "Attack-Move"
+msgstr "攻击移动"
+
+msgid "B: Build Menu"
+msgstr "B: 建造菜单"
+
+msgid "B: Build Menu | Open build options from selected builder"
+msgstr "B: 建造菜单 | 从当前选中建造者打开建造选项"
+
+msgid "Back"
+msgstr "返回"
+
+msgid "Back to build categories."
+msgstr "返回建造分类。"
+
+msgid "Barracks"
+msgstr "兵营"
+
+msgid "Bio Vat"
+msgstr "生化舱"
+
+msgid "Build"
+msgstr "建造"
+
+msgid "Build Menu [%s]: %s | ESC Back"
+msgstr "建造菜单[%s]: %s | ESC返回"
+
+msgid "Build menu open. Select a building option or press ESC to close."
+msgstr "建造菜单已打开。请选择建筑或按ESC关闭。"
+
+msgid "Build Menu: No available options | ESC Back"
+msgstr "建造菜单: 无可用选项 | ESC返回"
+
+msgid "Building"
+msgstr "建筑"
+
+msgid "Buildings: %s"
+msgstr "建筑需求: %s"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cancel+Destroy"
+msgstr "取消并摧毁"
+
+msgid "Cancel+Eject"
+msgstr "取消并弹出"
+
+msgid "Categories"
+msgstr "分类"
+
+msgid "Click command cards / hotkeys for production. RMB sets rally point (M/G/A/F/R flag + tone)."
+msgstr "点击指令卡或热键生产。右键设置集结点（M/G/A/F/R 标记 + 音效）。"
+
+msgid "Click command cards or use hotkeys for production/build commands."
+msgstr "点击指令卡或使用热键执行生产/建造命令。"
+
+msgid "Confirm Build"
+msgstr "确认建造"
+
+msgid "Constructing"
+msgstr "施工中"
+
+msgid "Constructing %d%%"
+msgstr "施工中 %d%%"
+
+msgid "Constructing: %d active worker build order(s)."
+msgstr "施工中: %d 个工人建造任务。"
+
+msgid "Construction canceled: %d site(s), +%d minerals."
+msgstr "施工已取消：%d 个地块，返还 +%d 矿物。"
+
+msgid "Construction canceled: %d site(s)."
+msgstr "施工已取消：%d 个地块。"
+
+msgid "Construction exit: %d worker(s) released."
+msgstr "退出施工：已释放 %d 名工人。"
+
+msgid "Construction resumed."
+msgstr "施工已恢复。"
+
+msgid "Construction site selected. Use command card for cancel/eject/select-worker operations."
+msgstr "已选施工地块。使用指令卡执行取消/弹出/选工人操作。"
+
+msgid "Construction Site: %s %d%% | %s | Use command card to cancel/exit/select worker."
+msgstr "施工地块: %s %d%% | %s | 使用指令卡执行取消/退出/选中工人。"
+
+msgid "Construction started: %s."
+msgstr "施工开始：%s。"
+
+msgid "Construction: %s\\\\nParadigm: %s\\\\nProgress: %d%%\\\\nHP: %s"
+msgstr "施工: %s\\\\n范式: %s\\\\n进度: %d%%\\\\n生命: %s"
+
+msgid "Control Group %d (%d)"
+msgstr "控制组 %d (%d)"
+
+msgid "Control Group %d appended (+%d, total %d)."
+msgstr "控制组 %d 已追加（+%d，总计 %d）。"
+
+msgid "Control Group %d has no valid units."
+msgstr "控制组 %d 没有有效单位。"
+
+msgid "Control Group %d is empty."
+msgstr "控制组 %d 为空。"
+
+msgid "Control Group %d selected (%d), camera centered."
+msgstr "控制组 %d 已选中（%d），镜头已居中。"
+
+msgid "Control Group %d selected (%d)."
+msgstr "控制组 %d 已选中（%d）。"
+
+msgid "Control Group %d set (%d)."
+msgstr "控制组 %d 已设置（%d）。"
+
+msgid "Control Group %d: no selection."
+msgstr "控制组 %d: 当前无选择。"
+
+msgid "Cost: %s"
+msgstr "花费: %s"
+
+msgid "Details"
+msgstr "详情"
+
+msgid "EN %d%%"
+msgstr "能量 %d%%"
+
+msgid "Enables better target acquisition."
+msgstr "提高目标获取能力。"
+
+msgid "Eng Bay"
+msgstr "工程站"
+
+msgid "Engineering Bay"
+msgstr "工程站"
+
+msgid "Exit Build"
+msgstr "退出建造"
+
+msgid "Field Logistics"
+msgstr "战地后勤"
+
+msgid "Finish or cancel current placement first."
+msgstr "请先完成或取消当前放置。"
+
+msgid "Garrisoned"
+msgstr "驻扎式"
+
+msgid "GAS"
+msgstr "气"
+
+msgid "Gather"
+msgstr "采集"
+
+msgid "Gathering"
+msgstr "采集中"
+
+msgid "Global selected: %s x%d."
+msgstr "全局选中: %s x%d。"
+
+msgid "Help"
+msgstr "帮助"
+
+msgid "Hotkey: %s"
+msgstr "快捷键: %s"
+
+msgid "HP %d%%"
+msgstr "生命 %d%%"
+
+msgid "Idle"
+msgstr "待机"
+
+msgid "Improves infantry firepower."
+msgstr "提升步兵火力。"
+
+msgid "Improves infantry survivability."
+msgstr "提升步兵生存能力。"
+
+msgid "Incorporated"
+msgstr "融合式"
+
+msgid "Incorporated worker ejected at 50% HP."
+msgstr "融合工人已弹出（50%生命值）。"
+
+msgid "Infantry Armor I"
+msgstr "步兵护甲 I"
+
+msgid "Infantry Weapons I"
+msgstr "步兵武器 I"
+
+msgid "invalid"
+msgstr "不可放置"
+
+msgid "Invalid"
+msgstr "不可放置"
+
+msgid "Invalid build cost."
+msgstr "建造花费无效。"
+
+msgid "Invalid research cost."
+msgstr "研究花费无效。"
+
+msgid "Left click to select, drag for box selection, right click to move."
+msgstr "左键单选，拖拽框选，右键移动。"
+
+msgid "Locked - %s"
+msgstr "未解锁 - %s"
+
+msgid "Logistics"
+msgstr "后勤"
+
+msgid "M: %d   G: 0   Supply: %d/%d"
+msgstr "矿: %d   气: 0   补给: %d/%d"
+
+msgid "M: 0   G: 0   Supply: 0/40"
+msgstr "矿: 0   气: 0   补给: 0/40"
+
+msgid "Main Base"
+msgstr "主基地"
+
+msgid "Match outcome triggered: %s"
+msgstr "对局结果触发: %s"
+
+msgid "Match Rule: %s"
+msgstr "对局规则: %s"
+
+msgid "Menu"
+msgstr "菜单"
+
+msgid "Menu (F10)"
+msgstr "菜单 (F10)"
+
+msgid "MIN"
+msgstr "矿"
+
+msgid "Mission"
+msgstr "任务"
+
+msgid "Move"
+msgstr "移动"
+
+msgid "Moving"
+msgstr "移动中"
+
+msgid "No"
+msgstr "否"
+
+msgid "No active command card."
+msgstr "当前无可用指令卡。"
+
+msgid "No assigned worker."
+msgstr "没有指派工人。"
+
+msgid "No available trainer for %s."
+msgstr "没有可用的 %s 训练建筑。"
+
+msgid "No available worker to repair target."
+msgstr "没有可用工人可修理该目标。"
+
+msgid "No available worker to resume construction."
+msgstr "没有可用工人可恢复施工。"
+
+msgid "No matching construction site for this command."
+msgstr "没有匹配该命令的施工地块。"
+
+msgid "No mixed unit subgroup to cycle."
+msgstr "当前没有可循环的混合子编组。"
+
+msgid "No selected building can train %s."
+msgstr "当前选中建筑无法训练 %s。"
+
+msgid "No Selection"
+msgstr "未选中"
+
+msgid "No selection | Select worker/builder to open Build Menu | Left drag: Box Select"
+msgstr "未选中 | 选择工人/建造建筑以打开建造菜单 | 左键拖拽: 框选"
+
+msgid "No selection."
+msgstr "未选中。"
+
+msgid "Not enough minerals for %s."
+msgstr "%s 所需矿物不足。"
+
+msgid "Not enough minerals."
+msgstr "矿物不足。"
+
+msgid "Notify-only mode for testing."
+msgstr "仅通知模式（测试用）。"
+
+msgid "Open categorized build options (Garrisoned / Summoning / Incorporated)."
+msgstr "打开分类建造选项（驻扎式 / 召唤式 / 融合式）。"
+
+msgid "Open categorized structure menus."
+msgstr "打开分类建筑菜单。"
+
+msgid "Optimizes frontline throughput."
+msgstr "优化前线运作效率。"
+
+msgid "Page %d/%d"
+msgstr "第 %d/%d 页"
+
+msgid "Paused"
+msgstr "暂停"
+
+msgid "Pending construction canceled (%s)."
+msgstr "待施工任务已取消（%s）。"
+
+msgid "Ping"
+msgstr "信号"
+
+msgid "Ping mode active. Left click world/minimap to ping, RMB/ESC cancel."
+msgstr "信号模式已启用。左键世界/小地图发送信号，右键/ESC取消。"
+
+msgid "Ping mode: Left click world/minimap to place ping. RMB/ESC cancel."
+msgstr "信号模式：左键世界/小地图放置信号。右键/ESC取消。"
+
+msgid "Ping sent."
+msgstr "信号已发送。"
+
+msgid "Placement %s | Cost: %d | R Rotate | Shift+LMB Chain"
+msgstr "放置 %s | 花费: %d | R旋转 | Shift+左键连放"
+
+msgid "Placement mode active. LMB confirm, Shift+LMB chain build, R rotate, RMB/ESC cancel."
+msgstr "放置模式已启用。左键确认，Shift+左键连放，R旋转，右键/ESC取消。"
+
+msgid "Placing %s (%d): %s | LMB Confirm | Shift+LMB Chain | R Rotate | RMB/ESC Cancel"
+msgstr "放置 %s (%d): %s | 左键确认 | Shift+左键连放 | R旋转 | 右键/ESC取消"
+
+msgid "Portrait"
+msgstr "肖像"
+
+msgid "Psi Relay"
+msgstr "灵能中继"
+
+msgid "Psionic Relay"
+msgstr "灵能中继"
+
+msgid "Queue %d"
+msgstr "队列 %d"
+
+msgid "Queue full: max 32 commands per unit."
+msgstr "队列已满: 每单位最多32条命令。"
+
+msgid "Queue input active. Shift-held commands are appended."
+msgstr "队列输入已启用。按住Shift会追加命令。"
+
+msgid "Queue Input: Shift held | Alt+LMB queue marker trims this and later points | W%d S%d B%d"
+msgstr "队列输入: 按住Shift | Alt+左键可裁剪该点及后续队列标记 | 工%d 兵%d 建%d"
+
+msgid "Queue is full (max 32). Command rejected."
+msgstr "队列已满（最多32条）。命令被拒绝。"
+
+msgid "Queue Size: %d"
+msgstr "队列数量: %d"
+
+msgid "R: Train Worker (%d) | T: Train Soldier (%d) | A: Attack/Attack-Move | S: Stop | Tab: Subgroup Cycle"
+msgstr "R: 训练工人(%d) | T: 训练士兵(%d) | A: 攻击/攻击移动 | S: 停止 | Tab: 子编组循环"
+
+msgid "R: Train Worker / T: Train Soldier"
+msgstr "R: 训练工人 / T: 训练士兵"
+
+msgid "Rally relay chain is full (max %d hops)."
+msgstr "集结中继链已满（最多 %d 跳）。"
+
+msgid "Rally relay full: max %d hops per building."
+msgstr "集结中继已满: 每建筑最多 %d 跳。"
+
+msgid "Removed: %s."
+msgstr "已移除: %s。"
+
+msgid "Repair"
+msgstr "修理"
+
+msgid "Repair a damaged friendly building."
+msgstr "Repair a damaged friendly building."
+
+msgid "Repair requires a damaged friendly unit/building."
+msgstr "修理需要目标为受损的友方单位/建筑。"
+
+msgid "Repairing"
+msgstr "修理中"
+
+msgid "Requires at least one combat unit."
+msgstr "至少需要一个战斗单位。"
+
+msgid "Requires at least one worker in selection."
+msgstr "选中中至少需要一个工人。"
+
+msgid "Research in progress."
+msgstr "研究进行中。"
+
+msgid "Researching %s (%ds remaining)."
+msgstr "正在研究 %s（剩余 %d 秒）。"
+
+msgid "Researching %s (%ds). +%d more active."
+msgstr "正在研究 %s（%d秒）。另有 %d 项同时进行。"
+
+msgid "Return"
+msgstr "回收"
+
+msgid "Returning"
+msgstr "回收中"
+
+msgid "RMB context command or click move/gather/stop in command card."
+msgstr "右键上下文命令，或在指令卡点击移动/采集/停止。"
+
+msgid "RMB Smart: Attack>Gather>Return>Repair>Follow>Rally>Move | Shift+RMB Queue | Ctrl+0-9 Set Group | Shift+0-9 Append | 0-9 Select/DoubleTap Focus | Matrix: LMB isolate / Shift+LMB same type / Ctrl+LMB remove"
+msgstr "右键智能: 攻击>采集>回收>修理>跟随>集结>移动 | Shift+右键排队 | Ctrl+0-9设组 | Shift+0-9追加 | 0-9选组/双击聚焦 | 矩阵: 左键隔离 / Shift+左键同类 / Ctrl+左键移除"
+
+msgid "Role: %s\\\\nState: %s\\\\nHP: %s\\\\nCmd Queue: %d"
+msgstr "角色: %s\\\\n状态: %s\\\\n生命: %s\\\\n指令队列: %d"
+
+msgid "Rotate"
+msgstr "旋转"
+
+msgid "Screen selected: %s x%d."
+msgstr "屏幕内选中: %s x%d。"
+
+msgid "Select a construction site."
+msgstr "请选择一个施工地块。"
+
+msgid "Select a garrisoned worker to exit construction."
+msgstr "请选择一个驻扎施工中的工人以退出施工。"
+
+msgid "Select a unit or building to inspect details."
+msgstr "选择单位或建筑以查看详情。"
+
+msgid "Select a worker or builder building to open build commands."
+msgstr "请选择工人或可建造建筑以打开建造命令。"
+
+msgid "Select an incorporated construction site."
+msgstr "请选择一个融合式施工地块。"
+
+msgid "Select something to open context commands."
+msgstr "请先选择目标以打开上下文命令。"
+
+msgid "Select Worker"
+msgstr "选择工人"
+
+msgid "Selected -> Worker %d | Soldier %d | Building %d"
+msgstr "已选 -> 工人 %d | 士兵 %d | 建筑 %d"
+
+msgid "Selected Building: %d queue item(s) | R/T Train | RMB Set Rally | Shift+RMB Append Relay | Flag: M/G/A/F/R"
+msgstr "已选建筑: %d 条队列 | R/T训练 | 右键设集结点 | Shift+右键追加中继 | 标记: M/G/A/F/R"
+
+msgid "Selected Building: %d queue item(s) | R/T: Train by building type"
+msgstr "已选建筑: %d 条队列 | R/T: 按建筑类型训练"
+
+msgid "Selected Building: %d queue item(s) | Shift held: RMB append rally relay hop (max %d) | Flag: M/G/A/F/R"
+msgstr "已选建筑: %d 条队列 | 按住Shift: 右键追加集结中继(最多%d) | 标记: M/G/A/F/R"
+
+msgid "Selected buildings cannot build structures."
+msgstr "当前选中建筑无法建造结构。"
+
+msgid "Selected buildings cannot perform this research."
+msgstr "当前选中建筑无法执行该研究。"
+
+msgid "Selected construction worker."
+msgstr "已选中施工工人。"
+
+msgid "Selected workers are not carrying minerals."
+msgstr "选中的工人未携带矿物。"
+
+msgid "Selected: %s x%d."
+msgstr "已选中: %s x%d。"
+
+msgid "Selected: %s."
+msgstr "已选中: %s。"
+
+msgid "Selection matrix has only one page."
+msgstr "选择矩阵只有一页。"
+
+msgid "Selection matrix page %d/%d."
+msgstr "选择矩阵第 %d/%d 页。"
+
+msgid "Selection Page %d"
+msgstr "选择页 %d"
+
+msgid "SH %d%%"
+msgstr "护盾 %d%%"
+
+msgid "Show garrisoned construction structures."
+msgstr "显示驻扎式建筑。"
+
+msgid "Show incorporated (sacrifice) structures."
+msgstr "显示融合式（献祭）建筑。"
+
+msgid "Show summoning construction structures."
+msgstr "显示召唤式建筑。"
+
+msgid "Soldier"
+msgstr "士兵"
+
+msgid "Stop"
+msgstr "停止"
+
+msgid "Subgroup active: %s (%d/%d)."
+msgstr "子编组已激活: %s (%d/%d)。"
+
+msgid "Subgroup active: %s | Tab cycles subgroup | Commands apply to active subgroup only."
+msgstr "子编组激活: %s | Tab循环子编组 | 命令仅作用于当前子编组。"
+
+msgid "Subgroup: %d Units%s"
+msgstr "子编组: %d 单位%s"
+
+msgid "Subgroup: %s (%d/%d) | Tab Cycle%s"
+msgstr "子编组: %s (%d/%d) | Tab循环%s"
+
+msgid "Subgroup: All (%d types) | Tab Cycle%s"
+msgstr "子编组: 全部 (%d 类型) | Tab循环%s"
+
+msgid "Subgroup: None"
+msgstr "子编组: 无"
+
+msgid "Subgroup: Single"
+msgstr "子编组: 单体"
+
+msgid "Summoning"
+msgstr "召唤式"
+
+msgid "Summoning cast complete: worker released."
+msgstr "召唤施法完成：工人已释放。"
+
+msgid "SUP"
+msgstr "补给"
+
+msgid "Supply is capped."
+msgstr "补给已封顶。"
+
+msgid "Targeted skill armed. Left click world target, RMB/ESC to cancel."
+msgstr "定向技能已就绪。左键选择世界目标，右键/ESC取消。"
+
+msgid "Targeting"
+msgstr "瞄准"
+
+msgid "Targeting %s | Left Click Damaged Friendly Unit/Building | RMB/ESC Cancel"
+msgstr "目标模式 %s | 左键受损友军单位/建筑 | 右键/ESC取消"
+
+msgid "Targeting %s | Left Click Enemy for focus fire, or Ground for attack-move | RMB/ESC Cancel"
+msgstr "目标模式 %s | 左键敌人集火，或左键地面攻击移动 | 右键/ESC取消"
+
+msgid "Targeting %s | Left Click Ground | RMB/ESC Cancel"
+msgstr "目标模式 %s | 左键地面 | 右键/ESC取消"
+
+msgid "Targeting %s | Left Click Resource | RMB/ESC Cancel"
+msgstr "目标模式 %s | 左键资源 | 右键/ESC取消"
+
+msgid "Targeting %s | RMB/ESC Cancel"
+msgstr "目标模式 %s | 右键/ESC取消"
+
+msgid "Targeting: %s"
+msgstr "目标模式: %s"
+
+msgid "Tech Lab"
+msgstr "科技实验室"
+
+msgid "Tech: %s"
+msgstr "科技需求: %s"
+
+msgid "Terrain"
+msgstr "地形"
+
+msgid "Tower"
+msgstr "炮塔"
+
+msgid "Train Soldier"
+msgstr "训练士兵"
+
+msgid "Train Worker"
+msgstr "训练工人"
+
+msgid "Train Worker: %s\\\\nTrain Soldier: %s"
+msgstr "训练工人: %s\\\\n训练士兵: %s"
+
+msgid "Type: %s | Build: %.1fs | Cancel Refund: %d%%"
+msgstr "类型: %s | 建造: %.1f秒 | 取消返还: %d%%"
+
+msgid "Unit"
+msgstr "单位"
+
+msgid "Unknown build skill."
+msgstr "未知建造技能。"
+
+msgid "Unknown research command."
+msgstr "未知研究命令。"
+
+msgid "Unlocked Tech: %d | Active Research: %d"
+msgstr "已解锁科技: %d | 进行中研究: %d"
+
+msgid "valid"
+msgstr "可放置"
+
+msgid "Valid"
+msgstr "可放置"
+
+msgid "Void Core"
+msgstr "虚空核心"
+
+msgid "W %d  S %d  B %d"
+msgstr "工 %d  兵 %d  建 %d"
+
+msgid "Warp"
+msgstr "跃迁"
+
+msgid "Warp Gate"
+msgstr "跃迁门"
+
+msgid "Weapons I"
+msgstr "武器 I"
+
+msgid "Work interrupted: executing queued orders."
+msgstr "工作已中断：开始执行排队命令。"
+
+msgid "Worker"
+msgstr "工人"
+
+msgid "Worker assigned to resume construction."
+msgstr "已分配工人恢复施工。"
+
+msgid "Worker construction active: %d order(s)."
+msgstr "工人施工进行中: %d 条任务。"
+
+msgid "Worker is building: command queued after construction."
+msgstr "工人施工中：命令将在施工后排队执行。"
+
+msgid "Worker is garrisoned in construction. ESC or Exit Build releases worker; other commands are queued."
+msgstr "工人正驻扎施工中。ESC或退出建造可释放工人；其他命令会排队。"
+
+msgid "Worker is locked in construction. Exit first."
+msgstr "工人处于施工锁定状态，请先退出施工。"
+
+msgid "Worker queue accepted: will switch after current gather/return."
+msgstr "工人队列命令已接收：将在当前采集/回收后切换。"
+
+msgid "Worker switched to queued orders."
+msgstr "工人已切换到排队命令。"
+
+msgid "Yes"
+msgstr "是"
+

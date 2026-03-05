@@ -27,6 +27,11 @@ project/assembly_name="web_test_gd"
 
 enabled=PackedStringArray("godot_mcp", "image_resizer")
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://i18n/zh_CN.po")
+locale="zh_CN"
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

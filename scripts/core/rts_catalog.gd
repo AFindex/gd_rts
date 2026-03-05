@@ -626,13 +626,13 @@ const MATCH_RULE_DEFS: Array[Dictionary] = [
 static func get_unit_def(unit_kind: String) -> Dictionary:
 	var value: Variant = UNIT_DEFS.get(unit_kind, {})
 	if value is Dictionary:
-		return (value as Dictionary).duplicate(true)
+		return _localize_dict_fields((value as Dictionary).duplicate(true), ["display_name"])
 	return {}
 
 static func get_building_def(building_kind: String) -> Dictionary:
 	var value: Variant = BUILDING_DEFS.get(building_kind, {})
 	if value is Dictionary:
-		return (value as Dictionary).duplicate(true)
+		return _localize_dict_fields((value as Dictionary).duplicate(true), ["display_name"])
 	return {}
 
 static func get_unit_skill_ids(unit_kind: String) -> Array[String]:
@@ -670,7 +670,7 @@ static func get_building_requires_tech(building_kind: String) -> Array[String]:
 static func get_tech_def(tech_id: String) -> Dictionary:
 	var value: Variant = TECH_DEFS.get(tech_id, {})
 	if value is Dictionary:
-		return (value as Dictionary).duplicate(true)
+		return _localize_dict_fields((value as Dictionary).duplicate(true), ["display_name", "description"])
 	return {}
 
 static func get_tech_cost(tech_id: String) -> int:
@@ -699,13 +699,13 @@ static func get_match_rule_defs() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for rule_value in MATCH_RULE_DEFS:
 		if rule_value is Dictionary:
-			result.append((rule_value as Dictionary).duplicate(true))
+			result.append(_localize_dict_fields((rule_value as Dictionary).duplicate(true), ["notice"]))
 	return result
 
 static func get_skill_def(skill_id: String) -> Dictionary:
 	var value: Variant = SKILL_DEFS.get(skill_id, {})
 	if value is Dictionary:
-		return (value as Dictionary).duplicate(true)
+		return _localize_dict_fields((value as Dictionary).duplicate(true), ["label", "description"])
 	return {}
 
 static func make_command_entry(skill_id: String, overrides: Dictionary = {}) -> Dictionary:
@@ -713,7 +713,7 @@ static func make_command_entry(skill_id: String, overrides: Dictionary = {}) -> 
 	if entry.is_empty():
 		entry = {
 			"id": skill_id,
-			"label": skill_id.capitalize(),
+			"label": _translate_text(skill_id.capitalize()),
 			"icon_path": "",
 			"hotkey": "",
 			"target_mode": "none"
@@ -774,3 +774,15 @@ static func _normalize_building_requirements(raw_value: Variant) -> Array[Dictio
 			"count": required_count
 		})
 	return requirements
+
+static func _localize_dict_fields(source: Dictionary, fields: Array[String]) -> Dictionary:
+	for field in fields:
+		if not source.has(field):
+			continue
+		source[field] = _translate_text(str(source.get(field, "")))
+	return source
+
+static func _translate_text(message: String) -> String:
+	if message == "":
+		return ""
+	return TranslationServer.translate(message)

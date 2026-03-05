@@ -100,11 +100,21 @@ const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
 @onready var _command_panel: PanelContainer = $BottomHUD/BottomRow/CommandColumn/CommandPanel
 @onready var _notification_panel: PanelContainer = $NotificationPanel
 
+@onready var _minerals_label: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/MineralsLabel
+@onready var _gas_label: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/GasLabel
+@onready var _supply_label: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/SupplyLabel
 @onready var _minerals_value: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/MineralsValue
 @onready var _gas_value: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/GasValue
 @onready var _supply_value: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/ResourceTopRow/SupplyValue
 @onready var _legacy_info_text: Label = $TopBar/TopBarRow/ResourcePanel/ResourceContent/LegacyInfoText
 @onready var _time_text: Label = $TopBar/TopBarRow/CenterTop/CenterTopContent/TimeText
+@onready var _mission_text: Label = $TopBar/TopBarRow/CenterTop/CenterTopContent/MissionText
+@onready var _menu_button: Button = $TopBar/TopBarRow/SystemPanel/SystemButtons/MenuButton
+@onready var _help_button: Button = $TopBar/TopBarRow/SystemPanel/SystemButtons/HelpButton
+@onready var _idle_worker_button: Button = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/GlobalButtonRow/IdleWorkerButton
+@onready var _army_button: Button = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/GlobalButtonRow/ArmyButton
+@onready var _warp_button: Button = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/GlobalButtonRow/WarpButton
+@onready var _terrain_button: Button = $BottomHUD/BottomRow/SelectionPanel/SelectionContent/BottomButtonRow/TerrainButton
 
 @onready var _selection_hint_text: Label = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SelectionHintText
 @onready var _queue_top_spacer: Control = $BottomHUD/BottomRow/QueueColumn/QueueTopSpacer
@@ -137,6 +147,7 @@ const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
 @onready var _matrix_page_buttons_root: Control = $BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody/MatrixFooter/MatrixPageButtons
 
 @onready var _portrait_glyph: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitViewport/PortraitCenter/PortraitGlyph
+@onready var _portrait_title_label: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitTitle
 @onready var _portrait_name_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitNameText
 @onready var _portrait_role_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitRoleText
 @onready var _command_hover_text: Label = $BottomHUD/BottomRow/CommandColumn/CommandHoverPanel/CommandHoverText
@@ -166,6 +177,15 @@ var _debug_layout_seq: int = 0
 var _debug_log_burst_until_msec: float = 0.0
 var _minimap_ping_armed: bool = false
 
+func _t(message: String) -> String:
+	return tr(message)
+
+func _tf(message: String, args: Array = []) -> String:
+	var translated: String = _t(message)
+	if args.is_empty():
+		return translated
+	return translated % args
+
 func _ready() -> void:
 	_cache_control_group_buttons()
 	_setup_static_styles()
@@ -178,6 +198,7 @@ func _ready() -> void:
 	_build_queue_slot_labels()
 	_build_command_items()
 	_build_matrix_cells()
+	_apply_localized_static_texts()
 	_apply_default_hud()
 	_apply_fixed_button_theme()
 	_set_command_hover_default()
@@ -227,7 +248,7 @@ func update_hud(snapshot: Dictionary) -> void:
 	_supply_value.modulate = Color(1.0, 0.42, 0.35) if supply_used >= supply_cap else Color(0.72, 0.96, 1.0)
 	_legacy_info_text.text = str(snapshot.get("top_legacy_text", ""))
 
-	_selection_hint_text.text = str(snapshot.get("selection_hint", "No selection."))
+	_selection_hint_text.text = str(snapshot.get("selection_hint", _t("No selection.")))
 	_command_hint_text.text = str(snapshot.get("command_hint", ""))
 
 	var mode: String = snapshot_mode
@@ -244,22 +265,22 @@ func update_hud(snapshot: Dictionary) -> void:
 		_hudjit_log("update_hud#%d schedule multi reveal (guard enabled)." % update_seq)
 		_schedule_multi_matrix_reveal()
 
-	_single_name_text.text = str(snapshot.get("single_title", "No Selection"))
+	_single_name_text.text = str(snapshot.get("single_title", _t("No Selection")))
 	_single_detail_text.text = str(snapshot.get("single_detail", "-"))
-	_armor_type_text.text = str(snapshot.get("single_armor", "Armor Type: --"))
+	_armor_type_text.text = str(snapshot.get("single_armor", _t("Armor Type: --")))
 	_health_bar.value = clampf(float(snapshot.get("status_health", 1.0)) * 100.0, 0.0, 100.0)
 	_shield_bar.value = clampf(float(snapshot.get("status_shield", 0.0)) * 100.0, 0.0, 100.0)
 	_energy_bar.value = clampf(float(snapshot.get("status_energy", 0.0)) * 100.0, 0.0, 100.0)
-	_health_value_label.text = "HP %d%%" % int(round(_health_bar.value))
-	_shield_value_label.text = "SH %d%%" % int(round(_shield_bar.value))
-	_energy_value_label.text = "EN %d%%" % int(round(_energy_bar.value))
+	_health_value_label.text = _tf("HP %d%%", [int(round(_health_bar.value))])
+	_shield_value_label.text = _tf("SH %d%%", [int(round(_shield_bar.value))])
+	_energy_value_label.text = _tf("EN %d%%", [int(round(_energy_bar.value))])
 
 	var show_production: bool = bool(snapshot.get("show_production", false))
 	_single_detail_root.visible = _single_container.visible and not show_production
 	_production_queue_root.visible = _single_container.visible and show_production
 	var queue_size: int = int(snapshot.get("queue_size", 0))
 	var queue_progress: float = clampf(float(snapshot.get("queue_progress", 0.0)), 0.0, 1.0)
-	_queue_summary_text.text = "Queue Size: %d" % queue_size
+	_queue_summary_text.text = _tf("Queue Size: %d", [queue_size])
 	_queue_progress_bar.value = queue_progress * 100.0
 	_apply_queue_preview(_to_string_array(snapshot.get("queue_preview", [])))
 
@@ -274,7 +295,7 @@ func update_hud(snapshot: Dictionary) -> void:
 	_apply_control_group_entries(snapshot.get("control_group_entries", []))
 
 	_portrait_glyph.text = str(snapshot.get("portrait_glyph", "?"))
-	_portrait_name_text.text = str(snapshot.get("portrait_title", "No Selection"))
+	_portrait_name_text.text = str(snapshot.get("portrait_title", _t("No Selection")))
 	_portrait_role_text.text = str(snapshot.get("portrait_subtitle", "-"))
 
 	_apply_command_entries(snapshot.get("command_entries", []))
@@ -291,12 +312,12 @@ func _apply_default_hud() -> void:
 		"gas": 0,
 		"supply_used": 0,
 		"supply_cap": 40,
-		"selection_hint": "Left click to select, drag for box selection, right click to move.",
-		"top_legacy_text": "M: 0   G: 0   Supply: 0/40",
+		"selection_hint": _t("Left click to select, drag for box selection, right click to move."),
+		"top_legacy_text": _t("M: 0   G: 0   Supply: 0/40"),
 		"mode": "none",
-		"single_title": "No Selection",
-		"single_detail": "Select a unit or building to inspect details.",
-		"single_armor": "Armor Type: --",
+		"single_title": _t("No Selection"),
+		"single_detail": _t("Select a unit or building to inspect details."),
+		"single_armor": _t("Armor Type: --"),
 		"show_production": false,
 		"queue_size": 0,
 		"queue_progress": 0.0,
@@ -304,16 +325,31 @@ func _apply_default_hud() -> void:
 		"multi_roles": [],
 		"control_group_entries": [],
 		"portrait_glyph": "?",
-		"portrait_title": "No Selection",
+		"portrait_title": _t("No Selection"),
 		"portrait_subtitle": "-",
-		"command_hint": "No active command card.",
+		"command_hint": _t("No active command card."),
 		"command_entries": [],
 		"notifications": [
-			"B: Build Menu",
-			"R: Train Worker / T: Train Soldier",
-			"A: Attack / S: Stop"
+			_t("B: Build Menu"),
+			_t("R: Train Worker / T: Train Soldier"),
+			_t("A: Attack / S: Stop")
 		]
 	})
+
+func _apply_localized_static_texts() -> void:
+	_minerals_label.text = _t("MIN")
+	_gas_label.text = _t("GAS")
+	_supply_label.text = _t("SUP")
+	_menu_button.text = _t("Menu (F10)")
+	_help_button.text = _t("Help")
+	_mission_text.text = _t("Mission")
+	_idle_worker_button.text = _t("Idle")
+	_army_button.text = _t("Army (F2)")
+	_warp_button.text = _t("Warp")
+	_ping_button.text = _t("Ping")
+	_terrain_button.text = _t("Terrain")
+	_single_detail_title.text = _t("Details")
+	_portrait_title_label.text = _t("Portrait")
 
 func _setup_static_styles() -> void:
 	_style_panel(_top_bar, Color(0.03, 0.08, 0.14, 0.92), Color(0.16, 0.42, 0.58, 0.95))
@@ -492,7 +528,7 @@ func _set_control_group_button_state(button: Button, group_id: int, count: int, 
 		_apply_control_group_button_style(button, false)
 		return
 	button.text = "%d(%d)" % [group_id, count]
-	button.tooltip_text = "Control Group %d (%d)" % [group_id, count]
+	button.tooltip_text = _tf("Control Group %d (%d)", [group_id, count])
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_apply_control_group_button_style(button, active)
@@ -555,7 +591,7 @@ func _apply_matrix_page_buttons(page_index: int, page_count: int, matrix_visible
 		if page_button == null or not is_instance_valid(page_button):
 			continue
 		page_button.text = str(i + 1)
-		page_button.tooltip_text = "Selection Page %d" % [i + 1]
+		page_button.tooltip_text = _tf("Selection Page %d", [i + 1])
 		var active: bool = i == page_index
 		page_button.disabled = active
 		_apply_matrix_page_button_style(page_button, active)
@@ -764,15 +800,15 @@ func _format_command_hover_text(hover_data: Dictionary) -> String:
 	if header != "":
 		lines.append(header)
 	if cost_text != "":
-		lines.append("Cost: %s" % cost_text)
+		lines.append(_tf("Cost: %s", [cost_text]))
 	if detail_text != "":
 		lines.append(detail_text)
 	if hotkey != "":
-		lines.append("Hotkey: %s" % hotkey)
+		lines.append(_tf("Hotkey: %s", [hotkey]))
 	if not enabled and disabled_reason != "":
 		lines.append(disabled_reason)
 	if lines.is_empty():
-		return COMMAND_HOVER_DEFAULT_TEXT
+		return _t(COMMAND_HOVER_DEFAULT_TEXT)
 	return "\n".join(lines)
 
 func _style_panel(panel: PanelContainer, background: Color, border: Color) -> void:
