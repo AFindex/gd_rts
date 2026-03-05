@@ -4,6 +4,10 @@ signal pressed(command_id: String)
 signal hover_started(hover_data: Dictionary)
 signal hover_ended
 
+const COMMAND_FONT_BASE: int = 14
+const COMMAND_FONT_SMALL: int = 12
+const COMMAND_FONT_TINY: int = 10
+
 @onready var _button: Button = $Button
 @onready var _icon: TextureRect = $Button/Icon
 @onready var _fallback_glyph: Label = $Button/FallbackGlyph
@@ -16,6 +20,7 @@ signal hover_ended
 var _command_id: String = ""
 var _hover_payload: Dictionary = {}
 var _is_hovering: bool = false
+var _font_sizes_applied: bool = false
 
 func _ready() -> void:
 	_button.pressed.connect(_on_button_pressed)
@@ -24,7 +29,12 @@ func _ready() -> void:
 	_button.focus_mode = Control.FOCUS_NONE
 	_title_label.visible = false
 	_cost_label.visible = false
+	if not _font_sizes_applied:
+		_apply_font_sizes(COMMAND_FONT_BASE, COMMAND_FONT_SMALL, COMMAND_FONT_TINY)
 	clear_slot()
+
+func apply_font_sizes(base_size: int, small_size: int, tiny_size: int) -> void:
+	_apply_font_sizes(base_size, small_size, tiny_size)
 
 func apply_entry(entry: Dictionary) -> void:
 	_command_id = str(entry.get("id", ""))
@@ -75,6 +85,18 @@ func apply_entry(entry: Dictionary) -> void:
 	_button.tooltip_text = ""
 	if _is_hovering:
 		emit_signal("hover_started", _hover_payload.duplicate(true))
+
+func _apply_font_sizes(base_size: int, small_size: int, tiny_size: int) -> void:
+	_font_sizes_applied = true
+	_set_font_size(_fallback_glyph, base_size)
+	_set_font_size(_hotkey_label, tiny_size)
+	_set_font_size(_title_label, small_size)
+	_set_font_size(_cost_label, tiny_size)
+
+func _set_font_size(control: Control, size: int) -> void:
+	if control == null or not is_instance_valid(control):
+		return
+	control.add_theme_font_size_override("font_size", size)
 
 func clear_slot() -> void:
 	_command_id = ""

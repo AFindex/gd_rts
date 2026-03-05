@@ -13,62 +13,67 @@ const MULTI_SLOTS: int = 30
 const QUEUE_SLOTS: int = 5
 const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_item.tscn")
 const COMMAND_HOVER_DEFAULT_TEXT: String = "Hover command for details."
+const HUD_FONT_BASE: int = 14
+const HUD_FONT_SMALL: int = 12
+const HUD_FONT_TINY: int = 11
+const HUD_FONT_BUTTON: int = 13
+const HUD_FONT_GLYPH: int = 16
 
 @export var use_manual_bottom_layout: bool = true
-@export var manual_bottom_gap: float = 8.0
+@export var manual_bottom_gap: float = 2.0
 @export var manual_bottom_padding: Vector2 = Vector2(0.0, 0.0)
 @export var manual_bottom_section_ratios: Vector4 = Vector4(18.0, 40.0, 10.0, 32.0)
 @export var manual_queue_top_height: float = 84.0
 @export var manual_queue_gap: float = 0.0
 @export var manual_queue_content_padding: Vector2 = Vector2(6.0, 6.0)
 @export var manual_queue_content_right_extra_width: float = 58.0
-@export var manual_queue_content_gap: float = 6.0
+@export var manual_queue_content_gap: float = 2.0
 @export var manual_queue_hint_height: float = 26.0
 @export var manual_single_container_padding: Vector2 = Vector2(0.0, 0.0)
-@export var manual_single_container_gap: float = 6.0
+@export var manual_single_container_gap: float = 2.0
 @export var manual_single_status_ratio: float = 1.25
 @export var manual_single_aux_ratio: float = 1.0
 @export var manual_single_status_min_width: float = 200.0
 @export var manual_single_aux_min_width: float = 220.0
 @export var manual_single_status_padding: Vector2 = Vector2(6.0, 6.0)
-@export var manual_single_status_gap: float = 4.0
+@export var manual_single_status_gap: float = 2.0
 @export var manual_single_name_height: float = 20.0
 @export var manual_single_bar_height: float = 18.0
 @export var manual_single_detail_padding: Vector2 = Vector2(6.0, 6.0)
-@export var manual_single_detail_gap: float = 4.0
+@export var manual_single_detail_gap: float = 2.0
 @export var manual_single_detail_title_height: float = 18.0
 @export var manual_single_detail_armor_height: float = 18.0
 @export var manual_production_padding: Vector2 = Vector2(6.0, 6.0)
-@export var manual_production_gap: float = 4.0
+@export var manual_production_gap: float = 2.0
 @export var manual_queue_summary_height: float = 20.0
 @export var manual_queue_progress_height: float = 18.0
 @export var manual_queue_slots_height: float = 26.0
 @export var manual_matrix_content_padding: Vector2 = Vector2(6.0, 6.0)
-@export var manual_matrix_body_gap: float = 6.0
+@export var manual_matrix_body_gap: float = 2.0
 @export var manual_matrix_footer_width: float = 52.0
 @export var manual_matrix_footer_padding: Vector2 = Vector2(0.0, 0.0)
 @export var manual_matrix_page_button_height: float = 24.0
-@export var manual_matrix_page_button_gap: float = 4.0
+@export var manual_matrix_page_button_gap: float = 2.0
 @export var manual_matrix_page_button_min_width: float = 52.0
 @export var manual_matrix_columns: int = 10
-@export var manual_matrix_h_gap: float = 3.0
-@export var manual_matrix_v_gap: float = 3.0
+@export var manual_matrix_h_gap: float = 2.0
+@export var manual_matrix_v_gap: float = 2.0
 @export var manual_matrix_cell_min_size: Vector2 = Vector2(50.0, 50.0)
 @export var manual_portrait_top_height: float = 84.0
 @export var manual_portrait_gap: float = 0.0
 @export var manual_command_hover_height: float = 64.0
 @export var manual_command_hover_extra_padding: float = 6.0
-@export var manual_command_gap: float = 6.0
+@export var manual_command_gap: float = 2.0
 @export var manual_command_content_padding: Vector2 = Vector2(4.0, 4.0)
-@export var manual_command_content_gap: float = 4.0
+@export var manual_command_content_gap: float = 2.0
 @export var manual_command_subgroup_height: float = 20.0
 @export var manual_command_hint_height: float = 24.0
 @export var manual_command_grid_columns: int = 5
-@export var manual_command_grid_h_gap: float = 4.0
-@export var manual_command_grid_v_gap: float = 4.0
+@export var manual_command_grid_h_gap: float = 2.0
+@export var manual_command_grid_v_gap: float = 2.0
 @export var manual_command_grid_cell_min_size: Vector2 = Vector2(58.0, 58.0)
 @export var use_manual_top_layout: bool = true
-@export var manual_top_gap: float = 8.0
+@export var manual_top_gap: float = 2.0
 @export var manual_top_padding: Vector2 = Vector2(0.0, 0.0)
 @export var manual_top_section_ratios: Vector3 = Vector3(7.4, 1.2, 1.4)
 @export var enable_multi_mode_transition_guard: bool = true
@@ -186,6 +191,60 @@ func _tf(message: String, args: Array = []) -> String:
 		return translated
 	return translated % args
 
+func _set_font_size(control: Control, size: int) -> void:
+	if control == null or not is_instance_valid(control):
+		return
+	control.add_theme_font_size_override("font_size", size)
+
+func _apply_hud_font_sizes() -> void:
+	_set_font_size(_minerals_label, HUD_FONT_SMALL)
+	_set_font_size(_gas_label, HUD_FONT_SMALL)
+	_set_font_size(_supply_label, HUD_FONT_SMALL)
+	_set_font_size(_minerals_value, HUD_FONT_BASE)
+	_set_font_size(_gas_value, HUD_FONT_BASE)
+	_set_font_size(_supply_value, HUD_FONT_BASE)
+	_set_font_size(_legacy_info_text, HUD_FONT_TINY)
+	_set_font_size(_time_text, HUD_FONT_BASE)
+	_set_font_size(_mission_text, HUD_FONT_SMALL)
+
+	_set_font_size(_menu_button, HUD_FONT_BUTTON)
+	_set_font_size(_help_button, HUD_FONT_BUTTON)
+	_set_font_size(_idle_worker_button, HUD_FONT_BUTTON)
+	_set_font_size(_army_button, HUD_FONT_BUTTON)
+	_set_font_size(_warp_button, HUD_FONT_BUTTON)
+	_set_font_size(_ping_button, HUD_FONT_BUTTON)
+	_set_font_size(_terrain_button, HUD_FONT_BUTTON)
+
+	_set_font_size(_selection_hint_text, HUD_FONT_SMALL)
+	_set_font_size(_command_hint_text, HUD_FONT_SMALL)
+	_set_font_size(_command_hover_text, HUD_FONT_SMALL)
+	_set_font_size(_subgroup_text, HUD_FONT_SMALL)
+
+	_set_font_size(_single_name_text, HUD_FONT_BASE)
+	_set_font_size(_health_value_label, HUD_FONT_TINY)
+	_set_font_size(_shield_value_label, HUD_FONT_TINY)
+	_set_font_size(_energy_value_label, HUD_FONT_TINY)
+	_set_font_size(_single_detail_title, HUD_FONT_SMALL)
+	_set_font_size(_single_detail_text, HUD_FONT_TINY)
+	_set_font_size(_armor_type_text, HUD_FONT_TINY)
+	_set_font_size(_queue_summary_text, HUD_FONT_SMALL)
+
+	_set_font_size(_portrait_glyph, HUD_FONT_GLYPH)
+	_set_font_size(_portrait_title_label, HUD_FONT_SMALL)
+	_set_font_size(_portrait_name_text, HUD_FONT_BASE)
+	_set_font_size(_portrait_role_text, HUD_FONT_SMALL)
+
+	for label in _notification_labels:
+		_set_font_size(label, HUD_FONT_SMALL)
+	for label in _queue_slot_labels:
+		_set_font_size(label, HUD_FONT_TINY)
+	for label in _matrix_labels:
+		_set_font_size(label, HUD_FONT_TINY)
+	for button in _control_group_buttons:
+		_set_font_size(button, HUD_FONT_TINY)
+	for button in _matrix_page_buttons:
+		_set_font_size(button, HUD_FONT_TINY)
+
 func _ready() -> void:
 	_cache_control_group_buttons()
 	_setup_static_styles()
@@ -198,6 +257,7 @@ func _ready() -> void:
 	_build_queue_slot_labels()
 	_build_command_items()
 	_build_matrix_cells()
+	_apply_hud_font_sizes()
 	_apply_localized_static_texts()
 	_apply_default_hud()
 	_apply_fixed_button_theme()
@@ -440,6 +500,7 @@ func _build_queue_slot_labels() -> void:
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.text = "--"
+		_set_font_size(label, HUD_FONT_TINY)
 		slot_panel.add_child(label)
 		_queue_slots.add_child(slot_panel)
 		_queue_slot_labels.append(label)
@@ -467,6 +528,8 @@ func _build_command_items() -> void:
 			item.connect("hover_started", Callable(self, "_on_command_item_hover_started"))
 		if item.has_signal("hover_ended"):
 			item.connect("hover_ended", Callable(self, "_on_command_item_hover_ended"))
+		if item.has_method("apply_font_sizes"):
+			item.call("apply_font_sizes", HUD_FONT_BASE, HUD_FONT_SMALL, HUD_FONT_TINY)
 		_command_grid.add_child(item)
 		_command_items.append(item)
 	_apply_manual_command_grid_layout()
@@ -484,6 +547,7 @@ func _cache_control_group_buttons() -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		button.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_set_font_size(button, HUD_FONT_TINY)
 		button.text = ""
 		button.tooltip_text = ""
 		button.set_meta("group_id", button_index)
@@ -582,6 +646,7 @@ func _apply_matrix_page_buttons(page_index: int, page_count: int, matrix_visible
 			page_button.custom_minimum_size = Vector2(manual_matrix_page_button_min_width, manual_matrix_page_button_height)
 			page_button.text = str(i + 1)
 			page_button.focus_mode = Control.FOCUS_NONE
+			_set_font_size(page_button, HUD_FONT_TINY)
 			page_button.pressed.connect(Callable(self, "_on_matrix_page_button_pressed").bind(i))
 			_matrix_page_buttons_root.add_child(page_button)
 			_matrix_page_buttons.append(page_button)
@@ -594,6 +659,7 @@ func _apply_matrix_page_buttons(page_index: int, page_count: int, matrix_visible
 		page_button.tooltip_text = _tf("Selection Page %d", [i + 1])
 		var active: bool = i == page_index
 		page_button.disabled = active
+		_set_font_size(page_button, HUD_FONT_TINY)
 		_apply_matrix_page_button_style(page_button, active)
 	_apply_manual_matrix_footer_layout()
 
@@ -643,6 +709,7 @@ func _build_matrix_cells() -> void:
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		label.text = "--"
+		_set_font_size(label, HUD_FONT_TINY)
 		cell.add_child(label)
 		_matrix_grid.add_child(cell)
 		_matrix_panels.append(cell)
