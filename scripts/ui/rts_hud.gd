@@ -8,7 +8,7 @@ signal minimap_navigate_requested(world_position: Vector3)
 signal ping_button_pressed
 signal ping_requested(world_position: Vector3)
 
-const COMMAND_SLOTS: int = 15
+const COMMAND_SLOTS: int = 20
 const MULTI_SLOTS: int = 30
 const QUEUE_SLOTS: int = 5
 const COMMAND_ITEM_SCENE: PackedScene = preload("res://scenes/ui/skill_command_item.tscn")
@@ -24,7 +24,7 @@ const HUD_FONT_GLYPH: int = 16
 @export var manual_bottom_min_height: float = 180.0
 @export var manual_bottom_gap: float = 2.0
 @export var manual_bottom_padding: Vector2 = Vector2(0.0, 0.0)
-@export var manual_bottom_section_ratios: Vector4 = Vector4(24.0, 36.0, 12.0, 28.0)
+@export var manual_bottom_section_ratios: Vector4 = Vector4(24.0, 32.0, 10.0, 34.0)
 @export var manual_queue_top_height: float = 24.0
 @export var manual_queue_gap: float = 0.0
 @export var manual_queue_content_padding: Vector2 = Vector2(6.0, 6.0)
@@ -74,6 +74,10 @@ const HUD_FONT_GLYPH: int = 16
 @export var manual_command_grid_h_gap: float = 2.0
 @export var manual_command_grid_v_gap: float = 2.0
 @export var manual_command_grid_cell_min_size: Vector2 = Vector2(58.0, 58.0)
+@export var manual_command_hover_enabled: bool = true
+@export var manual_command_hint_visible: bool = false
+@export var manual_command_subgroup_visible: bool = false
+@export var manual_portrait_text_visible: bool = false
 @export var manual_selection_button_column_width: float = 46.0
 @export var manual_selection_button_gap: float = 4.0
 @export var manual_selection_button_min_height: float = 22.0
@@ -164,6 +168,7 @@ const HUD_FONT_GLYPH: int = 16
 @onready var _portrait_title_label: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitTitle
 @onready var _portrait_name_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitNameText
 @onready var _portrait_role_text: Label = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitRoleText
+@onready var _portrait_viewport: Control = $BottomHUD/BottomRow/PortraitColumn/PortraitPanel/PortraitContent/PortraitViewport
 @onready var _command_hover_text: Label = $BottomHUD/BottomRow/CommandColumn/CommandHoverPanel/CommandHoverText
 @onready var _command_content: Control = $BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent
 @onready var _subgroup_text: Label = $BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent/SubgroupText
@@ -258,6 +263,28 @@ func _apply_hud_font_sizes() -> void:
 	for button in _matrix_page_buttons:
 		_set_font_size(button, HUD_FONT_TINY)
 
+func _apply_text_visibility_prefs() -> void:
+	if _portrait_title_label != null:
+		_portrait_title_label.visible = manual_portrait_text_visible
+	if _portrait_name_text != null:
+		_portrait_name_text.visible = manual_portrait_text_visible
+	if _portrait_role_text != null:
+		_portrait_role_text.visible = manual_portrait_text_visible
+	if _portrait_viewport != null:
+		_portrait_viewport.visible = true
+
+	if _command_hover_panel != null:
+		_command_hover_panel.visible = true
+		_command_hover_panel.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
+		_command_hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if _command_hover_text != null:
+		_command_hover_text.visible = false
+		_command_hover_text.clip_text = true
+	if _subgroup_text != null:
+		_subgroup_text.visible = manual_command_subgroup_visible
+	if _command_hint_text != null:
+		_command_hint_text.visible = manual_command_hint_visible
+
 func _ready() -> void:
 	_cache_control_group_buttons()
 	_setup_static_styles()
@@ -272,6 +299,7 @@ func _ready() -> void:
 	_build_command_items()
 	_build_matrix_cells()
 	_apply_hud_font_sizes()
+	_apply_text_visibility_prefs()
 	_apply_localized_static_texts()
 	_apply_default_hud()
 	_apply_fixed_button_theme()
@@ -833,6 +861,8 @@ func _on_command_item_pressed(command_id: String) -> void:
 	emit_signal("command_pressed", command_id)
 
 func _on_command_item_hover_started(hover_data: Dictionary) -> void:
+	if not manual_command_hover_enabled:
+		return
 	if _command_hover_text == null or _command_hover_panel == null:
 		return
 	_command_hover_panel.visible = true
@@ -840,6 +870,8 @@ func _on_command_item_hover_started(hover_data: Dictionary) -> void:
 	_refresh_command_hover_layout_for_text_change()
 
 func _on_command_item_hover_ended() -> void:
+	if not manual_command_hover_enabled:
+		return
 	_set_command_hover_default()
 
 func _apply_notifications(notifications: Array[String]) -> void:
@@ -852,11 +884,17 @@ func _apply_notifications(notifications: Array[String]) -> void:
 func _set_command_hover_default() -> void:
 	if _command_hover_text == null or _command_hover_panel == null:
 		return
+	if not manual_command_hover_enabled:
+		_command_hover_panel.visible = false
+		_command_hover_text.text = ""
+		return
 	_command_hover_panel.visible = false
 	_command_hover_text.text = ""
 	_refresh_command_hover_layout_for_text_change()
 
 func _refresh_command_hover_layout_for_text_change() -> void:
+	if not manual_command_hover_enabled:
+		return
 	if not use_manual_bottom_layout:
 		return
 	if _command_column == null or not is_instance_valid(_command_column):
@@ -886,6 +924,8 @@ func _format_command_hover_text(hover_data: Dictionary) -> String:
 		lines.append(_tf("Cost: %s", [cost_text]))
 	if detail_text != "":
 		lines.append(detail_text)
+	else:
+		lines.append(" ")
 	if hotkey != "":
 		lines.append(_tf("Hotkey: %s", [hotkey]))
 	if not enabled and disabled_reason != "":
@@ -1177,6 +1217,23 @@ func _apply_manual_bottom_row_layout() -> void:
 		var applied_expand: float = minf(queue_right_expand, maxf(0.0, command_width - 1.0))
 		section_widths[1] += applied_expand
 		section_widths[3] -= applied_expand
+
+	# Favor square command grid: expand command width by squeezing queue + portrait.
+	if section_widths.size() >= 4:
+		var columns: int = maxi(1, manual_command_grid_columns)
+		var rows: int = int(ceil(float(COMMAND_SLOTS) / float(columns)))
+		var desired_command_width: float = maxf(1.0, usable_height * float(columns) / float(maxi(1, rows)))
+		var delta: float = desired_command_width - section_widths[3]
+		if delta > 0.5:
+			var shrink_pool: float = maxf(0.0, section_widths[1] + section_widths[2] - 2.0)
+			var take: float = minf(delta, shrink_pool)
+			if take > 0.0:
+				var queue_share: float = 0.0
+				var pool_total: float = maxf(0.001, section_widths[1] + section_widths[2])
+				queue_share = take * (section_widths[1] / pool_total)
+				section_widths[1] = maxf(1.0, section_widths[1] - queue_share)
+				section_widths[2] = maxf(1.0, section_widths[2] - (take - queue_share))
+				section_widths[3] += take
 
 	var x: float = pad_x
 	var y: float = pad_y
@@ -1625,15 +1682,24 @@ func _apply_manual_command_column_layout() -> void:
 	if area_size.x <= 1.0 or area_size.y <= 1.0:
 		return
 	var gap: float = maxf(0.0, manual_command_gap)
-	var max_hover_height: float = maxf(0.0, area_size.y - gap)
-	var base_hover_height: float = clampf(manual_command_hover_height, 0.0, max_hover_height)
-	var hover_height: float = clampf(_compute_command_hover_panel_height(area_size.x, base_hover_height), base_hover_height, max_hover_height)
-	# Keep hover panel bottom anchored to base height, so extra height expands upward.
-	var hover_bottom_y: float = base_hover_height
-	var hover_y: float = hover_bottom_y - hover_height
-	var command_y: float = hover_bottom_y + gap
+	var hover_height: float = 0.0
+	var command_y: float = 0.0
+	if manual_command_hover_enabled:
+		var max_hover_height: float = maxf(0.0, area_size.y - gap)
+		var base_hover_height: float = clampf(manual_command_hover_height, 0.0, max_hover_height)
+		hover_height = clampf(_compute_command_hover_panel_height(area_size.x, base_hover_height), base_hover_height, max_hover_height)
+		var hover_y: float = -hover_height - gap
+		_set_manual_rect(_command_hover_panel, Vector2(0.0, hover_y), Vector2(area_size.x, hover_height))
+		var hover_has_text: bool = _command_hover_text != null and _command_hover_text.text.strip_edges() != ""
+		_command_hover_panel.visible = true
+		_command_hover_panel.self_modulate = Color(1.0, 1.0, 1.0, 1.0 if hover_has_text else 0.0)
+		_command_hover_panel.mouse_filter = Control.MOUSE_FILTER_STOP if hover_has_text else Control.MOUSE_FILTER_IGNORE
+		if _command_hover_text != null:
+			_command_hover_text.visible = hover_has_text
+	else:
+		_set_manual_rect(_command_hover_panel, Vector2(0.0, 0.0), Vector2(area_size.x, 0.0))
+		_command_hover_panel.visible = false
 	var panel_height: float = maxf(0.0, area_size.y - command_y)
-	_set_manual_rect(_command_hover_panel, Vector2(0.0, hover_y), Vector2(area_size.x, hover_height))
 	_set_manual_rect(_command_panel, Vector2(0.0, command_y), Vector2(area_size.x, panel_height))
 	var command_content_rect: Rect2 = _get_panel_content_rect(_command_panel)
 	_set_manual_rect(_command_content, command_content_rect.position, command_content_rect.size)
@@ -1642,8 +1708,8 @@ func _apply_manual_command_column_layout() -> void:
 func _compute_command_hover_panel_height(panel_width: float, min_height: float) -> float:
 	if _command_hover_panel == null or _command_hover_text == null:
 		return min_height
-	var hover_text: String = _command_hover_text.text.strip_edges()
-	if hover_text == "":
+	var raw_text: String = _command_hover_text.text
+	if raw_text.strip_edges() == "":
 		return min_height
 	var style: StyleBox = _command_hover_panel.get_theme_stylebox("panel")
 	var content_width: float = maxf(1.0, panel_width)
@@ -1662,25 +1728,31 @@ func _compute_command_hover_panel_height(panel_width: float, min_height: float) 
 	if _command_hover_text.has_theme_constant("line_spacing"):
 		line_spacing = float(_command_hover_text.get_theme_constant("line_spacing"))
 
-	var raw_lines: PackedStringArray = hover_text.split("\n", false)
+	var raw_lines: PackedStringArray = raw_text.split("\n", false)
 	if raw_lines.is_empty():
 		raw_lines.append("")
 	var estimated_line_count: int = 0
-	for raw_line in raw_lines:
-		var segment: String = raw_line
-		if segment == "":
-			segment = " "
-		var wrapped_lines: int = 1
-		if font != null:
-			var line_width: float = font.get_string_size(segment, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
-			wrapped_lines = maxi(1, int(ceil(line_width / content_width)))
-		else:
-			var approx_chars_per_line: int = maxi(4, int(floor(content_width / 8.0)))
-			wrapped_lines = maxi(1, int(ceil(float(segment.length()) / float(approx_chars_per_line))))
-		estimated_line_count += wrapped_lines
+	if _command_hover_text != null:
+		var prev_size: Vector2 = _command_hover_text.size
+		_command_hover_text.size = Vector2(content_width, prev_size.y)
+		estimated_line_count = maxi(1, _command_hover_text.get_line_count())
+		_command_hover_text.size = prev_size
+	if estimated_line_count <= 0:
+		for raw_line in raw_lines:
+			var segment: String = raw_line
+			if segment == "":
+				segment = " "
+			var wrapped_lines: int = 1
+			if font != null:
+				var line_width: float = font.get_string_size(segment, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+				wrapped_lines = maxi(1, int(ceil(line_width / content_width)))
+			else:
+				var approx_chars_per_line: int = maxi(4, int(floor(content_width / 8.0)))
+				wrapped_lines = maxi(1, int(ceil(float(segment.length()) / float(approx_chars_per_line))))
+			estimated_line_count += wrapped_lines
 
 	var text_height: float = float(estimated_line_count) * line_height + float(maxi(0, estimated_line_count - 1)) * line_spacing
-	var safety_extra: float = line_height + maxf(0.0, manual_command_hover_extra_padding)
+	var safety_extra: float = line_height * 2.0 + maxf(0.0, manual_command_hover_extra_padding)
 	return ceil(maxf(min_height, text_height + extra_vertical + safety_extra))
 
 func _apply_manual_command_content_layout() -> void:
@@ -1699,21 +1771,31 @@ func _apply_manual_command_content_layout() -> void:
 
 	var y: float = pad_y
 	var subgroup_height: float = 0.0
-	if _subgroup_text.visible:
+	if _subgroup_text != null and not manual_command_subgroup_visible:
+		_subgroup_text.visible = false
+	if _subgroup_text != null and _subgroup_text.visible:
 		subgroup_height = clampf(manual_command_subgroup_height, 0.0, content_height)
 		var min_subgroup_height: float = _subgroup_text.get_combined_minimum_size().y
 		subgroup_height = clampf(maxf(subgroup_height, min_subgroup_height), 0.0, content_height)
 		_set_manual_rect(_subgroup_text, Vector2(pad_x, y), Vector2(content_width, subgroup_height))
 		y += subgroup_height + gap
 	else:
-		_set_manual_rect(_subgroup_text, Vector2(pad_x, y), Vector2(content_width, 0.0))
+		if _subgroup_text != null:
+			_set_manual_rect(_subgroup_text, Vector2(pad_x, y), Vector2(content_width, 0.0))
 
 	var used_height: float = y - pad_y
-	var hint_height: float = clampf(manual_command_hint_height, 0.0, maxf(0.0, content_height - used_height))
-	var grid_height: float = maxf(0.0, content_height - used_height - hint_height - gap)
+	var show_hint: bool = manual_command_hint_visible and _command_hint_text != null
+	if _command_hint_text != null:
+		_command_hint_text.visible = show_hint
+	var hint_height: float = 0.0
+	if show_hint:
+		hint_height = clampf(manual_command_hint_height, 0.0, maxf(0.0, content_height - used_height))
+	var gap_after_grid: float = gap if hint_height > 0.0 else 0.0
+	var grid_height: float = maxf(0.0, content_height - used_height - hint_height - gap_after_grid)
 
 	_set_manual_rect(_command_grid, Vector2(pad_x, y), Vector2(content_width, grid_height))
-	_set_manual_rect(_command_hint_text, Vector2(pad_x, y + grid_height + gap), Vector2(content_width, hint_height))
+	if _command_hint_text != null:
+		_set_manual_rect(_command_hint_text, Vector2(pad_x, y + grid_height + gap_after_grid), Vector2(content_width, hint_height))
 	_apply_manual_command_grid_layout()
 
 func _apply_manual_command_grid_layout() -> void:
