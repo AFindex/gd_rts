@@ -14,6 +14,12 @@ const BUILDING_HEALTH_BAR_WIDTH: float = 1.42
 const BUILDING_HEALTH_BAR_HEIGHT: float = 0.14
 const BUILDING_HEALTH_BAR_PADDING: float = 0.02
 
+@export var sprite_match_collider: bool = true
+@export var sprite_outline_enabled: bool = true
+@export var sprite_outline_color: Color = Color(0.25, 0.95, 1.0, 0.9)
+@export var sprite_outline_scale: float = 1.1
+@export var sprite_outline_check_interval: float = 0.12
+
 signal production_finished(unit_kind: String, spawn_position: Vector3)
 signal construction_state_changed(event_type: String, payload: Dictionary)
 
@@ -66,18 +72,26 @@ var _health_bar_root: Node3D = null
 var _health_bar_background: MeshInstance3D = null
 var _health_bar_fill: MeshInstance3D = null
 var _health_bar_fill_full_width: float = maxf(0.02, BUILDING_HEALTH_BAR_WIDTH - BUILDING_HEALTH_BAR_PADDING * 2.0)
+var _sprite_base_scale: Vector3 = Vector3.ONE
+var _sprite_base_ready: bool = false
+var _outline_sprite: Sprite3D = null
+var _outline_material: StandardMaterial3D = null
+var _outline_timer: float = 0.0
+var _outline_visible: bool = false
 
 func _ready() -> void:
 	add_to_group("selectable_building")
 	_apply_building_config(building_kind)
 	_health = max_health
 	_refresh_dropoff_group()
+	_sync_sprite_to_collider()
 	_apply_building_visual()
 	_ensure_health_bar_nodes()
 	_update_health_bar_visual()
 	_selection_ring.visible = false
 
 func _process(delta: float) -> void:
+	_update_sprite_outline(delta)
 	if _rally_alert_timer > 0.0:
 		_rally_alert_timer = maxf(0.0, _rally_alert_timer - delta)
 	if _construction_active:
@@ -594,41 +608,165 @@ func _apply_building_visual() -> void:
 	if _sprite == null:
 		return
 	var building_color: Color
+	var scale_factor: float = 1.0
 	if building_kind == "barracks":
 		building_color = Color(1.0, 0.6, 0.25, 1.0)
-		_sprite.scale = Vector3(1.3, 1.3, 1.3)
+		scale_factor = 1.3
 	elif building_kind == "tower":
 		building_color = Color(0.95, 0.72, 0.3, 1.0)
-		_sprite.scale = Vector3(1.15, 1.15, 1.15)
+		scale_factor = 1.15
 	elif building_kind == "academy":
 		building_color = Color(0.5, 0.88, 1.0, 1.0)
-		_sprite.scale = Vector3(1.32, 1.32, 1.32)
+		scale_factor = 1.32
 	elif building_kind == "engineering_bay":
 		building_color = Color(0.72, 0.96, 0.62, 1.0)
-		_sprite.scale = Vector3(1.34, 1.34, 1.34)
+		scale_factor = 1.34
 	elif building_kind == "tech_lab":
 		building_color = Color(0.98, 0.72, 0.46, 1.0)
-		_sprite.scale = Vector3(1.36, 1.36, 1.36)
+		scale_factor = 1.36
 	elif building_kind == "warp_gate":
 		building_color = Color(0.82, 0.58, 1.0, 1.0)
-		_sprite.scale = Vector3(1.35, 1.35, 1.35)
+		scale_factor = 1.35
 	elif building_kind == "psionic_relay":
 		building_color = Color(0.68, 0.76, 1.0, 1.0)
-		_sprite.scale = Vector3(1.28, 1.28, 1.28)
+		scale_factor = 1.28
 	elif building_kind == "bio_vat":
 		building_color = Color(0.86, 0.95, 0.56, 1.0)
-		_sprite.scale = Vector3(1.33, 1.33, 1.33)
+		scale_factor = 1.33
 	elif building_kind == "void_core":
 		building_color = Color(1.0, 0.64, 0.8, 1.0)
-		_sprite.scale = Vector3(1.38, 1.38, 1.38)
+		scale_factor = 1.38
 	else:
 		building_color = Color(0.95, 0.95, 1.0, 1.0)
-		_sprite.scale = Vector3(1.45, 1.45, 1.45)
+		scale_factor = 1.45
 	if team_id != 1:
 		building_color = Color(0.55, 0.75, 1.0, 1.0)
 	_base_tint = building_color
+	if not _sprite_base_ready:
+		_sync_sprite_to_collider()
+	var effective_scale: Vector3 = _sprite_base_scale
+	if not sprite_match_collider:
+		effective_scale *= scale_factor
+	_sprite.scale = effective_scale
 	_sprite.modulate = building_color
+	_ensure_outline_sprite()
+	_sync_outline_sprite_visual()
 	_update_health_bar_visual()
+
+func _sync_sprite_to_collider() -> void:
+	if _sprite == null or not sprite_match_collider:
+		return
+	var desired_size: Vector2 = _get_collider_sprite_size()
+	if desired_size == Vector2.ZERO:
+		return
+	var texture: Texture2D = _sprite.texture
+	if texture == null:
+		return
+	var tex_size: Vector2 = texture.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+	var base_world: Vector2 = tex_size * _sprite.pixel_size
+	_sprite_base_scale = Vector3(
+		desired_size.x / maxf(0.001, base_world.x),
+		desired_size.y / maxf(0.001, base_world.y),
+		1.0
+	)
+	_sprite_base_ready = true
+	_sync_outline_sprite_visual()
+
+func _get_collider_sprite_size() -> Vector2:
+	var shape_node: CollisionShape3D = get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null or shape_node.shape == null:
+		return Vector2.ZERO
+	var shape: Shape3D = shape_node.shape
+	if shape is BoxShape3D:
+		var box: BoxShape3D = shape as BoxShape3D
+		return Vector2(maxf(box.size.x, box.size.z), box.size.y)
+	if shape is CapsuleShape3D:
+		var capsule: CapsuleShape3D = shape as CapsuleShape3D
+		return Vector2(capsule.radius * 2.0, capsule.height + capsule.radius * 2.0)
+	if shape is CylinderShape3D:
+		var cylinder: CylinderShape3D = shape as CylinderShape3D
+		return Vector2(cylinder.radius * 2.0, cylinder.height)
+	if shape is SphereShape3D:
+		var sphere: SphereShape3D = shape as SphereShape3D
+		return Vector2(sphere.radius * 2.0, sphere.radius * 2.0)
+	return Vector2.ZERO
+
+func _ensure_outline_sprite() -> void:
+	if _sprite == null or not sprite_outline_enabled:
+		return
+	if _outline_sprite != null and is_instance_valid(_outline_sprite):
+		return
+	_outline_sprite = Sprite3D.new()
+	_outline_sprite.name = "OutlineSprite3D"
+	_outline_sprite.billboard = _sprite.billboard
+	_outline_sprite.texture = _sprite.texture
+	_outline_sprite.pixel_size = _sprite.pixel_size
+	_outline_sprite.position = _sprite.position
+	_outline_sprite.scale = _sprite.scale * sprite_outline_scale
+	_outline_sprite.visible = false
+	_outline_sprite.render_priority = _sprite.render_priority - 1
+	_outline_material = StandardMaterial3D.new()
+	_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_outline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_outline_material.no_depth_test = true
+	_outline_material.albedo_color = sprite_outline_color
+	_outline_material.albedo_texture = _sprite.texture
+	_outline_sprite.material_override = _outline_material
+	add_child(_outline_sprite)
+
+func _sync_outline_sprite_visual() -> void:
+	if _outline_sprite == null or not is_instance_valid(_outline_sprite) or _sprite == null:
+		return
+	_outline_sprite.texture = _sprite.texture
+	_outline_sprite.pixel_size = _sprite.pixel_size
+	_outline_sprite.position = _sprite.position
+	_outline_sprite.scale = _sprite.scale * sprite_outline_scale
+	if _outline_material != null:
+		_outline_material.albedo_color = sprite_outline_color
+		_outline_material.albedo_texture = _sprite.texture
+
+func _update_sprite_outline(delta: float) -> void:
+	if not sprite_outline_enabled or _sprite == null:
+		_set_outline_visible(false)
+		return
+	if _outline_sprite == null or not is_instance_valid(_outline_sprite):
+		_ensure_outline_sprite()
+	if _outline_sprite == null:
+		return
+	_outline_timer -= delta
+	if _outline_timer > 0.0:
+		return
+	_outline_timer = maxf(0.02, sprite_outline_check_interval)
+	var occluded: bool = _is_sprite_occluded()
+	_set_outline_visible(occluded)
+
+func _set_outline_visible(visible: bool) -> void:
+	if _outline_visible == visible:
+		return
+	_outline_visible = visible
+	if _outline_sprite != null and is_instance_valid(_outline_sprite):
+		_outline_sprite.visible = visible
+
+func _is_sprite_occluded() -> bool:
+	var camera: Camera3D = get_viewport().get_camera_3d()
+	if camera == null:
+		return false
+	if not is_inside_tree():
+		return false
+	var world: World3D = get_world_3d()
+	if world == null:
+		return false
+	var origin: Vector3 = camera.global_position
+	var target: Vector3 = _sprite.global_position
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, target)
+	query.collide_with_areas = false
+	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var collider: Object = hit.get("collider")
+	return collider != null and collider != self
 
 func _format_unit_kind(unit_kind: String) -> String:
 	if unit_kind == "worker":

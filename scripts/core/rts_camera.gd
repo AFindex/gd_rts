@@ -70,9 +70,9 @@ func _edge_scroll_direction() -> Vector2:
 	elif mouse_pos.x >= size.x - margin:
 		dir.x += 1.0
 	if mouse_pos.y <= margin:
-		dir.y -= 1.0
-	elif mouse_pos.y >= size.y - margin:
 		dir.y += 1.0
+	elif mouse_pos.y >= size.y - margin:
+		dir.y -= 1.0
 	return dir
 
 func _is_mouse_over_ui(viewport: Viewport) -> bool:

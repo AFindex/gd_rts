@@ -9,6 +9,12 @@ const HEALTH_BAR_WIDTH: float = 1.0
 const HEALTH_BAR_HEIGHT: float = 0.12
 const HEALTH_BAR_PADDING: float = 0.02
 
+@export var sprite_match_collider: bool = true
+@export var sprite_outline_enabled: bool = true
+@export var sprite_outline_color: Color = Color(0.25, 0.95, 1.0, 0.9)
+@export var sprite_outline_scale: float = 1.1
+@export var sprite_outline_check_interval: float = 0.12
+
 @export var move_speed: float = 6.0
 @export var is_worker: bool = false
 @export var team_id: int = 1
@@ -90,6 +96,11 @@ var _health_bar_fill: MeshInstance3D = null
 var _health_bar_fill_full_width: float = maxf(0.02, HEALTH_BAR_WIDTH - HEALTH_BAR_PADDING * 2.0)
 var _is_selected: bool = false
 var _is_hovered: bool = false
+var _sprite_base_scale: Vector3 = Vector3.ONE
+var _outline_sprite: Sprite3D = null
+var _outline_material: StandardMaterial3D = null
+var _outline_timer: float = 0.0
+var _outline_visible: bool = false
 
 signal command_queue_changed
 
@@ -99,11 +110,16 @@ func _ready() -> void:
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
+	_sync_sprite_to_collider()
+	_ensure_outline_sprite()
 	_ensure_health_bar_nodes()
 	_update_health_bar_visual()
 	_default_collision_layer = collision_layer
 	_default_collision_mask = collision_mask
 	_setup_navigation_agent()
+
+func _process(delta: float) -> void:
+	_update_sprite_outline(delta)
 
 func _physics_process(delta: float) -> void:
 	if _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE:
@@ -1098,7 +1114,125 @@ func _apply_role_visual() -> void:
 		unit_color = Color(0.45, 0.72, 1.0, 1.0)
 	_base_tint = unit_color
 	_sprite.modulate = unit_color
+	_sync_outline_sprite_visual()
 	_update_health_bar_visual()
+
+func _sync_sprite_to_collider() -> void:
+	if not sprite_match_collider or _sprite == null:
+		return
+	var desired_size: Vector2 = _get_collider_sprite_size()
+	if desired_size == Vector2.ZERO:
+		return
+	var texture: Texture2D = _sprite.texture
+	if texture == null:
+		return
+	var tex_size: Vector2 = texture.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+	var base_world: Vector2 = tex_size * _sprite.pixel_size
+	_sprite_base_scale = Vector3(
+		desired_size.x / maxf(0.001, base_world.x),
+		desired_size.y / maxf(0.001, base_world.y),
+		1.0
+	)
+	_sprite.scale = _sprite_base_scale
+	_sync_outline_sprite_visual()
+
+func _get_collider_sprite_size() -> Vector2:
+	var shape_node: CollisionShape3D = get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null or shape_node.shape == null:
+		return Vector2.ZERO
+	var shape: Shape3D = shape_node.shape
+	if shape is CapsuleShape3D:
+		var capsule: CapsuleShape3D = shape as CapsuleShape3D
+		var width: float = capsule.radius * 2.0
+		var height: float = capsule.height + capsule.radius * 2.0
+		return Vector2(width, height)
+	if shape is BoxShape3D:
+		var box: BoxShape3D = shape as BoxShape3D
+		return Vector2(maxf(box.size.x, box.size.z), box.size.y)
+	if shape is CylinderShape3D:
+		var cylinder: CylinderShape3D = shape as CylinderShape3D
+		return Vector2(cylinder.radius * 2.0, cylinder.height)
+	if shape is SphereShape3D:
+		var sphere: SphereShape3D = shape as SphereShape3D
+		return Vector2(sphere.radius * 2.0, sphere.radius * 2.0)
+	return Vector2.ZERO
+
+func _ensure_outline_sprite() -> void:
+	if _sprite == null or not sprite_outline_enabled:
+		return
+	if _outline_sprite != null and is_instance_valid(_outline_sprite):
+		return
+	_outline_sprite = Sprite3D.new()
+	_outline_sprite.name = "OutlineSprite3D"
+	_outline_sprite.billboard = _sprite.billboard
+	_outline_sprite.texture = _sprite.texture
+	_outline_sprite.pixel_size = _sprite.pixel_size
+	_outline_sprite.position = _sprite.position
+	_outline_sprite.scale = _sprite.scale * sprite_outline_scale
+	_outline_sprite.visible = false
+	_outline_sprite.render_priority = _sprite.render_priority - 1
+	_outline_material = StandardMaterial3D.new()
+	_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_outline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_outline_material.no_depth_test = true
+	_outline_material.albedo_color = sprite_outline_color
+	_outline_material.albedo_texture = _sprite.texture
+	_outline_sprite.material_override = _outline_material
+	add_child(_outline_sprite)
+
+func _sync_outline_sprite_visual() -> void:
+	if _outline_sprite == null or not is_instance_valid(_outline_sprite) or _sprite == null:
+		return
+	_outline_sprite.texture = _sprite.texture
+	_outline_sprite.pixel_size = _sprite.pixel_size
+	_outline_sprite.position = _sprite.position
+	_outline_sprite.scale = _sprite.scale * sprite_outline_scale
+	if _outline_material != null:
+		_outline_material.albedo_color = sprite_outline_color
+		_outline_material.albedo_texture = _sprite.texture
+
+func _update_sprite_outline(delta: float) -> void:
+	if not sprite_outline_enabled or _sprite == null:
+		_set_outline_visible(false)
+		return
+	if _outline_sprite == null or not is_instance_valid(_outline_sprite):
+		_ensure_outline_sprite()
+	if _outline_sprite == null:
+		return
+	_outline_timer -= delta
+	if _outline_timer > 0.0:
+		return
+	_outline_timer = maxf(0.02, sprite_outline_check_interval)
+	var occluded: bool = _is_sprite_occluded()
+	_set_outline_visible(occluded)
+
+func _set_outline_visible(visible: bool) -> void:
+	if _outline_visible == visible:
+		return
+	_outline_visible = visible
+	if _outline_sprite != null and is_instance_valid(_outline_sprite):
+		_outline_sprite.visible = visible
+
+func _is_sprite_occluded() -> bool:
+	var camera: Camera3D = get_viewport().get_camera_3d()
+	if camera == null:
+		return false
+	if not is_inside_tree():
+		return false
+	var world: World3D = get_world_3d()
+	if world == null:
+		return false
+	var origin: Vector3 = camera.global_position
+	var target: Vector3 = _sprite.global_position
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, target)
+	query.collide_with_areas = false
+	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var collider: Object = hit.get("collider")
+	return collider != null and collider != self
 
 func _apply_runtime_config_for_role() -> void:
 	var unit_kind: String = get_unit_kind()
