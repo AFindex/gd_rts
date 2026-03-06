@@ -5,6 +5,8 @@ const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
 const RTS_INTERACTION: Script = preload("res://scripts/core/rts_interaction.gd")
 const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65
 const UNIT_COLLISION_LAYER_BIT: int = 1 << 1
+const BUILDING_COLLISION_LAYER_BIT: int = 1 << 2
+const WORKER_COLLECTION_GHOST_LAYER_BIT: int = 1 << 10
 const HEALTH_BAR_WORLD_HEIGHT: float = 2.02
 const HEALTH_BAR_WIDTH: float = 1.0
 const HEALTH_BAR_HEIGHT: float = 0.12
@@ -2273,6 +2275,8 @@ func _sync_worker_collection_navigation_profile() -> void:
 		or _mining_state == MiningState.MOVING_TO_MINERAL
 		or _mining_state == MiningState.QUEUED
 		or _mining_state == MiningState.HARVESTING
+		or _mining_state == MiningState.MOVING_TO_BASE
+		or _mining_state == MiningState.DELIVERING
 	)
 	if should_use_collection_profile == _worker_collection_profile_active:
 		return
@@ -2327,11 +2331,26 @@ func _sync_navigation_precision_profile() -> void:
 
 func _refresh_unit_collision_mask() -> void:
 	if _construction_hidden:
+		collision_layer = 0
 		collision_mask = 0
 		return
+	var desired_layer: int = _default_collision_layer
 	var desired_mask: int = _default_collision_mask
-	if _worker_collection_profile_active or _unit_collision_ghosted:
+	if _worker_collection_profile_active:
+		# While worker is in collection/return profile, remove unit/building collision
+		# and keep a dedicated ghost layer for ray picking.
+		desired_layer &= ~UNIT_COLLISION_LAYER_BIT
+		desired_layer |= WORKER_COLLECTION_GHOST_LAYER_BIT
 		desired_mask &= ~UNIT_COLLISION_LAYER_BIT
+		desired_mask &= ~BUILDING_COLLISION_LAYER_BIT
+	elif _unit_collision_ghosted:
+		# Congestion ghosting only needs to pass through other units.
+		desired_layer &= ~UNIT_COLLISION_LAYER_BIT
+		desired_layer |= WORKER_COLLECTION_GHOST_LAYER_BIT
+		desired_mask &= ~UNIT_COLLISION_LAYER_BIT
+	else:
+		desired_layer &= ~WORKER_COLLECTION_GHOST_LAYER_BIT
+	collision_layer = desired_layer
 	collision_mask = desired_mask
 
 func _set_unit_collision_ghosted(ghosted: bool) -> void:
