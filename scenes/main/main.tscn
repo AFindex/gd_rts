@@ -64,6 +64,7 @@ is_worker = true
 [node name="WorkerC3" parent="Units" unique_id=1420058558 instance=ExtResource("3_unit")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3844347, 0, 8.1577)
 is_worker = true
+debug_mining_log = true
 
 [node name="WorkerA4" parent="Units" unique_id=398429407 instance=ExtResource("3_unit")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 13.127341, 3.8146973e-06, -6.6556396)

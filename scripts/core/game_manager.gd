@@ -4288,7 +4288,7 @@ func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2, 
 	if resource_node == null:
 		return
 
-	var dropoff: Node3D = _nearest_dropoff(resource_node.global_position)
+	var dropoff: Node3D = _nearest_dropoff(resource_node.global_position, PLAYER_TEAM_ID)
 	if dropoff == null:
 		_issue_move_command(fallback_screen_pos, queue_command)
 		return
@@ -4701,7 +4701,10 @@ func _issue_return_command(queue_command: bool = false) -> void:
 		var unit_3d: Node3D = unit_node as Node3D
 		if unit_3d == null:
 			continue
-		var dropoff: Node3D = _nearest_dropoff(unit_3d.global_position)
+		var unit_team_id: int = PLAYER_TEAM_ID
+		if unit_3d.has_method("get_team_id"):
+			unit_team_id = int(unit_3d.call("get_team_id"))
+		var dropoff: Node3D = _nearest_dropoff(unit_3d.global_position, unit_team_id)
 		if dropoff == null:
 			continue
 		var return_command: RTSCommand = RTS_COMMAND.make_return(dropoff, queue_command)
@@ -4745,7 +4748,7 @@ func _apply_rally_point_command(resolved: Dictionary, screen_pos: Vector2, appen
 	elif rejected_count > 0:
 		_play_feedback_tone("error")
 
-func _nearest_dropoff(from_position: Vector3) -> Node3D:
+func _nearest_dropoff(from_position: Vector3, team_filter: int = -1) -> Node3D:
 	var nearest: Node3D = null
 	var best_distance_sq: float = INF
 	var dropoff_nodes: Array[Node] = get_tree().get_nodes_in_group("resource_dropoff")
@@ -4753,10 +4756,31 @@ func _nearest_dropoff(from_position: Vector3) -> Node3D:
 		var dropoff: Node3D = node as Node3D
 		if dropoff == null:
 			continue
+		if dropoff.has_method("is_alive") and not bool(dropoff.call("is_alive")):
+			continue
+		if team_filter >= 0 and dropoff.has_method("get_team_id"):
+			if int(dropoff.call("get_team_id")) != team_filter:
+				continue
 		var distance_sq: float = from_position.distance_squared_to(dropoff.global_position)
 		if distance_sq < best_distance_sq:
 			best_distance_sq = distance_sq
 			nearest = dropoff
+	return nearest
+
+func _nearest_resource_node(from_position: Vector3, max_distance: float = INF) -> Node3D:
+	var nearest: Node3D = null
+	var best_distance_sq: float = max_distance * max_distance
+	var resource_nodes: Array[Node] = get_tree().get_nodes_in_group("resource_node")
+	for node in resource_nodes:
+		var resource_node: Node3D = node as Node3D
+		if resource_node == null or not is_instance_valid(resource_node):
+			continue
+		if resource_node.has_method("is_depleted") and bool(resource_node.call("is_depleted")):
+			continue
+		var distance_sq: float = from_position.distance_squared_to(resource_node.global_position)
+		if distance_sq < best_distance_sq:
+			best_distance_sq = distance_sq
+			nearest = resource_node
 	return nearest
 
 func _start_building_placement(kind: String) -> void:
@@ -5276,15 +5300,25 @@ func _build_rally_command_from_hop(unit_node: Node, source_building: Node, hop: 
 					return RTS_COMMAND.make_move(target_position, queue_command)
 				return RTS_COMMAND.make_attack(target_node, queue_command)
 		"resource":
-			if is_worker and target_node != null and is_instance_valid(target_node) and target_node.is_in_group("resource_node"):
+			var mineral_target: Node3D = null
+			if target_node != null and is_instance_valid(target_node) and target_node.is_in_group("resource_node"):
+				mineral_target = target_node
+			elif has_target_position:
+				mineral_target = _nearest_resource_node(target_position, 9.0)
+			if is_worker and mineral_target != null:
 				var dropoff: Node3D = null
 				var source_building_3d: Node3D = source_building as Node3D
+				var unit_team_id: int = PLAYER_TEAM_ID
+				if unit_node.has_method("get_team_id"):
+					unit_team_id = int(unit_node.call("get_team_id"))
 				if source_building_3d != null and source_building_3d.is_in_group("resource_dropoff"):
 					dropoff = source_building_3d
 				elif unit_node is Node3D:
-					dropoff = _nearest_dropoff((unit_node as Node3D).global_position)
+					dropoff = _nearest_dropoff((unit_node as Node3D).global_position, unit_team_id)
 				if dropoff != null:
-					return RTS_COMMAND.make_gather(target_node, dropoff, queue_command)
+					var gather_command: RTSCommand = RTS_COMMAND.make_gather(mineral_target, dropoff, queue_command)
+					gather_command.payload["from_rally"] = true
+					return gather_command
 		"follow":
 			if target_node != null and is_instance_valid(target_node):
 				var follow_offset: Vector3 = Vector3(3.8, 0.0, 0.0)

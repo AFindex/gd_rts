@@ -24,6 +24,16 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var carry_capacity: int = 24
 @export var gather_amount: int = 4
 @export var gather_interval: float = 0.55
+@export var mining_search_radius: float = 28.0
+@export var mining_queue_timeout: float = 3.0
+@export var mining_queue_distance: float = 1.0
+@export var mining_delivery_duration: float = 0.5
+@export var gather_trigger_buffer: float = 0.12
+@export var dropoff_trigger_buffer: float = 0.25
+@export var mining_interaction_repath_interval: float = 0.35
+@export var hover_acceleration_time: float = 0.5
+@export var hover_deceleration_factor: float = 2.0
+@export var hover_brake_release_duration: float = 0.2
 @export var repair_range: float = 2.1
 @export var repair_amount: float = 10.0
 @export var repair_interval: float = 0.5
@@ -36,6 +46,9 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var max_command_queue: int = 32
 @export var debug_nav_log: bool = false
 @export var debug_nav_log_interval: float = 0.8
+@export var debug_mining_log: bool = false
+@export var debug_mining_log_interval: float = 0.8
+@export var debug_mining_stall_threshold: float = 2.0
 @export var congestion_ghosting_enabled: bool = true
 @export var congestion_stuck_time: float = 0.35
 @export var congestion_release_time: float = 0.5
@@ -61,6 +74,16 @@ enum ConstructionLockMode {
 	INCORPORATED,
 }
 
+enum MiningState {
+	IDLE,
+	RALLY_MINING,
+	MOVING_TO_MINERAL,
+	QUEUED,
+	HARVESTING,
+	MOVING_TO_BASE,
+	DELIVERING,
+}
+
 var _mode: UnitMode = UnitMode.IDLE
 var _health: float = 100.0
 var _has_target: bool = false
@@ -68,6 +91,17 @@ var _target_position: Vector3 = Vector3.ZERO
 var _gather_target: Node3D = null
 var _dropoff_target: Node3D = null
 var _gather_timer: float = 0.0
+var _mining_state: int = MiningState.IDLE
+var _mining_preferred_target: Node3D = null
+var _mining_auto_cycle_enabled: bool = false
+var _mining_queue_timer: float = 0.0
+var _mining_delivery_timer: float = 0.0
+var _mining_interaction_repath_timer: float = 0.0
+var _mining_debug_accum: float = 0.0
+var _mining_harvest_stall_timer: float = 0.0
+var _mining_move_stall_timer: float = 0.0
+var _mining_last_move_distance: float = -1.0
+var _mining_last_logged_state: int = MiningState.IDLE
 var _carried_amount: int = 0
 var _attack_target: Node = null
 var _attack_timer: float = 0.0
@@ -97,6 +131,8 @@ var _construction_lock_building_path: NodePath = NodePath("")
 var _default_collision_layer: int = 0
 var _construction_hidden: bool = false
 var _defer_queue_until_worker_cycle_checkpoint: bool = false
+var _hover_current_speed: float = 0.0
+var _hover_brake_release_timer: float = 0.0
 var _health_bar_root: Node3D = null
 var _health_bar_background: MeshInstance3D = null
 var _health_bar_fill: MeshInstance3D = null
@@ -195,11 +231,15 @@ func enter_construction_lock(mode: String, building_path: NodePath = NodePath(""
 	else:
 		_construction_lock_mode = ConstructionLockMode.NONE
 	_construction_lock_building_path = building_path
+	_abort_active_mining_target()
 	_mode = UnitMode.IDLE
+	_mining_state = MiningState.IDLE
 	_has_target = false
 	velocity = Vector3.ZERO
 	_gather_target = null
 	_dropoff_target = null
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
 	_attack_target = null
 	_attack_timer = 0.0
 	_has_attack_move_point = false
@@ -207,7 +247,15 @@ func enter_construction_lock(mode: String, building_path: NodePath = NodePath(""
 	_clear_repair_state()
 	_retarget_timer = 0.0
 	_gather_timer = 0.0
+	_mining_queue_timer = 0.0
+	_mining_delivery_timer = 0.0
+	_mining_interaction_repath_timer = 0.0
+	_mining_debug_accum = 0.0
+	_mining_harvest_stall_timer = 0.0
+	_mining_last_logged_state = _mining_state
 	_defer_queue_until_worker_cycle_checkpoint = false
+	_hover_current_speed = 0.0
+	_hover_brake_release_timer = 0.0
 	_reset_navigation_motion()
 	if hide_unit:
 		_set_construction_hidden(true)
@@ -225,8 +273,14 @@ func get_mode_label() -> String:
 		UnitMode.MOVE:
 			return tr("Moving")
 		UnitMode.GATHER_RESOURCE:
+			if _mining_state == MiningState.QUEUED:
+				return tr("Queued")
+			if _mining_state == MiningState.HARVESTING:
+				return tr("Harvesting")
 			return tr("Gathering")
 		UnitMode.RETURN_RESOURCE:
+			if _mining_state == MiningState.DELIVERING:
+				return tr("Delivering")
 			return tr("Returning")
 		UnitMode.ATTACK:
 			return tr("Attacking")
@@ -400,22 +454,28 @@ func command_move(target: Vector3, preserve_queue: bool = false) -> void:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_abort_active_mining_target()
 	_clear_repair_state()
 	_mode = UnitMode.MOVE
+	_mining_state = MiningState.IDLE
 	_gather_target = null
 	_dropoff_target = null
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
 	_attack_target = null
 	_attack_timer = 0.0
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
 	_gather_timer = 0.0
+	_mining_queue_timer = 0.0
+	_mining_delivery_timer = 0.0
 	_move_to(target)
 
 func move_to(target: Vector3) -> void:
 	command_move(target)
 
-func command_gather(resource_node: Node3D, dropoff_node: Node3D, preserve_queue: bool = false) -> void:
+func command_gather(resource_node: Node3D, dropoff_node: Node3D, preserve_queue: bool = false, from_rally: bool = false) -> void:
 	if not is_worker:
 		return
 	if resource_node == null or dropoff_node == null:
@@ -424,17 +484,28 @@ func command_gather(resource_node: Node3D, dropoff_node: Node3D, preserve_queue:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_abort_active_mining_target()
 	_clear_repair_state()
-	_gather_target = resource_node
 	_dropoff_target = dropoff_node
+	_mining_preferred_target = resource_node
+	_mining_auto_cycle_enabled = true
+	_gather_target = resource_node
 	_attack_target = null
 	_attack_timer = 0.0
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
 	_gather_timer = 0.0
-	_mode = UnitMode.GATHER_RESOURCE
-	_move_to(_gather_target.global_position)
+	_mining_queue_timer = 0.0
+	_mining_delivery_timer = 0.0
+	_mining_interaction_repath_timer = 0.0
+	_mining_debug_accum = 0.0
+	_mining_harvest_stall_timer = 0.0
+	_mining_last_logged_state = _mining_state
+	if from_rally:
+		_set_mining_state(MiningState.RALLY_MINING)
+	else:
+		_set_mining_state(MiningState.MOVING_TO_MINERAL)
 
 func command_return_to_dropoff(dropoff_node: Node3D, preserve_queue: bool = false) -> void:
 	if not is_worker:
@@ -445,8 +516,11 @@ func command_return_to_dropoff(dropoff_node: Node3D, preserve_queue: bool = fals
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_abort_active_mining_target()
 	_clear_repair_state()
 	_dropoff_target = dropoff_node
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
 	_gather_target = null
 	_attack_target = null
 	_attack_timer = 0.0
@@ -454,26 +528,43 @@ func command_return_to_dropoff(dropoff_node: Node3D, preserve_queue: bool = fals
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
 	_gather_timer = 0.0
-	_mode = UnitMode.RETURN_RESOURCE
-	_move_to(_dropoff_target.global_position)
+	_mining_queue_timer = 0.0
+	_mining_delivery_timer = 0.0
+	_mining_interaction_repath_timer = 0.0
+	_mining_debug_accum = 0.0
+	_mining_harvest_stall_timer = 0.0
+	_mining_last_logged_state = _mining_state
+	_set_mining_state(MiningState.MOVING_TO_BASE)
 
 func command_stop(preserve_queue: bool = false) -> void:
 	_defer_queue_until_worker_cycle_checkpoint = false
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_abort_active_mining_target()
 	_clear_repair_state()
 	_mode = UnitMode.IDLE
+	_mining_state = MiningState.IDLE
 	_has_target = false
 	velocity = Vector3.ZERO
 	_gather_target = null
 	_dropoff_target = null
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
 	_attack_target = null
 	_attack_timer = 0.0
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
 	_gather_timer = 0.0
+	_mining_queue_timer = 0.0
+	_mining_delivery_timer = 0.0
+	_mining_interaction_repath_timer = 0.0
+	_mining_debug_accum = 0.0
+	_mining_harvest_stall_timer = 0.0
+	_mining_last_logged_state = _mining_state
+	_hover_current_speed = 0.0
+	_hover_brake_release_timer = 0.0
 	_reset_navigation_motion()
 
 func command_attack(target_node: Node3D, preserve_queue: bool = false) -> bool:
@@ -489,6 +580,7 @@ func command_attack(target_node: Node3D, preserve_queue: bool = false) -> bool:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_abort_active_mining_target()
 	_clear_repair_state()
 	_attack_target = target_node
 	_attack_timer = 0.0
@@ -497,6 +589,9 @@ func command_attack(target_node: Node3D, preserve_queue: bool = false) -> bool:
 	_retarget_timer = 0.0
 	_gather_target = null
 	_dropoff_target = null
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
+	_mining_state = MiningState.IDLE
 	_mode = UnitMode.ATTACK
 	_move_to(target_node.global_position)
 	return true
@@ -510,6 +605,7 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_abort_active_mining_target()
 	_clear_repair_state()
 	_attack_target = null
 	_attack_timer = 0.0
@@ -518,6 +614,9 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 	_retarget_timer = 0.0
 	_gather_target = null
 	_dropoff_target = null
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
+	_mining_state = MiningState.IDLE
 	_mode = UnitMode.ATTACK_MOVE
 	_move_to(_attack_move_point)
 	return true
@@ -533,14 +632,18 @@ func command_repair(building_node: Node3D, preserve_queue: bool = false) -> bool
 	if not preserve_queue:
 		_command_queue.clear()
 		_active_command = null
+	_abort_active_mining_target()
 	_clear_repair_state()
 	_gather_target = null
 	_dropoff_target = null
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
 	_attack_target = null
 	_attack_timer = 0.0
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
+	_mining_state = MiningState.IDLE
 	_mode = UnitMode.REPAIR
 	_repair_target = building_node
 	_move_to(building_node.global_position)
@@ -576,10 +679,8 @@ func _update_worker_queue_hold_after_enqueue() -> void:
 		return
 	var was_deferred: bool = _defer_queue_until_worker_cycle_checkpoint
 	if _mode == UnitMode.GATHER_RESOURCE:
-		var traveling_to_resource: bool = _has_target
-		if traveling_to_resource and _gather_target != null and is_instance_valid(_gather_target):
-			traveling_to_resource = not _is_near(_gather_target.global_position, gather_range)
-		if traveling_to_resource:
+		var can_interrupt_immediately: bool = _mining_state == MiningState.MOVING_TO_MINERAL or _mining_state == MiningState.RALLY_MINING
+		if can_interrupt_immediately:
 			_defer_queue_until_worker_cycle_checkpoint = false
 			_stop_worker_cycle(false)
 			_notify_game_manager_worker_queue_transition("interrupt_immediate")
@@ -661,13 +762,14 @@ func _execute_rts_command(command: RTSCommand) -> void:
 		RTSCommand.CommandType.GATHER:
 			var gather_resource: Node3D = command.payload.get("resource") as Node3D
 			var gather_dropoff: Node3D = command.payload.get("dropoff") as Node3D
+			var from_rally: bool = bool(command.payload.get("from_rally", false))
 			if gather_resource == null or gather_dropoff == null:
 				command_stop(true)
 				return
 			if not is_instance_valid(gather_resource) or not is_instance_valid(gather_dropoff):
 				command_stop(true)
 				return
-			command_gather(gather_resource, gather_dropoff, true)
+			command_gather(gather_resource, gather_dropoff, true, from_rally)
 		RTSCommand.CommandType.RETURN_RESOURCE:
 			var dropoff: Node3D = command.payload.get("dropoff") as Node3D
 			if dropoff == null or not is_instance_valid(dropoff):
@@ -751,61 +853,709 @@ func _refresh_selection_ring_visual() -> void:
 	_selection_ring.visible = _is_selected or _is_hovered
 
 func _process_worker_cycle(delta: float) -> void:
-	if _mode == UnitMode.GATHER_RESOURCE:
-		if _gather_target == null or not is_instance_valid(_gather_target):
-			_stop_worker_cycle(false)
-			return
-		if _carried_amount >= carry_capacity:
-			_switch_to_return_mode()
-			return
+	if not is_worker:
+		command_stop(true)
+		return
+	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
+		_dropoff_target = _nearest_valid_dropoff(global_position)
 
-		if _is_near(_gather_target.global_position, gather_range):
-			_has_target = false
-			velocity = Vector3.ZERO
-			_gather_timer += delta
-			if _gather_timer >= gather_interval:
-				_gather_timer = 0.0
-				var request_amount: int = mini(gather_amount, carry_capacity - _carried_amount)
-				var harvested: int = _harvest_resource(_gather_target, request_amount)
-				_carried_amount += harvested
-				if _defer_queue_until_worker_cycle_checkpoint:
-					_defer_queue_until_worker_cycle_checkpoint = false
-					_stop_worker_cycle(false)
-					_notify_game_manager_worker_queue_transition("interrupt_checkpoint")
-					return
-				if harvested <= 0:
-					if _carried_amount > 0:
-						_switch_to_return_mode()
-					else:
-						_stop_worker_cycle(false)
-				elif _carried_amount >= carry_capacity:
-					_switch_to_return_mode()
-		elif not _has_target:
-			_move_to(_gather_target.global_position)
+	if _mining_state == MiningState.IDLE:
+		if _mining_auto_cycle_enabled:
+			_set_mining_state(MiningState.MOVING_TO_MINERAL)
+		else:
+			_stop_worker_cycle(false)
+			_process_mining_debug(delta)
+			return
+	if _mining_state == MiningState.RALLY_MINING:
+		if not _transition_to_next_mineral():
+			_stop_worker_cycle(false)
+		_process_mining_debug(delta)
 		return
 
-	if _mode == UnitMode.RETURN_RESOURCE:
-		if _dropoff_target == null or not is_instance_valid(_dropoff_target):
-			_stop_worker_cycle(true)
-			return
-		if _is_near(_dropoff_target.global_position, dropoff_range):
+	match _mining_state:
+		MiningState.MOVING_TO_MINERAL:
+			_process_moving_to_mineral_state(delta)
+		MiningState.QUEUED:
+			_process_queued_mining_state(delta)
+		MiningState.HARVESTING:
+			_process_harvesting_state(delta)
+		MiningState.MOVING_TO_BASE:
+			_process_moving_to_base_state(delta)
+		MiningState.DELIVERING:
+			_process_delivering_state(delta)
+		_:
+			_stop_worker_cycle(false)
+	_process_mining_debug(delta)
+
+func _set_mining_state(next_state: int) -> void:
+	_mining_state = next_state
+	_mining_move_stall_timer = 0.0
+	_mining_last_move_distance = -1.0
+	match _mining_state:
+		MiningState.IDLE:
+			_mode = UnitMode.IDLE
+			_gather_timer = 0.0
+			_mining_queue_timer = 0.0
+			_mining_delivery_timer = 0.0
+		MiningState.RALLY_MINING:
+			_mode = UnitMode.GATHER_RESOURCE
+			_gather_timer = 0.0
+			_mining_queue_timer = 0.0
+		MiningState.MOVING_TO_MINERAL:
+			_mode = UnitMode.GATHER_RESOURCE
+			_gather_timer = 0.0
+			_mining_queue_timer = 0.0
+			_mining_interaction_repath_timer = 0.0
+			if _gather_target != null and is_instance_valid(_gather_target):
+				var approach_point: Vector3 = _interaction_approach_point(_gather_target, _effective_gather_contact_range(_gather_target))
+				_move_to(approach_point)
+		MiningState.QUEUED:
+			_mode = UnitMode.GATHER_RESOURCE
+			_mining_queue_timer = 0.0
+			_mining_interaction_repath_timer = 0.0
 			_has_target = false
 			velocity = Vector3.ZERO
-			if _carried_amount > 0:
-				_deposit_to_game_manager(_carried_amount)
-				_carried_amount = 0
-			if _defer_queue_until_worker_cycle_checkpoint:
-				_defer_queue_until_worker_cycle_checkpoint = false
-				_stop_worker_cycle(false)
-				_notify_game_manager_worker_queue_transition("interrupt_checkpoint")
-				return
-			if _gather_target != null and is_instance_valid(_gather_target):
-				_mode = UnitMode.GATHER_RESOURCE
-				_move_to(_gather_target.global_position)
-			else:
-				_stop_worker_cycle(false)
-		elif not _has_target:
-			_move_to(_dropoff_target.global_position)
+		MiningState.HARVESTING:
+			_mode = UnitMode.GATHER_RESOURCE
+			_gather_timer = 0.0
+			_mining_interaction_repath_timer = 0.0
+			_has_target = false
+			velocity = Vector3.ZERO
+		MiningState.MOVING_TO_BASE:
+			_mode = UnitMode.RETURN_RESOURCE
+			_mining_delivery_timer = 0.0
+			_mining_interaction_repath_timer = 0.0
+			if _dropoff_target == null or not is_instance_valid(_dropoff_target):
+				_dropoff_target = _nearest_valid_dropoff(global_position)
+			if _dropoff_target != null and is_instance_valid(_dropoff_target):
+				var approach_point: Vector3 = _interaction_approach_point(_dropoff_target, _effective_dropoff_contact_range(_dropoff_target))
+				_move_to(approach_point)
+		MiningState.DELIVERING:
+			_mode = UnitMode.RETURN_RESOURCE
+			_mining_delivery_timer = 0.0
+			_mining_interaction_repath_timer = 0.0
+			_has_target = false
+			velocity = Vector3.ZERO
+
+func _is_mining_debug_candidate() -> bool:
+	if not debug_mining_log:
+		return false
+	if not is_worker:
+		return false
+	if _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE:
+		return true
+	if _mining_state != MiningState.IDLE:
+		return true
+	return _mining_auto_cycle_enabled
+
+func _mining_state_name(state: int) -> String:
+	match state:
+		MiningState.RALLY_MINING:
+			return "RALLY_MINING"
+		MiningState.MOVING_TO_MINERAL:
+			return "MOVING_TO_MINERAL"
+		MiningState.QUEUED:
+			return "QUEUED"
+		MiningState.HARVESTING:
+			return "HARVESTING"
+		MiningState.MOVING_TO_BASE:
+			return "MOVING_TO_BASE"
+		MiningState.DELIVERING:
+			return "DELIVERING"
+		_:
+			return "IDLE"
+
+func _mode_debug_name() -> String:
+	match _mode:
+		UnitMode.MOVE:
+			return "MOVE"
+		UnitMode.GATHER_RESOURCE:
+			return "GATHER_RESOURCE"
+		UnitMode.RETURN_RESOURCE:
+			return "RETURN_RESOURCE"
+		UnitMode.ATTACK:
+			return "ATTACK"
+		UnitMode.ATTACK_MOVE:
+			return "ATTACK_MOVE"
+		UnitMode.REPAIR:
+			return "REPAIR"
+		_:
+			return "IDLE"
+
+func _process_mining_debug(delta: float) -> void:
+	if not _is_mining_debug_candidate():
+		_mining_debug_accum = 0.0
+		_mining_harvest_stall_timer = 0.0
+		_mining_last_logged_state = _mining_state
+		return
+	if _mining_last_logged_state != _mining_state:
+		_log_mining_event("state_change", {
+			"from_state": _mining_state_name(_mining_last_logged_state),
+			"to_state": _mining_state_name(_mining_state)
+		})
+		_mining_last_logged_state = _mining_state
+		_mining_debug_accum = 0.0
+	_mining_debug_accum += delta
+	if _mining_debug_accum >= maxf(0.1, debug_mining_log_interval):
+		_mining_debug_accum = 0.0
+		_log_mining_event("heartbeat")
+	if _mining_state == MiningState.HARVESTING:
+		_mining_harvest_stall_timer += delta
+		var stall_threshold: float = maxf(0.3, debug_mining_stall_threshold)
+		if _mining_harvest_stall_timer >= stall_threshold:
+			var expected_harvest_duration: float = _harvest_duration_for_target(_gather_target)
+			_log_mining_event("harvest_stall", {
+				"stall_sec": snappedf(_mining_harvest_stall_timer, 0.01),
+				"expected_harvest_sec": snappedf(expected_harvest_duration, 0.01)
+			})
+			_mining_harvest_stall_timer = 0.0
+	else:
+		_mining_harvest_stall_timer = 0.0
+
+func _log_mining_event(tag: String, extra: Dictionary = {}) -> void:
+	if not _is_mining_debug_candidate():
+		return
+	var gather_distance: float = -1.0
+	var gather_contact: float = -1.0
+	if _gather_target != null and is_instance_valid(_gather_target):
+		gather_distance = global_position.distance_to(_gather_target.global_position)
+		gather_contact = _effective_gather_contact_range(_gather_target)
+	var dropoff_distance: float = -1.0
+	var dropoff_contact: float = -1.0
+	if _dropoff_target != null and is_instance_valid(_dropoff_target):
+		dropoff_distance = global_position.distance_to(_dropoff_target.global_position)
+		dropoff_contact = _effective_dropoff_contact_range(_dropoff_target)
+	var occupied_text: String = "n/a"
+	var queue_len: int = -1
+	if _gather_target != null and is_instance_valid(_gather_target):
+		if _gather_target.has_method("is_occupied"):
+			occupied_text = str(bool(_gather_target.call("is_occupied")))
+		if _gather_target.has_method("get_wait_queue_length"):
+			queue_len = int(_gather_target.call("get_wait_queue_length"))
+	var command_distance: float = -1.0
+	if _has_target:
+		var to_command: Vector3 = _target_position - global_position
+		to_command.y = 0.0
+		command_distance = to_command.length()
+	var nav_finished_text: String = "n/a"
+	if _can_use_navigation():
+		nav_finished_text = str(_nav_agent.is_navigation_finished())
+	var message: String = "[MINING][%s][team=%d] tag=%s mode=%s state=%s auto=%s carried=%d/%d gather=%s dropoff=%s dist_m=%.2f dist_b=%.2f g_contact=%.2f d_contact=%.2f g_timer=%.2f q_timer=%.2f d_timer=%.2f has_target=%s dist_cmd=%.2f vel=%.2f nav_fin=%s occupied=%s qlen=%d" % [
+		name,
+		team_id,
+		tag,
+		_mode_debug_name(),
+		_mining_state_name(_mining_state),
+		str(_mining_auto_cycle_enabled),
+		_carried_amount,
+		carry_capacity,
+		_mining_debug_target_name(_gather_target),
+		_mining_debug_target_name(_dropoff_target),
+		gather_distance,
+		dropoff_distance,
+		gather_contact,
+		dropoff_contact,
+		_gather_timer,
+		_mining_queue_timer,
+		_mining_delivery_timer,
+		str(_has_target),
+		command_distance,
+		velocity.length(),
+		nav_finished_text,
+		occupied_text,
+		queue_len
+	]
+	if not extra.is_empty():
+		var keys: Array = extra.keys()
+		keys.sort()
+		var suffix: String = ""
+		for key_value in keys:
+			var key_text: String = str(key_value)
+			var value_text: String = str(extra.get(key_value))
+			if suffix != "":
+				suffix += " "
+			suffix += "%s=%s" % [key_text, value_text]
+		if suffix != "":
+			message += " " + suffix
+	print(message)
+
+func _mining_debug_target_name(target_node: Node3D) -> String:
+	if target_node == null or not is_instance_valid(target_node):
+		return "null"
+	return "%s@%s" % [target_node.name, str(target_node.get_instance_id())]
+
+func _process_moving_to_mineral_state(delta: float) -> void:
+	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
+		_dropoff_target = _nearest_valid_dropoff(global_position)
+		if _dropoff_target == null:
+			_log_mining_event("no_dropoff_while_moving_to_mineral")
+			_stop_worker_cycle(true)
+			return
+	if _gather_target == null or not is_instance_valid(_gather_target) or _is_mineral_depleted(_gather_target):
+		_log_mining_event("gather_target_invalid_or_depleted")
+		if not _transition_to_next_mineral():
+			_stop_worker_cycle(false)
+		return
+	var contact_range: float = _effective_gather_contact_range(_gather_target)
+	var soft_contact_extra: float = maxf(0.28, NAV_VERTICAL_POINT_TOLERANCE + _agent_radius_xz() * 0.45)
+	var gather_delta: Vector3 = _gather_target.global_position - global_position
+	gather_delta.y = 0.0
+	var gather_distance: float = gather_delta.length()
+	if _mining_last_move_distance < 0.0:
+		_mining_last_move_distance = gather_distance
+	elif gather_distance <= _mining_last_move_distance - 0.03:
+		_mining_last_move_distance = gather_distance
+		_mining_move_stall_timer = 0.0
+	elif velocity.length() <= 0.05:
+		_mining_move_stall_timer += delta
+	else:
+		_mining_move_stall_timer = maxf(0.0, _mining_move_stall_timer - delta * 0.6)
+	var should_repath: bool = false
+	_mining_interaction_repath_timer = maxf(0.0, _mining_interaction_repath_timer - delta)
+	if not _has_target or _mining_interaction_repath_timer <= 0.0:
+		should_repath = true
+	if should_repath:
+		var approach_point: Vector3 = _interaction_approach_point(_gather_target, contact_range)
+		_move_to(approach_point)
+		_mining_interaction_repath_timer = maxf(0.1, mining_interaction_repath_interval)
+	var in_hard_contact: bool = _is_near(_gather_target.global_position, contact_range)
+	if not in_hard_contact:
+		var in_soft_contact: bool = _is_near(_gather_target.global_position, contact_range + soft_contact_extra)
+		if _mining_move_stall_timer < 0.45 or not in_soft_contact:
+			return
+		_log_mining_event("soft_contact_probe", {
+			"soft_extra": snappedf(soft_contact_extra, 0.01),
+			"stall_sec": snappedf(_mining_move_stall_timer, 0.01)
+		})
+	_has_target = false
+	velocity = Vector3.ZERO
+	_mining_move_stall_timer = 0.0
+	var slot_status: String = _request_mineral_slot(_gather_target, true)
+	if slot_status == "granted":
+		_log_mining_event("slot_granted" if in_hard_contact else "slot_granted_soft")
+		_set_mining_state(MiningState.HARVESTING)
+		return
+	if slot_status == "queued":
+		_log_mining_event("slot_queued" if in_hard_contact else "slot_queued_soft")
+		_set_mining_state(MiningState.QUEUED)
+		return
+	_log_mining_event("slot_request_failed", {"slot_status": slot_status})
+	if not _transition_to_next_mineral(_gather_target):
+		_stop_worker_cycle(false)
+
+func _process_queued_mining_state(delta: float) -> void:
+	if _gather_target == null or not is_instance_valid(_gather_target) or _is_mineral_depleted(_gather_target):
+		_log_mining_event("queued_target_invalid_or_depleted")
+		if not _transition_to_next_mineral():
+			_stop_worker_cycle(false)
+		return
+
+	var queue_anchor: Vector3 = _queue_anchor_for_mineral(_gather_target)
+	if _is_near(queue_anchor, 0.2):
+		_has_target = false
+		velocity = Vector3.ZERO
+	elif not _has_target:
+		_move_to(queue_anchor)
+
+	var slot_status: String = _request_mineral_slot(_gather_target, false)
+	if slot_status == "granted":
+		_log_mining_event("queue_promoted_to_harvest")
+		_set_mining_state(MiningState.HARVESTING)
+		return
+	if slot_status == "depleted":
+		_log_mining_event("queued_target_depleted")
+		if not _transition_to_next_mineral(_gather_target):
+			_stop_worker_cycle(false)
+		return
+
+	_mining_queue_timer += delta
+	if _mining_queue_timer < maxf(0.2, mining_queue_timeout):
+		return
+	_log_mining_event("queue_timeout_switch_target", {
+		"queue_wait_sec": snappedf(_mining_queue_timer, 0.01),
+		"slot_status": slot_status
+	})
+	if not _transition_to_next_mineral(_gather_target):
+		_mining_queue_timer = 0.0
+
+func _process_harvesting_state(delta: float) -> void:
+	if _gather_target == null or not is_instance_valid(_gather_target) or _is_mineral_depleted(_gather_target):
+		_log_mining_event("harvesting_target_invalid_or_depleted")
+		_abort_active_mining_target()
+		if _carried_amount > 0:
+			_set_mining_state(MiningState.MOVING_TO_BASE)
+		elif not _transition_to_next_mineral():
+			_stop_worker_cycle(false)
+		return
+
+	_has_target = false
+	velocity = Vector3.ZERO
+	_gather_timer += delta
+	var harvest_duration: float = _harvest_duration_for_target(_gather_target)
+	if _gather_timer < harvest_duration:
+		return
+	_gather_timer = 0.0
+
+	var request_amount: int = _harvest_amount_for_target(_gather_target)
+	if carry_capacity > 0:
+		request_amount = mini(request_amount, maxi(0, carry_capacity - _carried_amount))
+	if request_amount <= 0:
+		_log_mining_event("harvest_skipped_no_capacity", {
+			"carried": _carried_amount,
+			"capacity": carry_capacity
+		})
+		_abort_active_mining_target()
+		_set_mining_state(MiningState.MOVING_TO_BASE)
+		return
+
+	var harvested: int = _harvest_resource(_gather_target, request_amount)
+	_abort_active_mining_target()
+	if carry_capacity > 0:
+		_carried_amount = mini(carry_capacity, _carried_amount + harvested)
+	else:
+		_carried_amount += harvested
+	if harvested > 0:
+		_mining_harvest_stall_timer = 0.0
+		_log_mining_event("harvest_success", {
+			"harvested": harvested,
+			"request_amount": request_amount
+		})
+	else:
+		_log_mining_event("harvest_zero", {
+			"request_amount": request_amount
+		})
+
+	if _defer_queue_until_worker_cycle_checkpoint:
+		_defer_queue_until_worker_cycle_checkpoint = false
+		_stop_worker_cycle(false)
+		_notify_game_manager_worker_queue_transition("interrupt_checkpoint")
+		return
+
+	if harvested <= 0:
+		if _carried_amount > 0:
+			_set_mining_state(MiningState.MOVING_TO_BASE)
+		elif not _transition_to_next_mineral():
+			_stop_worker_cycle(false)
+		return
+	_set_mining_state(MiningState.MOVING_TO_BASE)
+
+func _process_moving_to_base_state(delta: float) -> void:
+	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
+		_dropoff_target = _nearest_valid_dropoff(global_position)
+		if _dropoff_target == null:
+			_log_mining_event("no_dropoff_while_returning")
+			_stop_worker_cycle(true)
+			return
+	var contact_range: float = _effective_dropoff_contact_range(_dropoff_target)
+	if _is_near(_dropoff_target.global_position, contact_range):
+		_set_mining_state(MiningState.DELIVERING)
+		return
+	_mining_interaction_repath_timer = maxf(0.0, _mining_interaction_repath_timer - delta)
+	if not _has_target or _mining_interaction_repath_timer <= 0.0:
+		var approach_point: Vector3 = _interaction_approach_point(_dropoff_target, contact_range)
+		_move_to(approach_point)
+		_mining_interaction_repath_timer = maxf(0.1, mining_interaction_repath_interval)
+
+func _process_delivering_state(delta: float) -> void:
+	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
+		_dropoff_target = _nearest_valid_dropoff(global_position)
+		if _dropoff_target == null:
+			_log_mining_event("no_dropoff_while_delivering")
+			_stop_worker_cycle(false)
+			return
+		var approach_point: Vector3 = _interaction_approach_point(_dropoff_target, _effective_dropoff_contact_range(_dropoff_target))
+		_move_to(approach_point)
+		_set_mining_state(MiningState.MOVING_TO_BASE)
+		return
+
+	_has_target = false
+	velocity = Vector3.ZERO
+	_mining_delivery_timer += delta
+	if _mining_delivery_timer < maxf(0.05, mining_delivery_duration):
+		return
+	_mining_delivery_timer = 0.0
+
+	if _carried_amount > 0:
+		_log_mining_event("deposit", {"deposit_amount": _carried_amount})
+		_deposit_to_game_manager(_carried_amount)
+		_carried_amount = 0
+
+	if _defer_queue_until_worker_cycle_checkpoint:
+		_defer_queue_until_worker_cycle_checkpoint = false
+		_stop_worker_cycle(false)
+		_notify_game_manager_worker_queue_transition("interrupt_checkpoint")
+		return
+
+	if _mining_auto_cycle_enabled and _transition_to_next_mineral():
+		return
+	_stop_worker_cycle(false)
+
+func _transition_to_next_mineral(excluded_target: Node3D = null) -> bool:
+	var next_target: Node3D = _find_best_mineral(_mining_preferred_target, excluded_target)
+	if next_target == null:
+		_log_mining_event("find_next_mineral_failed", {
+			"excluded": _mining_debug_target_name(excluded_target)
+		})
+		return false
+	if _gather_target != null and _gather_target != next_target:
+		_abort_active_mining_target()
+	_gather_target = next_target
+	_log_mining_event("next_mineral_selected", {
+		"next_target": _mining_debug_target_name(next_target),
+		"excluded": _mining_debug_target_name(excluded_target)
+	})
+	_set_mining_state(MiningState.MOVING_TO_MINERAL)
+	return true
+
+func _find_best_mineral(preferred_target: Node3D = null, excluded_target: Node3D = null, ignore_radius: bool = false) -> Node3D:
+	var search_origin: Vector3 = global_position
+	if _dropoff_target != null and is_instance_valid(_dropoff_target):
+		search_origin = _dropoff_target.global_position
+	var best_available: Node3D = null
+	var best_available_score: float = INF
+	var best_queueable: Node3D = null
+	var best_queueable_score: float = INF
+	var resources: Array[Node] = get_tree().get_nodes_in_group("resource_node")
+
+	for resource_node in resources:
+		var mineral: Node3D = resource_node as Node3D
+		if mineral == null or not is_instance_valid(mineral):
+			continue
+		if excluded_target != null and mineral == excluded_target:
+			continue
+		if _is_mineral_depleted(mineral):
+			continue
+		var base_distance: float = search_origin.distance_to(mineral.global_position)
+		if not ignore_radius and mining_search_radius > 0.0 and base_distance > mining_search_radius:
+			continue
+		var worker_distance: float = global_position.distance_to(mineral.global_position)
+		var random_bias: float = randf_range(0.0, 5.0)
+		var score: float = worker_distance + base_distance * 0.15 + random_bias
+		if preferred_target != null and mineral == preferred_target:
+			score -= 3.0
+		var occupied: bool = _is_mineral_occupied(mineral)
+		if not occupied:
+			if score < best_available_score:
+				best_available_score = score
+				best_available = mineral
+			continue
+		if not _can_queue_for_mineral(mineral):
+			continue
+		var queue_penalty: float = _estimate_mineral_wait(mineral)
+		var queue_score: float = score + queue_penalty + 4.0
+		if preferred_target != null and mineral == preferred_target:
+			queue_score -= 1.0
+		if queue_score < best_queueable_score:
+			best_queueable_score = queue_score
+			best_queueable = mineral
+
+	if best_available != null:
+		return best_available
+	if best_queueable != null:
+		return best_queueable
+
+	# Fallback pass without radius clamp when no candidate is found nearby.
+	if not ignore_radius and mining_search_radius > 0.0:
+		return _find_best_mineral(preferred_target, excluded_target, true)
+	return null
+
+func _queue_anchor_for_mineral(mineral: Node3D) -> Vector3:
+	var anchor_direction: Vector3 = global_position - mineral.global_position
+	anchor_direction.y = 0.0
+	if anchor_direction.length_squared() <= 0.0001 and _dropoff_target != null and is_instance_valid(_dropoff_target):
+		anchor_direction = _dropoff_target.global_position - mineral.global_position
+		anchor_direction.y = 0.0
+	if anchor_direction.length_squared() <= 0.0001:
+		anchor_direction = Vector3.RIGHT
+	anchor_direction = anchor_direction.normalized()
+	var offset: float = maxf(_effective_gather_contact_range(mineral) + 0.1, mining_queue_distance)
+	return mineral.global_position + anchor_direction * offset
+
+func _effective_gather_contact_range(mineral: Node3D) -> float:
+	var target_radius: float = maxf(_target_collision_radius_xz(mineral), _target_obstacle_radius_xz(mineral))
+	var agent_radius: float = _agent_radius_xz()
+	var minimum_contact: float = target_radius + agent_radius + 0.16
+	return maxf(gather_range, minimum_contact) + maxf(0.0, gather_trigger_buffer)
+
+func _effective_dropoff_contact_range(dropoff: Node3D) -> float:
+	var target_radius: float = maxf(_target_collision_radius_xz(dropoff), _target_obstacle_radius_xz(dropoff))
+	var agent_radius: float = _agent_radius_xz()
+	var nav_contact_padding: float = maxf(0.08, NAV_VERTICAL_POINT_TOLERANCE * 0.25)
+	var minimum_contact: float = target_radius + agent_radius + 0.2
+	return maxf(dropoff_range, minimum_contact) + maxf(0.0, dropoff_trigger_buffer) + nav_contact_padding
+
+func _interaction_approach_point(target_node: Node3D, desired_contact_range: float) -> Vector3:
+	if target_node == null or not is_instance_valid(target_node):
+		return global_position
+	var to_worker: Vector3 = global_position - target_node.global_position
+	to_worker.y = 0.0
+	if to_worker.length_squared() <= 0.0001 and _has_target:
+		to_worker = _target_position - target_node.global_position
+		to_worker.y = 0.0
+	if to_worker.length_squared() <= 0.0001 and _dropoff_target != null and is_instance_valid(_dropoff_target):
+		to_worker = _dropoff_target.global_position - target_node.global_position
+		to_worker.y = 0.0
+	if to_worker.length_squared() <= 0.0001:
+		to_worker = Vector3.RIGHT
+	var direction: Vector3 = to_worker.normalized()
+	var target_radius: float = maxf(_target_collision_radius_xz(target_node), _target_obstacle_radius_xz(target_node))
+	var approach_distance: float = maxf(desired_contact_range * 0.92, target_radius + _agent_radius_xz() + 0.12)
+	return target_node.global_position + direction * approach_distance
+
+func _target_collision_radius_xz(target_node: Node3D) -> float:
+	if target_node == null or not is_instance_valid(target_node):
+		return 0.0
+	var shape_node: CollisionShape3D = target_node.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null or shape_node.shape == null:
+		return 0.0
+	var shape: Shape3D = shape_node.shape
+	if shape is BoxShape3D:
+		var box: BoxShape3D = shape as BoxShape3D
+		return maxf(box.size.x, box.size.z) * 0.5
+	if shape is CapsuleShape3D:
+		var capsule: CapsuleShape3D = shape as CapsuleShape3D
+		return capsule.radius
+	if shape is CylinderShape3D:
+		var cylinder: CylinderShape3D = shape as CylinderShape3D
+		return cylinder.radius
+	if shape is SphereShape3D:
+		var sphere: SphereShape3D = shape as SphereShape3D
+		return sphere.radius
+	return 0.0
+
+func _target_obstacle_radius_xz(target_node: Node3D) -> float:
+	if target_node == null or not is_instance_valid(target_node):
+		return 0.0
+	var obstacle_node: NavigationObstacle3D = target_node.get_node_or_null("Obstacle3D") as NavigationObstacle3D
+	if obstacle_node == null:
+		obstacle_node = target_node.get_node_or_null("NavigationObstacle3D") as NavigationObstacle3D
+	if obstacle_node == null:
+		for child_node in target_node.get_children():
+			var child_obstacle: NavigationObstacle3D = child_node as NavigationObstacle3D
+			if child_obstacle != null:
+				obstacle_node = child_obstacle
+				break
+	if obstacle_node == null:
+		return 0.0
+	var max_radius: float = 0.0
+	var obstacle_scale: Vector3 = obstacle_node.scale
+	for local_vertex in obstacle_node.vertices:
+		var radial_length: float = Vector2(local_vertex.x * obstacle_scale.x, local_vertex.z * obstacle_scale.z).length()
+		if radial_length > max_radius:
+			max_radius = radial_length
+	if max_radius <= 0.001:
+		max_radius = maxf(0.0, float(obstacle_node.get("radius")))
+	return max_radius
+
+func _agent_radius_xz() -> float:
+	if _nav_agent != null:
+		return maxf(0.0, _nav_agent.radius)
+	return 0.32
+
+func _harvest_duration_for_target(mineral: Node3D) -> float:
+	if mineral != null and is_instance_valid(mineral) and mineral.has_method("get_harvest_time"):
+		return maxf(0.05, float(mineral.call("get_harvest_time")))
+	return maxf(0.05, gather_interval)
+
+func _harvest_amount_for_target(mineral: Node3D) -> int:
+	if mineral != null and is_instance_valid(mineral) and mineral.has_method("get_harvest_yield"):
+		return maxi(1, int(mineral.call("get_harvest_yield")))
+	return maxi(1, gather_amount)
+
+func _is_mineral_depleted(mineral: Node3D) -> bool:
+	if mineral == null or not is_instance_valid(mineral):
+		return true
+	if mineral.has_method("is_depleted"):
+		return bool(mineral.call("is_depleted"))
+	if mineral.has_method("get_remaining_minerals"):
+		return int(mineral.call("get_remaining_minerals")) <= 0
+	return false
+
+func _is_mineral_occupied(mineral: Node3D) -> bool:
+	if mineral == null or not is_instance_valid(mineral):
+		return false
+	if mineral.has_method("is_occupied"):
+		return bool(mineral.call("is_occupied"))
+	return false
+
+func _can_queue_for_mineral(mineral: Node3D) -> bool:
+	if mineral == null or not is_instance_valid(mineral):
+		return false
+	if mineral.has_method("can_accept_waiter"):
+		return bool(mineral.call("can_accept_waiter", self))
+	return false
+
+func _estimate_mineral_wait(mineral: Node3D) -> float:
+	if mineral == null or not is_instance_valid(mineral):
+		return INF
+	if mineral.has_method("estimate_wait_seconds"):
+		return maxf(0.0, float(mineral.call("estimate_wait_seconds")))
+	var queue_length: int = 0
+	if mineral.has_method("get_wait_queue_length"):
+		queue_length = maxi(0, int(mineral.call("get_wait_queue_length")))
+	var has_occupier: bool = _is_mineral_occupied(mineral)
+	var slots_ahead: int = queue_length + (1 if has_occupier else 0)
+	return float(slots_ahead) * _harvest_duration_for_target(mineral)
+
+func _request_mineral_slot(mineral: Node3D, allow_enqueue: bool = true) -> String:
+	if mineral == null or not is_instance_valid(mineral):
+		return "depleted"
+	if not mineral.has_method("request_harvest_slot"):
+		return "granted"
+	var request_result_value: Variant = mineral.call("request_harvest_slot", self, allow_enqueue)
+	if request_result_value is Dictionary:
+		var request_result: Dictionary = request_result_value as Dictionary
+		return str(request_result.get("status", "denied"))
+	return "denied"
+
+func _abort_active_mining_target() -> void:
+	if _gather_target == null or not is_instance_valid(_gather_target):
+		return
+	if _gather_target.has_method("release_harvest_slot"):
+		_gather_target.call("release_harvest_slot", self)
+	elif _gather_target.has_method("remove_waiter"):
+		_gather_target.call("remove_waiter", self)
+
+func _nearest_valid_dropoff(from_position: Vector3) -> Node3D:
+	var nearest: Node3D = null
+	var best_distance_sq: float = INF
+	var dropoff_nodes: Array[Node] = get_tree().get_nodes_in_group("resource_dropoff")
+	for node in dropoff_nodes:
+		var dropoff: Node3D = node as Node3D
+		if dropoff == null or not is_instance_valid(dropoff):
+			continue
+		if dropoff.has_method("is_alive") and not bool(dropoff.call("is_alive")):
+			continue
+		if dropoff.has_method("get_team_id") and int(dropoff.call("get_team_id")) != team_id:
+			continue
+		var distance_sq: float = from_position.distance_squared_to(dropoff.global_position)
+		if distance_sq < best_distance_sq:
+			best_distance_sq = distance_sq
+			nearest = dropoff
+	return nearest
+
+func request_speed_mining_brake_cancel() -> void:
+	_hover_brake_release_timer = maxf(0.0, hover_brake_release_duration)
+
+func _on_mineral_slot_available(mineral_node: Node) -> void:
+	var mineral: Node3D = mineral_node as Node3D
+	if mineral == null or not is_instance_valid(mineral):
+		return
+	if _mining_state != MiningState.QUEUED:
+		return
+	if _gather_target != mineral:
+		return
+	if _request_mineral_slot(mineral, false) == "granted":
+		_set_mining_state(MiningState.HARVESTING)
+
+func _on_mineral_depleted(mineral_node: Node) -> void:
+	var mineral: Node3D = mineral_node as Node3D
+	if mineral == null:
+		return
+	if _gather_target == mineral:
+		_gather_target = null
+	if _mining_preferred_target == mineral:
+		_mining_preferred_target = null
 
 func _process_repair_cycle(delta: float) -> void:
 	if not is_worker:
@@ -986,24 +1736,39 @@ func _is_repair_target_damaged(target_node: Node3D) -> bool:
 
 func _switch_to_return_mode() -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
-		_stop_worker_cycle(true)
-		return
-	_mode = UnitMode.RETURN_RESOURCE
-	_gather_timer = 0.0
-	_move_to(_dropoff_target.global_position)
+		_dropoff_target = _nearest_valid_dropoff(global_position)
+		if _dropoff_target == null:
+			_stop_worker_cycle(true)
+			return
+	_set_mining_state(MiningState.MOVING_TO_BASE)
 
 func _stop_worker_cycle(reset_carry: bool) -> void:
-	_mode = UnitMode.IDLE
+	_log_mining_event("stop_worker_cycle", {
+		"reset_carry": reset_carry,
+		"carried_before_stop": _carried_amount
+	})
+	_abort_active_mining_target()
+	_set_mining_state(MiningState.IDLE)
 	_has_target = false
 	velocity = Vector3.ZERO
 	_gather_target = null
 	_dropoff_target = null
+	_mining_preferred_target = null
+	_mining_auto_cycle_enabled = false
 	_gather_timer = 0.0
+	_mining_queue_timer = 0.0
+	_mining_delivery_timer = 0.0
+	_mining_interaction_repath_timer = 0.0
+	_mining_debug_accum = 0.0
+	_mining_harvest_stall_timer = 0.0
+	_mining_last_logged_state = _mining_state
 	_defer_queue_until_worker_cycle_checkpoint = false
 	_clear_repair_state()
 	_has_attack_move_point = false
 	_attack_move_point = Vector3.ZERO
 	_retarget_timer = 0.0
+	_hover_current_speed = 0.0
+	_hover_brake_release_timer = 0.0
 	_reset_navigation_motion()
 	if reset_carry:
 		_carried_amount = 0
@@ -1013,7 +1778,7 @@ func _harvest_resource(resource_node: Node3D, amount: int) -> int:
 		return 0
 	if not resource_node.has_method("harvest"):
 		return 0
-	var harvested_value: Variant = resource_node.call("harvest", amount)
+	var harvested_value: Variant = resource_node.call("harvest", amount, self)
 	return maxi(0, int(harvested_value))
 
 func _deposit_to_game_manager(amount: int) -> void:
@@ -1026,6 +1791,8 @@ func _deposit_to_game_manager(amount: int) -> void:
 func _apply_movement(delta: float) -> void:
 	if not _has_target:
 		_reset_congestion_ghosting()
+		_hover_current_speed = 0.0
+		_hover_brake_release_timer = 0.0
 		velocity = Vector3.ZERO
 		move_and_slide()
 		return
@@ -1038,6 +1805,8 @@ func _apply_movement(delta: float) -> void:
 		if nav_finished:
 			_has_target = false
 			_reset_navigation_motion()
+			_hover_current_speed = 0.0
+			_hover_brake_release_timer = 0.0
 			velocity = Vector3.ZERO
 			move_and_slide()
 			return
@@ -1056,19 +1825,38 @@ func _apply_movement(delta: float) -> void:
 			else:
 				_has_target = false
 				_reset_navigation_motion()
+				_hover_current_speed = 0.0
+				_hover_brake_release_timer = 0.0
 				velocity = Vector3.ZERO
 				move_and_slide()
 				return
 		else:
 			_has_target = false
 			_reset_navigation_motion()
+			_hover_current_speed = 0.0
+			_hover_brake_release_timer = 0.0
 			velocity = Vector3.ZERO
 			move_and_slide()
 			return
 
 	var target_distance: float = to_target.length()
 	var direction: Vector3 = to_target.normalized()
-	var desired_velocity: Vector3 = direction * move_speed
+	var desired_speed: float = move_speed
+	if _use_hover_mining_dynamics():
+		_hover_brake_release_timer = maxf(0.0, _hover_brake_release_timer - delta)
+		var acceleration: float = maxf(0.01, move_speed / maxf(0.05, hover_acceleration_time))
+		var braking_denominator: float = maxf(0.01, 2.0 * maxf(0.1, hover_deceleration_factor))
+		var braking_distance: float = (_hover_current_speed * _hover_current_speed) / braking_denominator
+		var should_brake: bool = target_distance <= braking_distance and _hover_brake_release_timer <= 0.0
+		if should_brake:
+			_hover_current_speed = maxf(0.0, _hover_current_speed - maxf(0.1, hover_deceleration_factor) * delta)
+		else:
+			_hover_current_speed = minf(move_speed, _hover_current_speed + acceleration * delta)
+		desired_speed = _hover_current_speed
+	else:
+		_hover_current_speed = move_speed
+		_hover_brake_release_timer = 0.0
+	var desired_velocity: Vector3 = direction * desired_speed
 	_last_desired_velocity = desired_velocity
 	if _can_use_navigation() and _nav_agent.avoidance_enabled:
 		_nav_agent.set_velocity(desired_velocity)
@@ -1111,6 +1899,11 @@ func _is_near(target_position: Vector3, distance_limit: float) -> bool:
 	var delta: Vector3 = target_position - global_position
 	delta.y = 0.0
 	return delta.length() <= distance_limit
+
+func _use_hover_mining_dynamics() -> bool:
+	if not is_worker:
+		return false
+	return _mining_state == MiningState.MOVING_TO_MINERAL or _mining_state == MiningState.MOVING_TO_BASE
 
 func _apply_role_visual() -> void:
 	if _sprite == null:
@@ -1277,6 +2070,7 @@ func _target_is_enemy(target_node) -> bool:
 
 func _die() -> void:
 	_selection_ring.visible = false
+	_abort_active_mining_target()
 	queue_free()
 
 func _spawn_attack_vfx(target_position: Vector3) -> void:
@@ -1441,6 +2235,8 @@ func _reset_navigation_motion() -> void:
 	_has_safe_velocity = false
 	_safe_velocity = Vector3.ZERO
 	_safe_velocity_frame = -1
+	_hover_current_speed = 0.0
+	_hover_brake_release_timer = 0.0
 	_reset_congestion_ghosting()
 	_stuck_log_accum = 0.0
 	_last_desired_velocity = Vector3.ZERO
@@ -1448,12 +2244,17 @@ func _reset_navigation_motion() -> void:
 		_nav_agent.set_velocity_forced(Vector3.ZERO)
 
 func _sync_worker_collection_navigation_profile() -> void:
-	var should_use_collection_profile: bool = is_worker and (_mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE)
+	var should_use_collection_profile: bool = is_worker and (
+		_mining_state == MiningState.RALLY_MINING
+		or _mining_state == MiningState.MOVING_TO_MINERAL
+		or _mining_state == MiningState.QUEUED
+		or _mining_state == MiningState.HARVESTING
+	)
 	if should_use_collection_profile == _worker_collection_profile_active:
 		return
 	_worker_collection_profile_active = should_use_collection_profile
 	if should_use_collection_profile:
-		# SC2-style worker flow: gather/return keeps navmesh pathing, but ignores local avoidance and unit collision.
+		# SC2-style mineral walk: moving/queuing to mineral ignores local avoidance and unit collision.
 		_reset_congestion_ghosting()
 		_refresh_unit_collision_mask()
 		if _nav_agent != null:
