@@ -2,6 +2,7 @@ extends CharacterBody3D
 
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
+const RTS_INTERACTION: Script = preload("res://scripts/core/rts_interaction.gd")
 const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65
 const UNIT_COLLISION_LAYER_BIT: int = 1 << 1
 const HEALTH_BAR_WORLD_HEIGHT: float = 2.02
@@ -31,6 +32,8 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var gather_trigger_buffer: float = 0.12
 @export var dropoff_trigger_buffer: float = 0.25
 @export var mining_interaction_repath_interval: float = 0.35
+@export var interaction_nav_path_desired_distance: float = 0.65
+@export var interaction_nav_target_desired_distance: float = 0.28
 @export var hover_acceleration_time: float = 0.5
 @export var hover_deceleration_factor: float = 2.0
 @export var hover_brake_release_duration: float = 0.2
@@ -99,8 +102,6 @@ var _mining_delivery_timer: float = 0.0
 var _mining_interaction_repath_timer: float = 0.0
 var _mining_debug_accum: float = 0.0
 var _mining_harvest_stall_timer: float = 0.0
-var _mining_move_stall_timer: float = 0.0
-var _mining_last_move_distance: float = -1.0
 var _mining_last_logged_state: int = MiningState.IDLE
 var _carried_amount: int = 0
 var _attack_target: Node = null
@@ -113,6 +114,12 @@ var _retarget_timer: float = 0.0
 var _base_tint: Color = Color.WHITE
 var _nav_target_cached: Vector3 = Vector3.ZERO
 var _has_nav_target_cached: bool = false
+var _default_nav_path_desired_distance: float = NAV_VERTICAL_POINT_TOLERANCE
+var _default_nav_target_desired_distance: float = NAV_VERTICAL_POINT_TOLERANCE
+var _interaction_nav_precision_active: bool = false
+var _target_progress_timer: float = 0.0
+var _target_progress_best_distance: float = INF
+var _target_progress_repath_cooldown: float = 0.0
 var _safe_velocity: Vector3 = Vector3.ZERO
 var _has_safe_velocity: bool = false
 var _safe_velocity_frame: int = -1
@@ -172,6 +179,7 @@ func _physics_process(delta: float) -> void:
 	elif _mode == UnitMode.ATTACK or _mode == UnitMode.ATTACK_MOVE:
 		_process_combat_cycle(delta)
 	_sync_worker_collection_navigation_profile()
+	_sync_navigation_precision_profile()
 	_apply_movement(delta)
 	_process_command_queue()
 
@@ -889,8 +897,6 @@ func _process_worker_cycle(delta: float) -> void:
 
 func _set_mining_state(next_state: int) -> void:
 	_mining_state = next_state
-	_mining_move_stall_timer = 0.0
-	_mining_last_move_distance = -1.0
 	match _mining_state:
 		MiningState.IDLE:
 			_mode = UnitMode.IDLE
@@ -1033,14 +1039,20 @@ func _log_mining_event(tag: String, extra: Dictionary = {}) -> void:
 		if _gather_target.has_method("get_wait_queue_length"):
 			queue_len = int(_gather_target.call("get_wait_queue_length"))
 	var command_distance: float = -1.0
+	var command_to_gather: float = -1.0
+	var command_to_dropoff: float = -1.0
 	if _has_target:
 		var to_command: Vector3 = _target_position - global_position
 		to_command.y = 0.0
 		command_distance = to_command.length()
+		if _gather_target != null and is_instance_valid(_gather_target):
+			command_to_gather = RTS_INTERACTION.flat_distance_xz(_target_position, _gather_target.global_position)
+		if _dropoff_target != null and is_instance_valid(_dropoff_target):
+			command_to_dropoff = RTS_INTERACTION.flat_distance_xz(_target_position, _dropoff_target.global_position)
 	var nav_finished_text: String = "n/a"
 	if _can_use_navigation():
 		nav_finished_text = str(_nav_agent.is_navigation_finished())
-	var message: String = "[MINING][%s][team=%d] tag=%s mode=%s state=%s auto=%s carried=%d/%d gather=%s dropoff=%s dist_m=%.2f dist_b=%.2f g_contact=%.2f d_contact=%.2f g_timer=%.2f q_timer=%.2f d_timer=%.2f has_target=%s dist_cmd=%.2f vel=%.2f nav_fin=%s occupied=%s qlen=%d" % [
+	var message: String = "[MINING][%s][team=%d] tag=%s mode=%s state=%s auto=%s carried=%d/%d gather=%s dropoff=%s dist_m=%.2f dist_b=%.2f g_contact=%.2f d_contact=%.2f g_timer=%.2f q_timer=%.2f d_timer=%.2f has_target=%s dist_cmd=%.2f cmd_to_m=%.2f cmd_to_b=%.2f vel=%.2f nav_fin=%s occupied=%s qlen=%d" % [
 		name,
 		team_id,
 		tag,
@@ -1060,6 +1072,8 @@ func _log_mining_event(tag: String, extra: Dictionary = {}) -> void:
 		_mining_delivery_timer,
 		str(_has_target),
 		command_distance,
+		command_to_gather,
+		command_to_dropoff,
 		velocity.length(),
 		nav_finished_text,
 		occupied_text,
@@ -1084,7 +1098,7 @@ func _mining_debug_target_name(target_node: Node3D) -> String:
 		return "null"
 	return "%s@%s" % [target_node.name, str(target_node.get_instance_id())]
 
-func _process_moving_to_mineral_state(delta: float) -> void:
+func _process_moving_to_mineral_state(_delta: float) -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
 		_dropoff_target = _nearest_valid_dropoff(global_position)
 		if _dropoff_target == null:
@@ -1097,46 +1111,29 @@ func _process_moving_to_mineral_state(delta: float) -> void:
 			_stop_worker_cycle(false)
 		return
 	var contact_range: float = _effective_gather_contact_range(_gather_target)
-	var soft_contact_extra: float = maxf(0.28, NAV_VERTICAL_POINT_TOLERANCE + _agent_radius_xz() * 0.45)
-	var gather_delta: Vector3 = _gather_target.global_position - global_position
-	gather_delta.y = 0.0
-	var gather_distance: float = gather_delta.length()
-	if _mining_last_move_distance < 0.0:
-		_mining_last_move_distance = gather_distance
-	elif gather_distance <= _mining_last_move_distance - 0.03:
-		_mining_last_move_distance = gather_distance
-		_mining_move_stall_timer = 0.0
-	elif velocity.length() <= 0.05:
-		_mining_move_stall_timer += delta
-	else:
-		_mining_move_stall_timer = maxf(0.0, _mining_move_stall_timer - delta * 0.6)
-	var should_repath: bool = false
-	_mining_interaction_repath_timer = maxf(0.0, _mining_interaction_repath_timer - delta)
-	if not _has_target or _mining_interaction_repath_timer <= 0.0:
-		should_repath = true
-	if should_repath:
+	if not _has_target:
 		var approach_point: Vector3 = _interaction_approach_point(_gather_target, contact_range)
 		_move_to(approach_point)
-		_mining_interaction_repath_timer = maxf(0.1, mining_interaction_repath_interval)
-	var in_hard_contact: bool = _is_near(_gather_target.global_position, contact_range)
-	if not in_hard_contact:
-		var in_soft_contact: bool = _is_near(_gather_target.global_position, contact_range + soft_contact_extra)
-		if _mining_move_stall_timer < 0.45 or not in_soft_contact:
-			return
-		_log_mining_event("soft_contact_probe", {
-			"soft_extra": snappedf(soft_contact_extra, 0.01),
-			"stall_sec": snappedf(_mining_move_stall_timer, 0.01)
+	var in_hard_contact: bool = RTS_INTERACTION.is_within_distance_xz(global_position, _gather_target.global_position, contact_range)
+	var anchor_contact: bool = false
+	if not in_hard_contact and _has_target:
+		anchor_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, _interaction_anchor_tolerance())
+	if not in_hard_contact and not anchor_contact:
+		return
+	if anchor_contact and not in_hard_contact:
+		_log_mining_event("anchor_contact_fallback", {
+			"anchor_tol": snappedf(_interaction_anchor_tolerance(), 0.01),
+			"dist_anchor": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _target_position), 0.01)
 		})
 	_has_target = false
 	velocity = Vector3.ZERO
-	_mining_move_stall_timer = 0.0
 	var slot_status: String = _request_mineral_slot(_gather_target, true)
 	if slot_status == "granted":
-		_log_mining_event("slot_granted" if in_hard_contact else "slot_granted_soft")
+		_log_mining_event("slot_granted")
 		_set_mining_state(MiningState.HARVESTING)
 		return
 	if slot_status == "queued":
-		_log_mining_event("slot_queued" if in_hard_contact else "slot_queued_soft")
+		_log_mining_event("slot_queued")
 		_set_mining_state(MiningState.QUEUED)
 		return
 	_log_mining_event("slot_request_failed", {"slot_status": slot_status})
@@ -1239,7 +1236,7 @@ func _process_harvesting_state(delta: float) -> void:
 		return
 	_set_mining_state(MiningState.MOVING_TO_BASE)
 
-func _process_moving_to_base_state(delta: float) -> void:
+func _process_moving_to_base_state(_delta: float) -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
 		_dropoff_target = _nearest_valid_dropoff(global_position)
 		if _dropoff_target == null:
@@ -1247,14 +1244,12 @@ func _process_moving_to_base_state(delta: float) -> void:
 			_stop_worker_cycle(true)
 			return
 	var contact_range: float = _effective_dropoff_contact_range(_dropoff_target)
-	if _is_near(_dropoff_target.global_position, contact_range):
+	if _is_interaction_ready(_dropoff_target, contact_range):
 		_set_mining_state(MiningState.DELIVERING)
 		return
-	_mining_interaction_repath_timer = maxf(0.0, _mining_interaction_repath_timer - delta)
-	if not _has_target or _mining_interaction_repath_timer <= 0.0:
+	if not _has_target:
 		var approach_point: Vector3 = _interaction_approach_point(_dropoff_target, contact_range)
 		_move_to(approach_point)
-		_mining_interaction_repath_timer = maxf(0.1, mining_interaction_repath_interval)
 
 func _process_delivering_state(delta: float) -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
@@ -1372,85 +1367,82 @@ func _queue_anchor_for_mineral(mineral: Node3D) -> Vector3:
 	return mineral.global_position + anchor_direction * offset
 
 func _effective_gather_contact_range(mineral: Node3D) -> float:
-	var target_radius: float = maxf(_target_collision_radius_xz(mineral), _target_obstacle_radius_xz(mineral))
-	var agent_radius: float = _agent_radius_xz()
-	var minimum_contact: float = target_radius + agent_radius + 0.16
-	return maxf(gather_range, minimum_contact) + maxf(0.0, gather_trigger_buffer)
+	return RTS_INTERACTION.compute_trigger_distance(
+		self,
+		mineral,
+		gather_range,
+		gather_trigger_buffer,
+		0.16,
+		true
+	)
 
 func _effective_dropoff_contact_range(dropoff: Node3D) -> float:
-	var target_radius: float = maxf(_target_collision_radius_xz(dropoff), _target_obstacle_radius_xz(dropoff))
-	var agent_radius: float = _agent_radius_xz()
 	var nav_contact_padding: float = maxf(0.08, NAV_VERTICAL_POINT_TOLERANCE * 0.25)
-	var minimum_contact: float = target_radius + agent_radius + 0.2
-	return maxf(dropoff_range, minimum_contact) + maxf(0.0, dropoff_trigger_buffer) + nav_contact_padding
+	return RTS_INTERACTION.compute_trigger_distance(
+		self,
+		dropoff,
+		dropoff_range,
+		dropoff_trigger_buffer + nav_contact_padding,
+		0.2,
+		true
+	)
+
+func _effective_repair_contact_range(target_node: Node3D) -> float:
+	return RTS_INTERACTION.compute_trigger_distance(
+		self,
+		target_node,
+		repair_range,
+		0.0,
+		0.08,
+		true
+	)
+
+func _effective_attack_contact_range(target_node: Node3D) -> float:
+	return RTS_INTERACTION.compute_trigger_distance(
+		self,
+		target_node,
+		attack_range,
+		0.0,
+		0.05,
+		true
+	)
 
 func _interaction_approach_point(target_node: Node3D, desired_contact_range: float) -> Vector3:
 	if target_node == null or not is_instance_valid(target_node):
 		return global_position
-	var to_worker: Vector3 = global_position - target_node.global_position
-	to_worker.y = 0.0
-	if to_worker.length_squared() <= 0.0001 and _has_target:
-		to_worker = _target_position - target_node.global_position
-		to_worker.y = 0.0
-	if to_worker.length_squared() <= 0.0001 and _dropoff_target != null and is_instance_valid(_dropoff_target):
-		to_worker = _dropoff_target.global_position - target_node.global_position
-		to_worker.y = 0.0
-	if to_worker.length_squared() <= 0.0001:
-		to_worker = Vector3.RIGHT
-	var direction: Vector3 = to_worker.normalized()
-	var target_radius: float = maxf(_target_collision_radius_xz(target_node), _target_obstacle_radius_xz(target_node))
-	var approach_distance: float = maxf(desired_contact_range * 0.92, target_radius + _agent_radius_xz() + 0.12)
-	return target_node.global_position + direction * approach_distance
+	var preferred_direction: Vector3 = Vector3.ZERO
+	if _dropoff_target != null and is_instance_valid(_dropoff_target):
+		preferred_direction = _dropoff_target.global_position - target_node.global_position
+	return RTS_INTERACTION.compute_approach_point(
+		self,
+		target_node,
+		desired_contact_range,
+		preferred_direction,
+		0.92,
+		0.12,
+		true
+	)
 
 func _target_collision_radius_xz(target_node: Node3D) -> float:
-	if target_node == null or not is_instance_valid(target_node):
-		return 0.0
-	var shape_node: CollisionShape3D = target_node.get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if shape_node == null or shape_node.shape == null:
-		return 0.0
-	var shape: Shape3D = shape_node.shape
-	if shape is BoxShape3D:
-		var box: BoxShape3D = shape as BoxShape3D
-		return maxf(box.size.x, box.size.z) * 0.5
-	if shape is CapsuleShape3D:
-		var capsule: CapsuleShape3D = shape as CapsuleShape3D
-		return capsule.radius
-	if shape is CylinderShape3D:
-		var cylinder: CylinderShape3D = shape as CylinderShape3D
-		return cylinder.radius
-	if shape is SphereShape3D:
-		var sphere: SphereShape3D = shape as SphereShape3D
-		return sphere.radius
-	return 0.0
+	return RTS_INTERACTION.collision_radius_xz(target_node, false)
 
 func _target_obstacle_radius_xz(target_node: Node3D) -> float:
-	if target_node == null or not is_instance_valid(target_node):
-		return 0.0
-	var obstacle_node: NavigationObstacle3D = target_node.get_node_or_null("Obstacle3D") as NavigationObstacle3D
-	if obstacle_node == null:
-		obstacle_node = target_node.get_node_or_null("NavigationObstacle3D") as NavigationObstacle3D
-	if obstacle_node == null:
-		for child_node in target_node.get_children():
-			var child_obstacle: NavigationObstacle3D = child_node as NavigationObstacle3D
-			if child_obstacle != null:
-				obstacle_node = child_obstacle
-				break
-	if obstacle_node == null:
-		return 0.0
-	var max_radius: float = 0.0
-	var obstacle_scale: Vector3 = obstacle_node.scale
-	for local_vertex in obstacle_node.vertices:
-		var radial_length: float = Vector2(local_vertex.x * obstacle_scale.x, local_vertex.z * obstacle_scale.z).length()
-		if radial_length > max_radius:
-			max_radius = radial_length
-	if max_radius <= 0.001:
-		max_radius = maxf(0.0, float(obstacle_node.get("radius")))
-	return max_radius
+	return RTS_INTERACTION.obstacle_radius_xz(target_node)
 
 func _agent_radius_xz() -> float:
-	if _nav_agent != null:
-		return maxf(0.0, _nav_agent.radius)
-	return 0.32
+	return RTS_INTERACTION.collision_radius_xz(self, false)
+
+func _interaction_anchor_tolerance() -> float:
+	return maxf(0.18, interaction_nav_target_desired_distance + 0.08)
+
+func _is_interaction_ready(target_node: Node3D, contact_range: float) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	if RTS_INTERACTION.is_within_distance_xz(global_position, target_node.global_position, contact_range):
+		return true
+	if not _has_target:
+		return false
+	return RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, _interaction_anchor_tolerance())
 
 func _harvest_duration_for_target(mineral: Node3D) -> float:
 	if mineral != null and is_instance_valid(mineral) and mineral.has_method("get_harvest_time"):
@@ -1567,8 +1559,8 @@ func _process_repair_cycle(delta: float) -> void:
 	if not _is_repair_target_damaged(_repair_target):
 		command_stop(true)
 		return
-	var effective_repair_range: float = maxf(0.5, repair_range)
-	if _is_near(_repair_target.global_position, effective_repair_range):
+	var effective_repair_range: float = _effective_repair_contact_range(_repair_target)
+	if _is_interaction_ready(_repair_target, effective_repair_range):
 		_has_target = false
 		velocity = Vector3.ZERO
 		_repair_timer += delta
@@ -1583,7 +1575,8 @@ func _process_repair_cycle(delta: float) -> void:
 			command_stop(true)
 		return
 	if not _has_target:
-		_move_to(_repair_target.global_position)
+		var approach_point: Vector3 = _interaction_approach_point(_repair_target, effective_repair_range)
+		_move_to(approach_point)
 
 func _process_combat_cycle(delta: float) -> void:
 	if is_worker or attack_damage <= 0.0 or attack_range <= 0.0:
@@ -1616,7 +1609,8 @@ func _process_combat_cycle(delta: float) -> void:
 		return
 
 	var target_position: Vector3 = attack_target_3d.global_position
-	if _is_near(target_position, attack_range):
+	var effective_attack_range: float = _effective_attack_contact_range(attack_target_3d)
+	if _is_interaction_ready(attack_target_3d, effective_attack_range):
 		_has_target = false
 		velocity = Vector3.ZERO
 		_attack_timer += delta
@@ -1628,7 +1622,8 @@ func _process_combat_cycle(delta: float) -> void:
 				_spawn_attack_vfx(target_position)
 		return
 
-	_move_to(target_position)
+	var approach_point: Vector3 = _interaction_approach_point(attack_target_3d, effective_attack_range)
+	_move_to(approach_point)
 	if _mode == UnitMode.ATTACK_MOVE and _retarget_timer <= 0.0:
 		_try_acquire_new_combat_target()
 
@@ -1816,20 +1811,12 @@ func _apply_movement(delta: float) -> void:
 	to_target.y = 0.0
 	if to_target.length() <= 0.1:
 		if _can_use_navigation() and not _nav_agent.is_navigation_finished():
-			var to_final_target: Vector3 = _target_position - global_position
-			to_final_target.y = 0.0
-			if to_final_target.length() > 0.18:
-				if debug_nav_log:
-					_log_nav_state("next_point_same_as_current", move_target, to_final_target.normalized() * move_speed, nav_finished, to_final_target.length())
-				to_target = to_final_target
-			else:
-				_has_target = false
-				_reset_navigation_motion()
-				_hover_current_speed = 0.0
-				_hover_brake_release_timer = 0.0
-				velocity = Vector3.ZERO
-				move_and_slide()
-				return
+			_force_navigation_repath("next_point_same_as_current", RTS_INTERACTION.flat_distance_xz(global_position, _target_position))
+			_hover_current_speed = 0.0
+			_hover_brake_release_timer = 0.0
+			velocity = Vector3.ZERO
+			move_and_slide()
+			return
 		else:
 			_has_target = false
 			_reset_navigation_motion()
@@ -1839,7 +1826,17 @@ func _apply_movement(delta: float) -> void:
 			move_and_slide()
 			return
 
-	var target_distance: float = to_target.length()
+	var waypoint_distance: float = to_target.length()
+	var final_target_delta: Vector3 = _target_position - global_position
+	final_target_delta.y = 0.0
+	var final_target_distance: float = final_target_delta.length()
+	var motion_distance: float = waypoint_distance
+	if _can_use_navigation():
+		# Use remaining distance to final interaction anchor for braking decisions.
+		# Avoids slowing to zero at every intermediate nav waypoint.
+		motion_distance = maxf(waypoint_distance, final_target_distance)
+	else:
+		motion_distance = final_target_distance
 	var direction: Vector3 = to_target.normalized()
 	var desired_speed: float = move_speed
 	if _use_hover_mining_dynamics():
@@ -1847,7 +1844,7 @@ func _apply_movement(delta: float) -> void:
 		var acceleration: float = maxf(0.01, move_speed / maxf(0.05, hover_acceleration_time))
 		var braking_denominator: float = maxf(0.01, 2.0 * maxf(0.1, hover_deceleration_factor))
 		var braking_distance: float = (_hover_current_speed * _hover_current_speed) / braking_denominator
-		var should_brake: bool = target_distance <= braking_distance and _hover_brake_release_timer <= 0.0
+		var should_brake: bool = motion_distance <= braking_distance and _hover_brake_release_timer <= 0.0
 		if should_brake:
 			_hover_current_speed = maxf(0.0, _hover_current_speed - maxf(0.1, hover_deceleration_factor) * delta)
 		else:
@@ -1872,21 +1869,25 @@ func _apply_movement(delta: float) -> void:
 
 	# Stuck diagnostics: target exists, distance still large, but final velocity stays near zero.
 	if debug_nav_log:
-		if target_distance > 0.45 and velocity.length_squared() < 0.0025:
+		if motion_distance > 0.45 and velocity.length_squared() < 0.0025:
 			_stuck_log_accum += delta
 			if _stuck_log_accum >= maxf(0.2, debug_nav_log_interval):
 				_stuck_log_accum = 0.0
-				_log_nav_state("stuck", move_target, desired_velocity, nav_finished, target_distance)
+				_log_nav_state("stuck", move_target, desired_velocity, nav_finished, motion_distance)
 		else:
 			_stuck_log_accum = 0.0
 	move_and_slide()
-	_update_congestion_state(delta, target_distance, desired_velocity.length(), frame_start_position)
+	_process_target_progress_watchdog(delta)
+	_update_congestion_state(delta, motion_distance, desired_velocity.length(), frame_start_position)
 
 func _move_to(target: Vector3) -> void:
 	_target_position = Vector3(target.x, global_position.y, target.z)
 	_has_target = true
 	_has_safe_velocity = false
 	_last_desired_velocity = Vector3.ZERO
+	_target_progress_timer = 0.0
+	_target_progress_best_distance = RTS_INTERACTION.flat_distance_xz(global_position, _target_position)
+	_target_progress_repath_cooldown = 0.0
 	if debug_nav_log:
 		_log_nav_state("move_to", _target_position, Vector3.ZERO, false, global_position.distance_to(_target_position))
 	if _can_use_navigation():
@@ -1895,10 +1896,45 @@ func _move_to(target: Vector3) -> void:
 			_nav_target_cached = _target_position
 			_has_nav_target_cached = true
 
+func _process_target_progress_watchdog(delta: float) -> void:
+	if not _has_target:
+		_target_progress_timer = 0.0
+		_target_progress_best_distance = INF
+		_target_progress_repath_cooldown = 0.0
+		return
+	var remaining_distance: float = RTS_INTERACTION.flat_distance_xz(global_position, _target_position)
+	_target_progress_repath_cooldown = maxf(0.0, _target_progress_repath_cooldown - delta)
+	if _target_progress_best_distance == INF or remaining_distance < _target_progress_best_distance - 0.04:
+		_target_progress_best_distance = remaining_distance
+		_target_progress_timer = 0.0
+		return
+	_target_progress_timer += delta
+	if remaining_distance <= maxf(0.35, _interaction_anchor_tolerance()):
+		return
+	if _target_progress_timer < 0.7:
+		return
+	_force_navigation_repath("repath_no_progress", remaining_distance)
+
+func _force_navigation_repath(reason: String, remaining_distance: float) -> void:
+	if _target_progress_repath_cooldown > 0.0:
+		return
+	if _can_use_navigation():
+		_has_nav_target_cached = false
+		_nav_agent.target_position = _target_position
+		_nav_target_cached = _target_position
+		_has_nav_target_cached = true
+	_target_progress_timer = 0.0
+	_target_progress_best_distance = remaining_distance
+	_target_progress_repath_cooldown = 0.45
+	if _is_mining_debug_candidate():
+		_log_mining_event(reason, {
+			"dist_cmd": snappedf(remaining_distance, 0.01)
+		})
+	elif debug_nav_log:
+		_log_nav_state(reason, _target_position, _last_desired_velocity, _can_use_navigation() and _nav_agent.is_navigation_finished(), remaining_distance)
+
 func _is_near(target_position: Vector3, distance_limit: float) -> bool:
-	var delta: Vector3 = target_position - global_position
-	delta.y = 0.0
-	return delta.length() <= distance_limit
+	return RTS_INTERACTION.is_within_distance_xz(global_position, target_position, distance_limit)
 
 func _use_hover_mining_dynamics() -> bool:
 	if not is_worker:
@@ -2207,8 +2243,10 @@ func _setup_navigation_agent() -> void:
 	_nav_agent.max_speed = move_speed
 	# Nav path points are often elevated by ~0.5 on baked meshes; keep tolerance above that
 	# so waypoint progression does not stall when XZ is aligned but Y differs.
-	_nav_agent.path_desired_distance = NAV_VERTICAL_POINT_TOLERANCE
-	_nav_agent.target_desired_distance = NAV_VERTICAL_POINT_TOLERANCE
+	_default_nav_path_desired_distance = maxf(0.05, NAV_VERTICAL_POINT_TOLERANCE)
+	_default_nav_target_desired_distance = maxf(0.05, NAV_VERTICAL_POINT_TOLERANCE)
+	_nav_agent.path_desired_distance = _default_nav_path_desired_distance
+	_nav_agent.target_desired_distance = _default_nav_target_desired_distance
 	_nav_agent.avoidance_enabled = true
 	_nav_agent.radius = 0.32
 	_nav_agent.height = 1.0
@@ -2216,6 +2254,7 @@ func _setup_navigation_agent() -> void:
 	if not _nav_agent.is_connected("velocity_computed", callback):
 		_nav_agent.connect("velocity_computed", callback)
 	_sync_worker_collection_navigation_profile()
+	_sync_navigation_precision_profile()
 
 func _can_use_navigation() -> bool:
 	if _nav_agent == null:
@@ -2235,13 +2274,21 @@ func _reset_navigation_motion() -> void:
 	_has_safe_velocity = false
 	_safe_velocity = Vector3.ZERO
 	_safe_velocity_frame = -1
+	_target_progress_timer = 0.0
+	_target_progress_best_distance = INF
+	_target_progress_repath_cooldown = 0.0
 	_hover_current_speed = 0.0
 	_hover_brake_release_timer = 0.0
 	_reset_congestion_ghosting()
 	_stuck_log_accum = 0.0
 	_last_desired_velocity = Vector3.ZERO
-	if _nav_agent != null and _nav_agent.avoidance_enabled:
-		_nav_agent.set_velocity_forced(Vector3.ZERO)
+	if _nav_agent != null:
+		if _interaction_nav_precision_active:
+			_interaction_nav_precision_active = false
+			_nav_agent.path_desired_distance = _default_nav_path_desired_distance
+			_nav_agent.target_desired_distance = _default_nav_target_desired_distance
+		if _nav_agent.avoidance_enabled:
+			_nav_agent.set_velocity_forced(Vector3.ZERO)
 
 func _sync_worker_collection_navigation_profile() -> void:
 	var should_use_collection_profile: bool = is_worker and (
@@ -2271,6 +2318,35 @@ func _sync_worker_collection_navigation_profile() -> void:
 	_has_safe_velocity = false
 	_safe_velocity = Vector3.ZERO
 	_safe_velocity_frame = -1
+
+func _requires_precise_interaction_navigation() -> bool:
+	if _construction_hidden:
+		return false
+	if _mode == UnitMode.GATHER_RESOURCE:
+		return _mining_state == MiningState.MOVING_TO_MINERAL
+	if _mode == UnitMode.RETURN_RESOURCE:
+		return _mining_state == MiningState.MOVING_TO_BASE
+	if _mode == UnitMode.REPAIR:
+		return _repair_target != null and is_instance_valid(_repair_target)
+	if _mode == UnitMode.ATTACK:
+		return _attack_target != null and is_instance_valid(_attack_target)
+	if _mode == UnitMode.ATTACK_MOVE:
+		return _attack_target != null and is_instance_valid(_attack_target)
+	return false
+
+func _sync_navigation_precision_profile() -> void:
+	if _nav_agent == null:
+		return
+	var should_use_precise: bool = _has_target and _requires_precise_interaction_navigation()
+	if should_use_precise == _interaction_nav_precision_active:
+		return
+	_interaction_nav_precision_active = should_use_precise
+	if should_use_precise:
+		_nav_agent.path_desired_distance = _default_nav_path_desired_distance
+		_nav_agent.target_desired_distance = clampf(interaction_nav_target_desired_distance, 0.05, _default_nav_target_desired_distance)
+		return
+	_nav_agent.path_desired_distance = _default_nav_path_desired_distance
+	_nav_agent.target_desired_distance = _default_nav_target_desired_distance
 
 func _refresh_unit_collision_mask() -> void:
 	if _construction_hidden:

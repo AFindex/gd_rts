@@ -1,6 +1,7 @@
 extends StaticBody3D
 
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RTS_INTERACTION: Script = preload("res://scripts/core/rts_interaction.gd")
 const RALLY_MAX_HOPS: int = 3
 const RALLY_ALERT_DURATION: float = 1.2
 const CONSTRUCTION_PARADIGM_SUMMONING: String = "summoning"
@@ -823,15 +824,14 @@ func _process_tower_combat(delta: float) -> void:
 		_spawn_attack_vfx(hit_position)
 
 func _acquire_tower_target() -> Node3D:
-	var range_sq: float = attack_range * attack_range
-	var unit_target: Node3D = _find_nearest_enemy_in_group("selectable_unit", range_sq)
+	var unit_target: Node3D = _find_nearest_enemy_in_group("selectable_unit")
 	if unit_target != null:
 		return unit_target
-	return _find_nearest_enemy_in_group("selectable_building", range_sq)
+	return _find_nearest_enemy_in_group("selectable_building")
 
-func _find_nearest_enemy_in_group(group_name: String, range_sq: float) -> Node3D:
+func _find_nearest_enemy_in_group(group_name: String) -> Node3D:
 	var nearest: Node3D = null
-	var best_distance_sq: float = range_sq
+	var best_distance_sq: float = INF
 	var nodes: Array[Node] = get_tree().get_nodes_in_group(group_name)
 	for node in nodes:
 		if node == null or not is_instance_valid(node):
@@ -841,9 +841,9 @@ func _find_nearest_enemy_in_group(group_name: String, range_sq: float) -> Node3D
 			continue
 		if not _is_valid_enemy_target(target):
 			continue
-		var distance_sq: float = _flat_distance_sq(global_position, target.global_position)
-		if distance_sq > range_sq:
+		if not _is_target_in_range(target):
 			continue
+		var distance_sq: float = _flat_distance_sq(global_position, target.global_position)
 		if nearest == null or distance_sq < best_distance_sq:
 			nearest = target
 			best_distance_sq = distance_sq
@@ -866,7 +866,14 @@ func _is_target_in_range(target) -> bool:
 	var target_3d: Node3D = target as Node3D
 	if target_3d == null:
 		return false
-	return _flat_distance_sq(global_position, target_3d.global_position) <= attack_range * attack_range
+	return RTS_INTERACTION.is_triggered(
+		self,
+		target_3d,
+		attack_range,
+		0.0,
+		0.05,
+		true
+	)
 
 func _flat_distance_sq(a: Vector3, b: Vector3) -> float:
 	var delta: Vector3 = b - a
