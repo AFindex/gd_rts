@@ -36,6 +36,9 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var max_command_queue: int = 32
 @export var debug_nav_log: bool = false
 @export var debug_nav_log_interval: float = 0.8
+@export var congestion_ghosting_enabled: bool = true
+@export var congestion_stuck_time: float = 0.35
+@export var congestion_release_time: float = 0.5
 
 @onready var _selection_ring: MeshInstance3D = $SelectionRing
 @onready var _sprite: Sprite3D = $Sprite3D
@@ -79,6 +82,10 @@ var _has_nav_target_cached: bool = false
 var _safe_velocity: Vector3 = Vector3.ZERO
 var _has_safe_velocity: bool = false
 var _safe_velocity_frame: int = -1
+var _congestion_stuck_timer: float = 0.0
+var _congestion_release_timer: float = 0.0
+var _congestion_repath_cooldown: float = 0.0
+var _unit_collision_ghosted: bool = false
 var _stuck_log_accum: float = 0.0
 var _last_desired_velocity: Vector3 = Vector3.ZERO
 var _default_collision_mask: int = 0
@@ -1018,10 +1025,12 @@ func _deposit_to_game_manager(amount: int) -> void:
 
 func _apply_movement(delta: float) -> void:
 	if not _has_target:
+		_reset_congestion_ghosting()
 		velocity = Vector3.ZERO
 		move_and_slide()
 		return
 
+	var frame_start_position: Vector3 = global_position
 	var move_target: Vector3 = _target_position
 	var nav_finished: bool = false
 	if _can_use_navigation():
@@ -1057,6 +1066,7 @@ func _apply_movement(delta: float) -> void:
 			move_and_slide()
 			return
 
+	var target_distance: float = to_target.length()
 	var direction: Vector3 = to_target.normalized()
 	var desired_velocity: Vector3 = direction * move_speed
 	_last_desired_velocity = desired_velocity
@@ -1074,7 +1084,6 @@ func _apply_movement(delta: float) -> void:
 
 	# Stuck diagnostics: target exists, distance still large, but final velocity stays near zero.
 	if debug_nav_log:
-		var target_distance: float = to_target.length()
 		if target_distance > 0.45 and velocity.length_squared() < 0.0025:
 			_stuck_log_accum += delta
 			if _stuck_log_accum >= maxf(0.2, debug_nav_log_interval):
@@ -1083,6 +1092,7 @@ func _apply_movement(delta: float) -> void:
 		else:
 			_stuck_log_accum = 0.0
 	move_and_slide()
+	_update_congestion_state(delta, target_distance, desired_velocity.length(), frame_start_position)
 
 func _move_to(target: Vector3) -> void:
 	_target_position = Vector3(target.x, global_position.y, target.z)
@@ -1172,7 +1182,7 @@ func _ensure_outline_sprite() -> void:
 	_outline_sprite.position = _sprite.position
 	_outline_sprite.scale = _sprite.scale * sprite_outline_scale
 	_outline_sprite.visible = false
-	_outline_sprite.render_priority = _sprite.render_priority - 1
+	_outline_sprite.render_priority = _sprite.render_priority + 2
 	_outline_material = StandardMaterial3D.new()
 	_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_outline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -1228,6 +1238,8 @@ func _is_sprite_occluded() -> bool:
 	var target: Vector3 = _sprite.global_position
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, target)
 	query.collide_with_areas = false
+	query.collision_mask = 0x7fffffff
+	query.exclude = [get_rid()]
 	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return false
@@ -1382,6 +1394,7 @@ func _set_construction_hidden(hidden: bool) -> void:
 			remove_from_group("selectable_unit")
 		collision_layer = 0
 		collision_mask = 0
+		_reset_congestion_ghosting()
 		if _nav_agent != null:
 			_nav_agent.avoidance_enabled = false
 			_nav_agent.set_velocity_forced(Vector3.ZERO)
@@ -1389,7 +1402,7 @@ func _set_construction_hidden(hidden: bool) -> void:
 	if not is_in_group("selectable_unit"):
 		add_to_group("selectable_unit")
 	collision_layer = _default_collision_layer
-	collision_mask = _default_collision_mask
+	_refresh_unit_collision_mask()
 	if _nav_agent != null:
 		_nav_agent.avoidance_enabled = not _worker_collection_profile_active
 		_nav_agent.set_velocity_forced(Vector3.ZERO)
@@ -1428,6 +1441,7 @@ func _reset_navigation_motion() -> void:
 	_has_safe_velocity = false
 	_safe_velocity = Vector3.ZERO
 	_safe_velocity_frame = -1
+	_reset_congestion_ghosting()
 	_stuck_log_accum = 0.0
 	_last_desired_velocity = Vector3.ZERO
 	if _nav_agent != null and _nav_agent.avoidance_enabled:
@@ -1440,7 +1454,8 @@ func _sync_worker_collection_navigation_profile() -> void:
 	_worker_collection_profile_active = should_use_collection_profile
 	if should_use_collection_profile:
 		# SC2-style worker flow: gather/return keeps navmesh pathing, but ignores local avoidance and unit collision.
-		collision_mask = _default_collision_mask & ~UNIT_COLLISION_LAYER_BIT
+		_reset_congestion_ghosting()
+		_refresh_unit_collision_mask()
 		if _nav_agent != null:
 			_nav_agent.set_velocity_forced(Vector3.ZERO)
 			_nav_agent.avoidance_enabled = false
@@ -1448,13 +1463,68 @@ func _sync_worker_collection_navigation_profile() -> void:
 		_safe_velocity = Vector3.ZERO
 		_safe_velocity_frame = -1
 		return
-	collision_mask = _default_collision_mask
+	_refresh_unit_collision_mask()
 	if _nav_agent != null:
 		_nav_agent.avoidance_enabled = true
 		_nav_agent.set_velocity_forced(Vector3.ZERO)
 	_has_safe_velocity = false
 	_safe_velocity = Vector3.ZERO
 	_safe_velocity_frame = -1
+
+func _refresh_unit_collision_mask() -> void:
+	if _construction_hidden:
+		collision_mask = 0
+		return
+	var desired_mask: int = _default_collision_mask
+	if _worker_collection_profile_active or _unit_collision_ghosted:
+		desired_mask &= ~UNIT_COLLISION_LAYER_BIT
+	collision_mask = desired_mask
+
+func _set_unit_collision_ghosted(ghosted: bool) -> void:
+	if _unit_collision_ghosted == ghosted:
+		return
+	_unit_collision_ghosted = ghosted
+	_refresh_unit_collision_mask()
+
+func _reset_congestion_ghosting() -> void:
+	_congestion_stuck_timer = 0.0
+	_congestion_release_timer = 0.0
+	_congestion_repath_cooldown = 0.0
+	_set_unit_collision_ghosted(false)
+
+func _update_congestion_state(delta: float, target_distance: float, desired_speed: float, frame_start_position: Vector3) -> void:
+	if not congestion_ghosting_enabled or _worker_collection_profile_active or _construction_hidden:
+		_reset_congestion_ghosting()
+		return
+	_congestion_repath_cooldown = maxf(0.0, _congestion_repath_cooldown - delta)
+	var frame_movement: Vector3 = global_position - frame_start_position
+	frame_movement.y = 0.0
+	var moved_distance: float = frame_movement.length()
+	var expected_step: float = maxf(0.02, move_speed * delta * 0.25)
+	var should_track_stuck: bool = _has_target and target_distance > 0.8 and desired_speed > 0.1
+	if should_track_stuck and moved_distance < expected_step:
+		_congestion_stuck_timer += delta
+		if _congestion_stuck_timer >= maxf(0.1, congestion_stuck_time):
+			if not _unit_collision_ghosted and debug_nav_log:
+				_log_nav_state("ghost_on", _target_position, _last_desired_velocity, _can_use_navigation() and _nav_agent.is_navigation_finished(), target_distance)
+			_set_unit_collision_ghosted(true)
+			_congestion_release_timer = maxf(0.05, congestion_release_time)
+			if _can_use_navigation() and _congestion_repath_cooldown <= 0.0:
+				_has_nav_target_cached = false
+				_nav_agent.target_position = _target_position
+				_nav_target_cached = _target_position
+				_has_nav_target_cached = true
+				_congestion_repath_cooldown = 0.22
+	else:
+		_congestion_stuck_timer = maxf(0.0, _congestion_stuck_timer - delta * 1.8)
+		if _unit_collision_ghosted and moved_distance > expected_step * 0.9:
+			_congestion_release_timer = minf(_congestion_release_timer, 0.15)
+	if _unit_collision_ghosted:
+		_congestion_release_timer = maxf(0.0, _congestion_release_timer - delta)
+		if _congestion_release_timer <= 0.0 and _congestion_stuck_timer <= maxf(0.05, congestion_stuck_time * 0.5):
+			if debug_nav_log:
+				_log_nav_state("ghost_off", _target_position, _last_desired_velocity, _can_use_navigation() and _nav_agent.is_navigation_finished(), target_distance)
+			_set_unit_collision_ghosted(false)
 
 func _log_nav_state(tag: String, move_target: Vector3, desired_velocity: Vector3, nav_finished: bool, target_distance: float) -> void:
 	var map_valid: bool = _can_use_navigation()

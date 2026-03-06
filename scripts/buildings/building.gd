@@ -706,7 +706,7 @@ func _ensure_outline_sprite() -> void:
 	_outline_sprite.position = _sprite.position
 	_outline_sprite.scale = _sprite.scale * sprite_outline_scale
 	_outline_sprite.visible = false
-	_outline_sprite.render_priority = _sprite.render_priority - 1
+	_outline_sprite.render_priority = _sprite.render_priority + 2
 	_outline_material = StandardMaterial3D.new()
 	_outline_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_outline_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -762,6 +762,8 @@ func _is_sprite_occluded() -> bool:
 	var target: Vector3 = _sprite.global_position
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, target)
 	query.collide_with_areas = false
+	query.collision_mask = 0x7fffffff
+	query.exclude = [get_rid()]
 	var hit: Dictionary = world.direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return false

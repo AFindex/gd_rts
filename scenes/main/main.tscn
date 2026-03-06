@@ -215,7 +215,7 @@ is_worker = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0)
 
 [node name="EnemyBarracks" parent="Buildings" unique_id=774522024 instance=ExtResource("4_building")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 18, 0, 2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 43.24435, 0, 12.17926)
 building_kind = "barracks"
 team_id = 2
 is_resource_dropoff = false
@@ -231,7 +231,17 @@ spawn_offset = Vector3(3.6, 0, 0)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 7)
 
 [node name="MineralFieldB" parent="Resources" unique_id=1285716064 instance=ExtResource("7_resource_node")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0, 10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.306117, 0, 9.416271)
+total_minerals = 1200
+max_visual_minerals = 1200
+
+[node name="MineralFieldB" parent="Resources/MineralFieldB" unique_id=1795665083 instance=ExtResource("7_resource_node")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.8322508, 0, 1.641779)
+total_minerals = 1200
+max_visual_minerals = 1200
+
+[node name="MineralFieldB" parent="Resources/MineralFieldB/MineralFieldB" unique_id=930896472 instance=ExtResource("7_resource_node")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.390253, 0, 1.48209)
 total_minerals = 1200
 max_visual_minerals = 1200
 
