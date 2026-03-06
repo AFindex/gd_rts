@@ -913,8 +913,7 @@ func _set_mining_state(next_state: int) -> void:
 			_mining_queue_timer = 0.0
 			_mining_interaction_repath_timer = 0.0
 			if _gather_target != null and is_instance_valid(_gather_target):
-				var approach_point: Vector3 = _interaction_approach_point(_gather_target, _effective_gather_contact_range(_gather_target))
-				_move_to(approach_point)
+				_move_to(_gather_target.global_position)
 		MiningState.QUEUED:
 			_mode = UnitMode.GATHER_RESOURCE
 			_mining_queue_timer = 0.0
@@ -934,8 +933,7 @@ func _set_mining_state(next_state: int) -> void:
 			if _dropoff_target == null or not is_instance_valid(_dropoff_target):
 				_dropoff_target = _nearest_valid_dropoff(global_position)
 			if _dropoff_target != null and is_instance_valid(_dropoff_target):
-				var approach_point: Vector3 = _interaction_approach_point(_dropoff_target, _effective_dropoff_contact_range(_dropoff_target))
-				_move_to(approach_point)
+				_move_to(_dropoff_target.global_position)
 		MiningState.DELIVERING:
 			_mode = UnitMode.RETURN_RESOURCE
 			_mining_delivery_timer = 0.0
@@ -1112,8 +1110,7 @@ func _process_moving_to_mineral_state(_delta: float) -> void:
 		return
 	var contact_range: float = _effective_gather_contact_range(_gather_target)
 	if not _has_target:
-		var approach_point: Vector3 = _interaction_approach_point(_gather_target, contact_range)
-		_move_to(approach_point)
+		_move_to(_gather_target.global_position)
 	var in_hard_contact: bool = RTS_INTERACTION.is_within_distance_xz(global_position, _gather_target.global_position, contact_range)
 	var anchor_contact: bool = false
 	if not in_hard_contact and _has_target:
@@ -1248,8 +1245,7 @@ func _process_moving_to_base_state(_delta: float) -> void:
 		_set_mining_state(MiningState.DELIVERING)
 		return
 	if not _has_target:
-		var approach_point: Vector3 = _interaction_approach_point(_dropoff_target, contact_range)
-		_move_to(approach_point)
+		_move_to(_dropoff_target.global_position)
 
 func _process_delivering_state(delta: float) -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
@@ -1258,8 +1254,7 @@ func _process_delivering_state(delta: float) -> void:
 			_log_mining_event("no_dropoff_while_delivering")
 			_stop_worker_cycle(false)
 			return
-		var approach_point: Vector3 = _interaction_approach_point(_dropoff_target, _effective_dropoff_contact_range(_dropoff_target))
-		_move_to(approach_point)
+		_move_to(_dropoff_target.global_position)
 		_set_mining_state(MiningState.MOVING_TO_BASE)
 		return
 
@@ -1404,22 +1399,6 @@ func _effective_attack_contact_range(target_node: Node3D) -> float:
 		attack_range,
 		0.0,
 		0.05,
-		true
-	)
-
-func _interaction_approach_point(target_node: Node3D, desired_contact_range: float) -> Vector3:
-	if target_node == null or not is_instance_valid(target_node):
-		return global_position
-	var preferred_direction: Vector3 = Vector3.ZERO
-	if _dropoff_target != null and is_instance_valid(_dropoff_target):
-		preferred_direction = _dropoff_target.global_position - target_node.global_position
-	return RTS_INTERACTION.compute_approach_point(
-		self,
-		target_node,
-		desired_contact_range,
-		preferred_direction,
-		0.92,
-		0.12,
 		true
 	)
 
@@ -1575,8 +1554,7 @@ func _process_repair_cycle(delta: float) -> void:
 			command_stop(true)
 		return
 	if not _has_target:
-		var approach_point: Vector3 = _interaction_approach_point(_repair_target, effective_repair_range)
-		_move_to(approach_point)
+		_move_to(_repair_target.global_position)
 
 func _process_combat_cycle(delta: float) -> void:
 	if is_worker or attack_damage <= 0.0 or attack_range <= 0.0:
@@ -1622,8 +1600,7 @@ func _process_combat_cycle(delta: float) -> void:
 				_spawn_attack_vfx(target_position)
 		return
 
-	var approach_point: Vector3 = _interaction_approach_point(attack_target_3d, effective_attack_range)
-	_move_to(approach_point)
+	_move_to(target_position)
 	if _mode == UnitMode.ATTACK_MOVE and _retarget_timer <= 0.0:
 		_try_acquire_new_combat_target()
 
