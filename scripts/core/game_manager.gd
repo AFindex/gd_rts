@@ -4,13 +4,13 @@ const UNIT_SCENE: PackedScene = preload("res://scenes/units/unit.tscn")
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
+const BUILD_PLACEMENT_GRID_SCRIPT: Script = preload("res://scripts/core/build_placement_grid.gd")
 
 const WORKER_COST: int = 50
 const SOLDIER_COST: int = 70
 const SUPPLY_CAP: int = 40
 const HUD_MULTI_MAX: int = 30
-const BUILDING_BLOCK_RADIUS: float = 3.8
-const RESOURCE_BLOCK_RADIUS: float = 3.2
+const DEFAULT_BUILD_FOOTPRINT: Vector2 = Vector2(2.6, 1.8)
 const PLAYER_TEAM_ID: int = 1
 const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
 const QUEUE_MARKER_GROUP: StringName = &"command_queue_marker"
@@ -90,6 +90,8 @@ var _placement_can_place: bool = false
 var _placement_preview: MeshInstance3D
 var _placement_preview_material: StandardMaterial3D
 var _placement_rotation_y: float = 0.0
+var _placement_footprint: Vector2 = DEFAULT_BUILD_FOOTPRINT
+var _build_placement_grid = null
 
 var _pending_target_skill: String = ""
 var _build_menu_open: bool = false
@@ -164,6 +166,7 @@ func _ready() -> void:
 	_apply_runtime_config()
 	_connect_hud_signals()
 	_create_placement_preview()
+	_setup_build_placement_grid()
 	_setup_queue_visual_root()
 	_setup_ping_visual_root()
 	_setup_construction_ghost_visual_root()
@@ -1346,7 +1349,8 @@ func _create_pending_construction_ghost_node(ghost_id: int, kind: String, world_
 	var mesh_instance: MeshInstance3D = MeshInstance3D.new()
 	mesh_instance.name = "GhostMesh"
 	var mesh: BoxMesh = BoxMesh.new()
-	mesh.size = Vector3(2.6, 0.12, 1.8)
+	var footprint: Vector2 = _build_footprint_for_kind(kind)
+	mesh.size = Vector3(footprint.x, 0.12, footprint.y)
 	mesh_instance.mesh = mesh
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -4819,7 +4823,11 @@ func _start_building_placement(kind: String) -> void:
 	_placing_kind = kind
 	_placing_cost = build_cost
 	_placement_rotation_y = 0.0
+	_placement_footprint = _build_footprint_for_kind(kind)
+	_set_placement_preview_footprint(_placement_footprint)
 	_placement_preview.visible = true
+	_set_build_grid_visible(true)
+	_sync_build_grid_occupancy()
 	_update_placement_preview()
 	_refresh_hint_label()
 
@@ -4827,9 +4835,12 @@ func _cancel_building_placement() -> void:
 	_placing_building = false
 	_placing_kind = ""
 	_placing_cost = 0
+	_placement_footprint = DEFAULT_BUILD_FOOTPRINT
 	_placement_can_place = false
 	if _placement_preview != null:
 		_placement_preview.visible = false
+	_set_build_grid_visible(false)
+	_clear_build_grid_preview()
 	_refresh_hint_label()
 
 func _rotate_building_placement() -> void:
@@ -4842,7 +4853,7 @@ func _rotate_building_placement() -> void:
 func _create_placement_preview() -> void:
 	_placement_preview = MeshInstance3D.new()
 	var mesh: BoxMesh = BoxMesh.new()
-	mesh.size = Vector3(2.6, 0.08, 1.8)
+	mesh.size = Vector3(DEFAULT_BUILD_FOOTPRINT.x, 0.08, DEFAULT_BUILD_FOOTPRINT.y)
 	_placement_preview.mesh = mesh
 
 	_placement_preview_material = StandardMaterial3D.new()
@@ -4853,19 +4864,121 @@ func _create_placement_preview() -> void:
 	_placement_preview.visible = false
 	add_child(_placement_preview)
 
+func _build_footprint_for_kind(kind: String) -> Vector2:
+	var fallback: Vector2 = DEFAULT_BUILD_FOOTPRINT
+	if kind == "":
+		return fallback
+	var building_def: Dictionary = RTS_CATALOG.get_building_def(kind)
+	var footprint_value: Variant = building_def.get("footprint_size", building_def.get("footprint", fallback))
+	if footprint_value is Vector2:
+		var footprint: Vector2 = footprint_value as Vector2
+		if footprint.x > 0.01 and footprint.y > 0.01:
+			return footprint
+	return fallback
+
+func _set_placement_preview_footprint(footprint: Vector2) -> void:
+	if _placement_preview == null:
+		return
+	var box: BoxMesh = _placement_preview.mesh as BoxMesh
+	if box == null:
+		return
+	box.size = Vector3(maxf(0.05, footprint.x), box.size.y, maxf(0.05, footprint.y))
+
+func _setup_build_placement_grid() -> void:
+	var grid_node: Node = BUILD_PLACEMENT_GRID_SCRIPT.new()
+	_build_placement_grid = grid_node
+	if _build_placement_grid == null:
+		return
+	if _build_placement_grid is Node:
+		(_build_placement_grid as Node).name = "BuildPlacementGrid"
+		add_child(_build_placement_grid as Node)
+	if _build_placement_grid.has_method("set"):
+		_build_placement_grid.call("set", "default_building_footprint", DEFAULT_BUILD_FOOTPRINT)
+	_set_build_grid_visible(false)
+	_sync_build_grid_occupancy()
+
+func _set_build_grid_visible(visible: bool) -> void:
+	if _build_placement_grid == null:
+		return
+	if _build_placement_grid.has_method("set_build_mode_enabled"):
+		_build_placement_grid.call("set_build_mode_enabled", visible)
+
+func _clear_build_grid_preview() -> void:
+	if _build_placement_grid == null:
+		return
+	if _build_placement_grid.has_method("clear_preview"):
+		_build_placement_grid.call("clear_preview")
+
+func _update_build_grid_preview(snapped_position: Vector3, can_place: bool) -> void:
+	if _build_placement_grid == null:
+		return
+	if _build_placement_grid.has_method("set_preview_footprint"):
+		_build_placement_grid.call(
+			"set_preview_footprint",
+			snapped_position,
+			_placement_rotation_y,
+			_placement_footprint,
+			can_place
+		)
+
+func _sync_build_grid_occupancy() -> void:
+	if _build_placement_grid == null:
+		return
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	var building_nodes: Array[Node] = tree.get_nodes_in_group("selectable_building")
+	var resource_nodes: Array[Node] = tree.get_nodes_in_group("resource_node")
+	var unit_nodes: Array[Node] = tree.get_nodes_in_group("selectable_unit")
+	if _build_placement_grid.has_method("sync_occupancy"):
+		_build_placement_grid.call(
+			"sync_occupancy",
+			building_nodes,
+			resource_nodes,
+			unit_nodes,
+			_pending_build_order_entries()
+		)
+
+func _pending_build_order_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for order_value in _pending_build_orders:
+		if not (order_value is Dictionary):
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var position_value: Variant = order.get("position", Vector3.ZERO)
+		if not (position_value is Vector3):
+			continue
+		var kind: String = str(order.get("kind", ""))
+		entries.append({
+			"position": position_value as Vector3,
+			"rotation_y": float(order.get("rotation_y", 0.0)),
+			"footprint_size": _build_footprint_for_kind(kind)
+		})
+	return entries
+
+func _snap_build_grid_position(raw_position: Vector3) -> Vector3:
+	if _build_placement_grid != null:
+		if _build_placement_grid.has_method("snap_world_position"):
+			var snapped_value: Variant = _build_placement_grid.call("snap_world_position", raw_position)
+			if snapped_value is Vector3:
+				return snapped_value as Vector3
+	return Vector3(roundf(raw_position.x * 2.0) * 0.5, 0.04, roundf(raw_position.z * 2.0) * 0.5)
+
 func _update_placement_preview() -> void:
 	var screen_pos: Vector2 = get_viewport().get_mouse_position()
 	_update_placement_preview_from_screen(screen_pos)
 
 func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
+	_sync_build_grid_occupancy()
 	var point: Variant = _ground_point_from_screen(screen_pos)
 	if point == null:
 		_placement_preview.visible = false
 		_placement_can_place = false
+		_clear_build_grid_preview()
 		return
 
 	var raw_position: Vector3 = point as Vector3
-	var snapped: Vector3 = Vector3(roundf(raw_position.x * 2.0) * 0.5, 0.04, roundf(raw_position.z * 2.0) * 0.5)
+	var snapped: Vector3 = _snap_build_grid_position(raw_position)
 	_placement_current_position = snapped
 
 	var is_valid_spot: bool = _is_build_spot_valid(snapped)
@@ -4879,6 +4992,7 @@ func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
 		_placement_preview_material.albedo_color = Color(0.15, 0.95, 0.3, 0.35)
 	else:
 		_placement_preview_material.albedo_color = Color(0.95, 0.2, 0.2, 0.35)
+	_update_build_grid_preview(snapped, _placement_can_place)
 
 func _try_place_building(screen_pos: Vector2, keep_mode: bool = false) -> void:
 	_update_placement_preview_from_screen(screen_pos)
@@ -5123,37 +5237,19 @@ func _spawn_building_instance(kind: String, world_position: Vector3, rotation_y:
 	return building
 
 func _is_build_spot_valid(world_pos: Vector3) -> bool:
-	if absf(world_pos.x) > 56.0 or absf(world_pos.z) > 56.0:
+	if _build_placement_grid == null:
 		return false
-
-	var building_nodes: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
-	for node in building_nodes:
-		var building: Node3D = node as Node3D
-		if building == null:
-			continue
-		if world_pos.distance_to(building.global_position) < BUILDING_BLOCK_RADIUS:
-			return false
-
-	var resource_nodes: Array[Node] = get_tree().get_nodes_in_group("resource_node")
-	for node in resource_nodes:
-		var resource: Node3D = node as Node3D
-		if resource == null:
-			continue
-		if world_pos.distance_to(resource.global_position) < RESOURCE_BLOCK_RADIUS:
-			return false
-
-	for order_value in _pending_build_orders:
-		if not (order_value is Dictionary):
-			continue
-		var order: Dictionary = order_value as Dictionary
-		var order_position_value: Variant = order.get("position", Vector3.ZERO)
-		if not (order_position_value is Vector3):
-			continue
-		var order_position: Vector3 = order_position_value as Vector3
-		if world_pos.distance_to(order_position) < BUILDING_BLOCK_RADIUS:
-			return false
-
-	return true
+	if not _build_placement_grid.has_method("can_place_building"):
+		return false
+	var can_place_value: Variant = _build_placement_grid.call(
+		"can_place_building",
+		world_pos,
+		_placement_rotation_y,
+		_placement_footprint
+	)
+	if can_place_value is bool:
+		return can_place_value as bool
+	return false
 
 func _register_existing_buildings() -> void:
 	var building_nodes: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
@@ -5193,6 +5289,8 @@ func _on_navigation_dynamic_node_exited(_node: Node) -> void:
 		return
 	if tree.current_scene == null or not is_instance_valid(tree.current_scene):
 		return
+	if _placing_building:
+		_sync_build_grid_occupancy()
 	_request_navmesh_rebake("dynamic_obstacle_removed")
 
 func _setup_runtime_navigation_baking() -> void:
