@@ -23,6 +23,7 @@ const BUILD_ORDER_START_DISTANCE: float = 1.4
 const BUILD_ORDER_MOVE_REFRESH: float = 0.45
 const BUILD_ORDER_FOOTPRINT_EXIT_PADDING: float = 0.9
 const BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON: float = 0.06
+const PENDING_BUILD_FOOTPRINT_EXPAND_SCALE: float = 1.1
 const CONSTRUCTION_GHOST_RETRY_INTERVAL: float = 3.0
 const CONSTRUCTION_GHOST_FLOAT_AMPLITUDE: float = 0.08
 const CONSTRUCTION_GHOST_FLOAT_SPEED: float = 2.4
@@ -1376,8 +1377,8 @@ func _create_pending_construction_ghost_node(ghost_id: int, kind: String, world_
 	nav_obstacle.avoidance_enabled = false
 	nav_obstacle.carve_navigation_mesh = true
 	nav_obstacle.height = 4.0
-	var half_x: float = maxf(0.05, footprint.x * 0.5)
-	var half_z: float = maxf(0.05, footprint.y * 0.5)
+	var half_x: float = maxf(0.05, footprint.x * 0.5 * PENDING_BUILD_FOOTPRINT_EXPAND_SCALE)
+	var half_z: float = maxf(0.05, footprint.y * 0.5 * PENDING_BUILD_FOOTPRINT_EXPAND_SCALE)
 	nav_obstacle.vertices = PackedVector3Array([
 		Vector3(-half_x, 0.0, -half_z),
 		Vector3(half_x, 0.0, -half_z),
@@ -5136,12 +5137,14 @@ func _compute_build_order_escape_target(builder_position: Vector3, build_center:
 	var x_ratio: float = absf(local.x) / maxf(0.01, half_x)
 	var z_ratio: float = absf(local.y) / maxf(0.01, half_z)
 	var escape_local: Vector2 = local
+	var target_distance_x: float = (half_x + BUILD_ORDER_FOOTPRINT_EXIT_PADDING) * PENDING_BUILD_FOOTPRINT_EXPAND_SCALE
+	var target_distance_z: float = (half_z + BUILD_ORDER_FOOTPRINT_EXIT_PADDING) * PENDING_BUILD_FOOTPRINT_EXPAND_SCALE
 	if x_ratio >= z_ratio:
 		var direction_x: float = 1.0 if local.x >= 0.0 else -1.0
-		escape_local.x = direction_x * (half_x + BUILD_ORDER_FOOTPRINT_EXIT_PADDING)
+		escape_local.x = direction_x * target_distance_x
 	else:
 		var direction_z: float = 1.0 if local.y >= 0.0 else -1.0
-		escape_local.y = direction_z * (half_z + BUILD_ORDER_FOOTPRINT_EXIT_PADDING)
+		escape_local.y = direction_z * target_distance_z
 	var world_offset: Vector2 = _rotate_xz_vector(escape_local, rotation_y)
 	var target: Vector3 = Vector3(build_center.x + world_offset.x, 0.0, build_center.z + world_offset.y)
 	target.x = clampf(target.x, -55.8, 55.8)
