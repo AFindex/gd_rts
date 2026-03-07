@@ -956,9 +956,9 @@ func _apply_command_entries(entries_variant: Variant) -> void:
 
 	var has_entries: bool = not entries.is_empty()
 	if _command_panel != null:
-		_command_panel.visible = has_entries
+		_command_panel.visible = true
 	if _command_grid != null:
-		_command_grid.visible = has_entries
+		_command_grid.visible = true
 	if not has_entries:
 		if _command_hint_text != null:
 			_command_hint_text.visible = false
