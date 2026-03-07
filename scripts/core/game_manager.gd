@@ -1825,9 +1825,7 @@ func _schedule_unit_command(unit_node: Node, command: RTSCommand) -> void:
 	if unit_node.has_method("is_construction_locked") and bool(unit_node.call("is_construction_locked")):
 		if unit_node.has_method("get_construction_lock_mode"):
 			var lock_mode: String = str(unit_node.call("get_construction_lock_mode"))
-			if lock_mode == "cast" and not is_internal_build_order:
-				return
-			if (lock_mode == "garrisoned" or lock_mode == "incorporated") and not command.is_queue_command and not is_internal_build_order:
+			if (lock_mode == "cast" or lock_mode == "garrisoned" or lock_mode == "incorporated") and not command.is_queue_command and not is_internal_build_order:
 				command.is_queue_command = true
 				forced_locked_queue = true
 				_set_ui_notice(_t("Worker is building: command queued after construction."), 0.9)
@@ -2851,6 +2849,8 @@ func _build_command_entries() -> Array[Dictionary]:
 	var skill_ids: Array[String] = _selection_skill_ids()
 	for skill_id in skill_ids:
 		entries.append(_command_entry(skill_id, _command_overrides_for(skill_id)))
+	if not _collect_target_construction_sites(false, true, "", true).is_empty():
+		_append_command_entry_if_missing(entries, "construction_cancel_destroy")
 	if not entries.is_empty():
 		return entries
 
@@ -2863,6 +2863,12 @@ func _build_command_entries() -> Array[Dictionary]:
 
 func _command_entry(skill_id: String, overrides: Dictionary = {}) -> Dictionary:
 	return RTS_CATALOG.make_command_entry(skill_id, overrides)
+
+func _append_command_entry_if_missing(entries: Array[Dictionary], command_id: String) -> void:
+	for entry in entries:
+		if str(entry.get("id", "")) == command_id:
+			return
+	entries.append(_command_entry(command_id, _command_overrides_for(command_id)))
 
 func _build_menu_command_entry(command_id: String) -> Dictionary:
 	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(command_id)
@@ -3031,15 +3037,19 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 			overrides["enabled"] = can_exit_construction
 			overrides["disabled_reason"] = "" if can_exit_construction else _t("Select a garrisoned worker to exit construction.")
 		"construction_cancel_destroy":
-			var total_sites: int = _selected_construction_site_count()
-			var incorporated_sites: int = _selected_construction_site_count("incorporated")
-			var has_construction_site: bool = (total_sites - incorporated_sites) > 0
+			var destroy_sites: Array[Node] = _collect_target_construction_sites(true, true)
+			var has_construction_site: bool = false
+			for site_node in destroy_sites:
+				if _construction_site_paradigm(site_node) == "incorporated":
+					continue
+				has_construction_site = true
+				break
 			overrides["enabled"] = has_construction_site
-			overrides["disabled_reason"] = "" if has_construction_site else _t("Select a construction site.")
+			overrides["disabled_reason"] = "" if has_construction_site else _t("Select a construction site or a locked worker.")
 		"construction_cancel_eject":
-			var has_incorporated_site: bool = _selected_construction_site_count("incorporated") > 0
+			var has_incorporated_site: bool = not _collect_target_construction_sites(true, true, "incorporated").is_empty()
 			overrides["enabled"] = has_incorporated_site
-			overrides["disabled_reason"] = "" if has_incorporated_site else _t("Select an incorporated construction site.")
+			overrides["disabled_reason"] = "" if has_incorporated_site else _t("Select an incorporated construction site or a locked worker.")
 		"construction_select_worker":
 			var can_select_worker: bool = false
 			if _selected_buildings.size() == 1:
@@ -3297,8 +3307,6 @@ func _selection_has_rally_building() -> bool:
 func _can_open_build_menu() -> bool:
 	if _placing_building:
 		return false
-	if _selection_has_construction_exit_worker():
-		return false
 	if _selection_has_worker():
 		return true
 	if _selected_units.is_empty() and not _selected_buildings.is_empty():
@@ -3308,8 +3316,6 @@ func _can_open_build_menu() -> bool:
 func _build_menu_disabled_reason() -> String:
 	if _placing_building:
 		return _t("Finish or cancel current placement first.")
-	if _selection_has_construction_exit_worker():
-		return _t("Worker is locked in construction. Exit first.")
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return _t("Select a worker or builder building to open build commands.")
 	if not _selected_units.is_empty() and not _selection_has_worker():
@@ -3999,7 +4005,6 @@ func _try_execute_pending_target_skill(screen_pos: Vector2, queue_command: bool 
 
 func _issue_context_command(screen_pos: Vector2, queue_command: bool = false) -> void:
 	_prune_invalid_selection()
-	_close_build_menu()
 	if _selected_units.is_empty() and _selected_buildings.is_empty():
 		return
 
@@ -4668,6 +4673,74 @@ func _selected_construction_sites() -> Array[Node]:
 		sites.append(selected_building)
 	return sites
 
+func _construction_site_paradigm(site_node: Node) -> String:
+	if site_node == null or not is_instance_valid(site_node):
+		return ""
+	if not site_node.has_method("get_construction_paradigm"):
+		return ""
+	return str(site_node.call("get_construction_paradigm")).strip_edges().to_lower()
+
+func _selected_worker_linked_construction_sites(paradigm_filter: String = "", non_sacrificial_only: bool = false) -> Array[Node]:
+	var normalized_filter: String = paradigm_filter.strip_edges().to_lower()
+	var sites: Array[Node] = []
+	var seen_site_paths: Dictionary = {}
+	for selected_unit in _selected_units:
+		if selected_unit == null or not is_instance_valid(selected_unit):
+			continue
+		if not _is_player_owned(selected_unit):
+			continue
+		if not selected_unit.has_method("is_construction_locked") or not bool(selected_unit.call("is_construction_locked")):
+			continue
+		var lock_mode: String = ""
+		if selected_unit.has_method("get_construction_lock_mode"):
+			lock_mode = str(selected_unit.call("get_construction_lock_mode")).strip_edges().to_lower()
+		if non_sacrificial_only and lock_mode != "garrisoned" and lock_mode != "cast":
+			continue
+		if not selected_unit.has_method("get_construction_building_path"):
+			continue
+		var site_path: NodePath = selected_unit.call("get_construction_building_path") as NodePath
+		if str(site_path) == "":
+			continue
+		var site_node: Node = get_node_or_null(site_path)
+		if site_node == null or not is_instance_valid(site_node):
+			continue
+		if not _is_player_owned(site_node):
+			continue
+		if not site_node.has_method("is_under_construction") or not bool(site_node.call("is_under_construction")):
+			continue
+		var site_paradigm: String = _construction_site_paradigm(site_node)
+		if normalized_filter != "" and site_paradigm != normalized_filter:
+			continue
+		var site_key: String = str(site_node.get_path())
+		if seen_site_paths.has(site_key):
+			continue
+		seen_site_paths[site_key] = true
+		sites.append(site_node)
+	return sites
+
+func _collect_target_construction_sites(include_selected_sites: bool = true, include_worker_linked_sites: bool = true, paradigm_filter: String = "", non_sacrificial_worker_only: bool = false) -> Array[Node]:
+	var normalized_filter: String = paradigm_filter.strip_edges().to_lower()
+	var sites: Array[Node] = []
+	var seen_site_paths: Dictionary = {}
+	if include_selected_sites:
+		for site_node in _selected_construction_sites():
+			var selected_paradigm: String = _construction_site_paradigm(site_node)
+			if normalized_filter != "" and selected_paradigm != normalized_filter:
+				continue
+			var selected_key: String = str(site_node.get_path())
+			if seen_site_paths.has(selected_key):
+				continue
+			seen_site_paths[selected_key] = true
+			sites.append(site_node)
+	if include_worker_linked_sites:
+		for site_node in _selected_worker_linked_construction_sites(normalized_filter, non_sacrificial_worker_only):
+			var linked_key: String = str(site_node.get_path())
+			if seen_site_paths.has(linked_key):
+				continue
+			seen_site_paths[linked_key] = true
+			sites.append(site_node)
+	return sites
+
 func _selected_construction_site_count(paradigm_filter: String = "") -> int:
 	var normalized_filter: String = paradigm_filter.strip_edges().to_lower()
 	var count: int = 0
@@ -4715,7 +4788,7 @@ func _issue_exit_construction_from_selection() -> void:
 func _cancel_selected_construction_sites(eject_worker: bool) -> void:
 	var canceled_count: int = 0
 	var total_refund: int = 0
-	for site_node in _selected_construction_sites():
+	for site_node in _collect_target_construction_sites(true, true):
 		if site_node == null or not is_instance_valid(site_node):
 			continue
 		var site_paradigm: String = ""

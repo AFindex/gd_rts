@@ -253,13 +253,14 @@ func has_active_push_motion() -> bool:
 	return velocity.length_squared() > 0.01
 
 func get_skill_ids() -> Array[String]:
-	if _construction_lock_mode == ConstructionLockMode.CAST:
-		return []
+	var base_skills: Array[String] = RTS_CATALOG.get_unit_skill_ids(get_unit_kind())
 	if _construction_lock_mode == ConstructionLockMode.GARRISONED:
-		return ["construction_exit"]
+		if not base_skills.has("construction_exit"):
+			base_skills.append("construction_exit")
+		return base_skills
 	if _construction_lock_mode == ConstructionLockMode.INCORPORATED:
-		return []
-	return RTS_CATALOG.get_unit_skill_ids(get_unit_kind())
+		return ["construction_cancel_eject"]
+	return base_skills
 
 func get_build_skill_ids() -> Array[String]:
 	return RTS_CATALOG.get_unit_build_skill_ids(get_unit_kind())
@@ -434,10 +435,11 @@ func submit_command(command: RefCounted) -> bool:
 	if rts_command.payload is Dictionary:
 		is_internal_build_order = bool(rts_command.payload.get("internal_build_order", false))
 
-	if _construction_lock_mode == ConstructionLockMode.CAST and not is_internal_build_order:
-		return false
-
-	var locked_deferred_mode: bool = (_construction_lock_mode == ConstructionLockMode.GARRISONED or _construction_lock_mode == ConstructionLockMode.INCORPORATED) and not is_internal_build_order
+	var locked_deferred_mode: bool = (
+		_construction_lock_mode == ConstructionLockMode.CAST
+		or _construction_lock_mode == ConstructionLockMode.GARRISONED
+		or _construction_lock_mode == ConstructionLockMode.INCORPORATED
+	) and not is_internal_build_order
 	if locked_deferred_mode and not rts_command.is_queue_command:
 		rts_command.is_queue_command = true
 	if locked_deferred_mode and not explicit_queue_input:
