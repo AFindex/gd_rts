@@ -21,6 +21,8 @@ const SMART_COMMAND_PRIORITY_RANGE: float = 0.5
 const DEFAULT_WORKER_BUILD_TIME: float = 2.5
 const BUILD_ORDER_START_DISTANCE: float = 1.4
 const BUILD_ORDER_MOVE_REFRESH: float = 0.45
+const BUILD_ORDER_FOOTPRINT_EXIT_PADDING: float = 0.9
+const BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON: float = 0.06
 const CONSTRUCTION_GHOST_RETRY_INTERVAL: float = 3.0
 const CONSTRUCTION_GHOST_FLOAT_AMPLITUDE: float = 0.08
 const CONSTRUCTION_GHOST_FLOAT_SPEED: float = 2.4
@@ -4921,7 +4923,7 @@ func _update_build_grid_preview(snapped_position: Vector3, can_place: bool) -> v
 			can_place
 		)
 
-func _sync_build_grid_occupancy() -> void:
+func _sync_build_grid_occupancy(ignored_units: Array[Node] = []) -> void:
 	if _build_placement_grid == null:
 		return
 	var tree: SceneTree = get_tree()
@@ -4929,7 +4931,15 @@ func _sync_build_grid_occupancy() -> void:
 		return
 	var building_nodes: Array[Node] = tree.get_nodes_in_group("selectable_building")
 	var resource_nodes: Array[Node] = tree.get_nodes_in_group("resource_node")
-	var unit_nodes: Array[Node] = tree.get_nodes_in_group("selectable_unit")
+	var all_unit_nodes: Array[Node] = tree.get_nodes_in_group("selectable_unit")
+	var unit_nodes: Array[Node] = []
+	if ignored_units.is_empty():
+		unit_nodes = all_unit_nodes
+	else:
+		for unit_node in all_unit_nodes:
+			if ignored_units.has(unit_node):
+				continue
+			unit_nodes.append(unit_node)
 	if _build_placement_grid.has_method("sync_occupancy"):
 		_build_placement_grid.call(
 			"sync_occupancy",
@@ -4949,10 +4959,12 @@ func _pending_build_order_entries() -> Array[Dictionary]:
 		if not (position_value is Vector3):
 			continue
 		var kind: String = str(order.get("kind", ""))
+		var footprint_value: Variant = order.get("footprint_size", _build_footprint_for_kind(kind))
+		var footprint: Vector2 = footprint_value as Vector2 if footprint_value is Vector2 else _build_footprint_for_kind(kind)
 		entries.append({
 			"position": position_value as Vector3,
 			"rotation_y": float(order.get("rotation_y", 0.0)),
-			"footprint_size": _build_footprint_for_kind(kind)
+			"footprint_size": footprint
 		})
 	return entries
 
@@ -4969,7 +4981,6 @@ func _update_placement_preview() -> void:
 	_update_placement_preview_from_screen(screen_pos)
 
 func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
-	_sync_build_grid_occupancy()
 	var point: Variant = _ground_point_from_screen(screen_pos)
 	if point == null:
 		_placement_preview.visible = false
@@ -4980,6 +4991,12 @@ func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
 	var raw_position: Vector3 = point as Vector3
 	var snapped: Vector3 = _snap_build_grid_position(raw_position)
 	_placement_current_position = snapped
+	var preview_builder: Node3D = _nearest_selected_worker(Vector3(snapped.x, 0.0, snapped.z))
+	if preview_builder != null and is_instance_valid(preview_builder):
+		var ignored_units: Array[Node] = [preview_builder]
+		_sync_build_grid_occupancy(ignored_units)
+	else:
+		_sync_build_grid_occupancy()
 
 	var is_valid_spot: bool = _is_build_spot_valid(snapped)
 	var can_afford: bool = _minerals >= _placing_cost
@@ -5050,17 +5067,58 @@ func _building_cancel_refund_ratio(kind: String) -> float:
 	var def: Dictionary = RTS_CATALOG.get_building_def(kind)
 	return clampf(float(def.get("cancel_refund_ratio", 0.75)), 0.0, 1.0)
 
+func _rotate_xz_vector(v: Vector2, angle: float) -> Vector2:
+	var c: float = cos(angle)
+	var s: float = sin(angle)
+	return Vector2(v.x * c - v.y * s, v.x * s + v.y * c)
+
+func _is_point_inside_build_footprint(point: Vector3, center: Vector3, rotation_y: float, footprint: Vector2, padding: float = 0.0) -> bool:
+	var half_x: float = maxf(0.05, footprint.x * 0.5 + maxf(0.0, padding))
+	var half_z: float = maxf(0.05, footprint.y * 0.5 + maxf(0.0, padding))
+	var local: Vector2 = _rotate_xz_vector(Vector2(point.x - center.x, point.z - center.z), -rotation_y)
+	return absf(local.x) <= half_x and absf(local.y) <= half_z
+
+func _compute_build_order_escape_target(builder_position: Vector3, build_center: Vector3, rotation_y: float, footprint: Vector2) -> Vector3:
+	var half_x: float = maxf(0.05, footprint.x * 0.5)
+	var half_z: float = maxf(0.05, footprint.y * 0.5)
+	var local: Vector2 = _rotate_xz_vector(Vector2(builder_position.x - build_center.x, builder_position.z - build_center.z), -rotation_y)
+	if local.length_squared() <= 0.0001:
+		local = Vector2(1.0, 0.0)
+	var x_ratio: float = absf(local.x) / maxf(0.01, half_x)
+	var z_ratio: float = absf(local.y) / maxf(0.01, half_z)
+	var escape_local: Vector2 = local
+	if x_ratio >= z_ratio:
+		var direction_x: float = 1.0 if local.x >= 0.0 else -1.0
+		escape_local.x = direction_x * (half_x + BUILD_ORDER_FOOTPRINT_EXIT_PADDING)
+	else:
+		var direction_z: float = 1.0 if local.y >= 0.0 else -1.0
+		escape_local.y = direction_z * (half_z + BUILD_ORDER_FOOTPRINT_EXIT_PADDING)
+	var world_offset: Vector2 = _rotate_xz_vector(escape_local, rotation_y)
+	var target: Vector3 = Vector3(build_center.x + world_offset.x, 0.0, build_center.z + world_offset.y)
+	target.x = clampf(target.x, -55.8, 55.8)
+	target.z = clampf(target.z, -55.8, 55.8)
+	return target
+
 func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int) -> void:
 	if builder == null or not is_instance_valid(builder):
 		return
 	var paradigm: String = _building_construction_paradigm(kind)
 	var build_time: float = _worker_build_time_for(kind)
 	var cancel_refund_ratio: float = _building_cancel_refund_ratio(kind)
+	var footprint_size: Vector2 = _build_footprint_for_kind(kind)
+	var phase: String = "approach"
+	var evacuate_target: Vector3 = world_position
+	if _is_point_inside_build_footprint(builder.global_position, world_position, rotation_y, footprint_size, BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON):
+		phase = "evacuate"
+		evacuate_target = _compute_build_order_escape_target(builder.global_position, world_position, rotation_y, footprint_size)
 	_pending_build_orders.append({
 		"builder_path": builder.get_path(),
 		"kind": kind,
 		"position": world_position,
 		"rotation_y": rotation_y,
+		"footprint_size": footprint_size,
+		"phase": phase,
+		"evacuate_target": evacuate_target,
 		"cost": build_cost,
 		"ghost_id": ghost_id,
 		"spent": false,
@@ -5070,7 +5128,8 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"move_repath_timer": 0.0,
 		"retry_timer": 0.0
 	})
-	var move_command: RTSCommand = RTS_COMMAND.make_move(world_position, false)
+	var first_target: Vector3 = evacuate_target if phase == "evacuate" else world_position
+	var move_command: RTSCommand = RTS_COMMAND.make_move(first_target, false)
 	move_command.payload["internal_build_order"] = true
 	_schedule_unit_command(builder, move_command)
 
@@ -5089,6 +5148,9 @@ func _process_pending_build_orders(delta: float) -> void:
 		var ghost_id: int = int(order.get("ghost_id", -1))
 		var build_cost: int = maxi(0, int(order.get("cost", _building_cost(kind))))
 		var spent: bool = bool(order.get("spent", false))
+		var rotation_y: float = float(order.get("rotation_y", 0.0))
+		var footprint_value: Variant = order.get("footprint_size", _build_footprint_for_kind(kind))
+		var footprint_size: Vector2 = footprint_value as Vector2 if footprint_value is Vector2 else _build_footprint_for_kind(kind)
 		if builder_node == null or not is_instance_valid(builder_node):
 			if spent and build_cost > 0:
 				add_minerals(build_cost)
@@ -5110,6 +5172,41 @@ func _process_pending_build_orders(delta: float) -> void:
 		var target_position: Vector3 = target_position_value as Vector3
 		if ghost_id >= 0 and not _has_pending_construction_ghost(ghost_id):
 			_pending_build_orders.remove_at(i)
+			continue
+
+		var phase: String = str(order.get("phase", "approach"))
+		if phase == "evacuate":
+			var still_inside: bool = _is_point_inside_build_footprint(
+				builder_node.global_position,
+				target_position,
+				rotation_y,
+				footprint_size,
+				BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON
+			)
+			if still_inside:
+				var escape_repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
+				if escape_repath_timer <= 0.0:
+					escape_repath_timer = BUILD_ORDER_MOVE_REFRESH
+					var escape_target: Vector3 = _compute_build_order_escape_target(
+						builder_node.global_position,
+						target_position,
+						rotation_y,
+						footprint_size
+					)
+					order["evacuate_target"] = escape_target
+					var escape_command: RTSCommand = RTS_COMMAND.make_move(escape_target, false)
+					escape_command.payload["internal_build_order"] = true
+					_schedule_unit_command(builder_node, escape_command)
+				order["move_repath_timer"] = escape_repath_timer
+				_pending_build_orders[i] = order
+				continue
+
+			order["phase"] = "approach"
+			order["move_repath_timer"] = 0.0
+			var return_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+			return_command.payload["internal_build_order"] = true
+			_schedule_unit_command(builder_node, return_command)
+			_pending_build_orders[i] = order
 			continue
 
 		var repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
@@ -5153,7 +5250,6 @@ func _process_pending_build_orders(delta: float) -> void:
 		if ghost_id >= 0:
 			_remove_pending_construction_ghost(ghost_id)
 
-		var rotation_y: float = float(order.get("rotation_y", 0.0))
 		var site: Node3D = _spawn_building_instance(kind, target_position, rotation_y)
 		if site == null:
 			if spent and build_cost > 0:
