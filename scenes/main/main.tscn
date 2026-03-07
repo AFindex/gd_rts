@@ -229,7 +229,7 @@ spawn_offset = Vector3(3.6, 0, 0)
 [node name="Resources" type="Node3D" parent="." unique_id=1852819292]
 
 [node name="MineralFieldA" parent="Resources" unique_id=1320932976 instance=ExtResource("7_resource_node")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 7)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.185925, 0, 8.122208)
 
 [node name="MineralFieldB" parent="Resources" unique_id=1285716064 instance=ExtResource("7_resource_node")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.306117, 0, 9.416271)
