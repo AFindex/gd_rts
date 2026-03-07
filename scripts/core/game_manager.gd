@@ -18,6 +18,7 @@ const QUEUE_MARKER_GROUP: StringName = &"command_queue_marker"
 const QUEUE_MARKER_LAYER: int = 1 << 5
 const QUEUE_MARKER_MAX_VISIBLE: int = 32
 const QUEUE_LINK_HEIGHT: float = 0.2
+const PATH_VISUAL_RENDER_PRIORITY: int = 127
 const SMART_COMMAND_PRIORITY_RANGE: float = 0.5
 const DEFAULT_WORKER_BUILD_TIME: float = 2.5
 const BUILD_ORDER_START_DISTANCE: float = 1.4
@@ -1295,6 +1296,7 @@ func _create_queue_marker(unit_node: Node, queue_index: int, world_position: Vec
 	marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	var marker_color: Color = _queue_command_color(command_type)
 	marker_material.albedo_color = Color(marker_color.r, marker_color.g, marker_color.b, 0.78)
+	_configure_path_overlay_material(marker_material)
 	mesh_instance.material_override = marker_material
 	marker.add_child(mesh_instance)
 
@@ -1303,6 +1305,7 @@ func _create_queue_marker(unit_node: Node, queue_index: int, world_position: Vec
 	label.position = Vector3(0.0, 0.56, 0.0)
 	label.font_size = 32
 	label.modulate = _queue_marker_label_color(command_type)
+	_configure_path_overlay_label(label)
 	marker.add_child(label)
 	return marker
 
@@ -1322,6 +1325,7 @@ func _create_queue_link(from_position: Vector3, to_position: Vector3, command_ty
 	link_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	var link_color: Color = _queue_command_color(command_type)
 	link_material.albedo_color = Color(link_color.r, link_color.g, link_color.b, 0.4)
+	_configure_path_overlay_material(link_material)
 	link.material_override = link_material
 	link.global_transform = Transform3D(_cylinder_basis_from_to(from_position, to_position), from_position + delta * 0.5)
 	return link
@@ -1772,6 +1776,7 @@ func _create_rally_flag(world_position: Vector3, mode: String, hop_index: int, a
 	pole_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	pole_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	pole_material.albedo_color = Color(color.r, color.g, color.b, 0.9 * alpha_scale)
+	_configure_path_overlay_material(pole_material)
 	pole.material_override = pole_material
 	root.add_child(pole)
 
@@ -1784,6 +1789,7 @@ func _create_rally_flag(world_position: Vector3, mode: String, hop_index: int, a
 	banner_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	banner_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	banner_material.albedo_color = Color(color.r, color.g, color.b, 0.75 * alpha_scale)
+	_configure_path_overlay_material(banner_material)
 	banner.material_override = banner_material
 	root.add_child(banner)
 
@@ -1792,6 +1798,7 @@ func _create_rally_flag(world_position: Vector3, mode: String, hop_index: int, a
 	index_label.position = Vector3(-0.1, 0.76, 0.0)
 	index_label.font_size = 28
 	index_label.modulate = Color(1.0, 1.0, 1.0, 0.95 * alpha_scale)
+	_configure_path_overlay_label(index_label)
 	root.add_child(index_label)
 
 	var mode_label: Label3D = Label3D.new()
@@ -1799,6 +1806,7 @@ func _create_rally_flag(world_position: Vector3, mode: String, hop_index: int, a
 	mode_label.position = Vector3(0.23, 0.62, 0.04)
 	mode_label.font_size = 24
 	mode_label.modulate = Color(0.06, 0.06, 0.06, 0.95 * alpha_scale)
+	_configure_path_overlay_label(mode_label)
 	root.add_child(mode_label)
 	return root
 
@@ -1819,9 +1827,21 @@ func _create_rally_link(from_position: Vector3, to_position: Vector3, mode: Stri
 	link_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	link_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	link_material.albedo_color = Color(color.r, color.g, color.b, 0.45 * alpha_scale)
+	_configure_path_overlay_material(link_material)
 	link.material_override = link_material
 	link.global_transform = Transform3D(_cylinder_basis_from_to(from_position, to_position), from_position + delta * 0.5)
 	return link
+
+func _configure_path_overlay_material(material: StandardMaterial3D) -> void:
+	if material == null:
+		return
+	material.no_depth_test = true
+	material.render_priority = PATH_VISUAL_RENDER_PRIORITY
+
+func _configure_path_overlay_label(label: Label3D) -> void:
+	if label == null:
+		return
+	label.no_depth_test = true
 
 func _rally_mode_color(mode: String) -> Color:
 	match mode:
