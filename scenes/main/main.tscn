@@ -20,6 +20,7 @@ selection_overlay_path = NodePath("UI/SelectionOverlay")
 hud_path = NodePath("UI/RTSHud")
 
 [node name="World" parent="." unique_id=273804721 instance=ExtResource("2_world")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07469177, 0, -0.03734207)
 
 [node name="Units" type="Node3D" parent="." unique_id=994489330]
 
@@ -88,7 +89,7 @@ is_worker = true
 [node name="Buildings" type="Node3D" parent="." unique_id=582541461]
 
 [node name="MainBase" parent="Buildings" unique_id=973704050 instance=ExtResource("4_building")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30.627745, 0, -43.504265)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -29.478786, -0.24567986, -40.284008)
 
 [node name="EnemyMainBase" parent="Buildings" unique_id=1064395502 instance=ExtResource("4_building")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36.002415, 0, 36.146782)
@@ -158,12 +159,17 @@ total_minerals = 15000
 max_visual_minerals = 15000
 
 [node name="MineralFieldB4" parent="Resources" unique_id=262629332 instance=ExtResource("7_resource_node")]
-transform = Transform3D(0.9776623, 0, -0.21018168, 0, 1, 0, 0.21018168, 0, 0.9776623, -24.876886, 0, -46.47842)
+transform = Transform3D(0.9776623, 0, -0.21018168, 0, 1, 0, 0.21018168, 0, 0.9776623, -24.279367, 0, -48.32699)
 total_minerals = 15000
 max_visual_minerals = 15000
 
 [node name="MineralFieldB5" parent="Resources" unique_id=741873312 instance=ExtResource("7_resource_node")]
-transform = Transform3D(0.9776623, 0, -0.21018168, 0, 1, 0, 0.21018168, 0, 0.9776623, -26.902235, 0, -48.429787)
+transform = Transform3D(0.9776623, 0, -0.21018168, 0, 1, 0, 0.21018168, 0, 0.9776623, -26.547457, 0, -48.765892)
+total_minerals = 15000
+max_visual_minerals = 15000
+
+[node name="MineralFieldB6" parent="Resources" unique_id=794160449 instance=ExtResource("7_resource_node")]
+transform = Transform3D(0.9776623, 0, -0.21018168, 0, 1, 0, 0.21018168, 0, 0.9776623, -22.076021, 0, -47.113277)
 total_minerals = 15000
 max_visual_minerals = 15000
 
