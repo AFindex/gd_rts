@@ -391,6 +391,55 @@ func _normalize_construction_paradigm(paradigm: String) -> String:
 		return CONSTRUCTION_PARADIGM_INCORPORATED
 	return CONSTRUCTION_PARADIGM_GARRISONED
 
+func _pause_garrisoned_construction(reason: String) -> void:
+	if not _construction_active:
+		return
+	if _construction_paradigm != CONSTRUCTION_PARADIGM_GARRISONED:
+		return
+	var normalized_reason: String = reason.strip_edges()
+	if normalized_reason == "":
+		normalized_reason = "worker_missing"
+	var was_paused: bool = _construction_paused
+	var previous_reason: String = _construction_pause_reason
+	_construction_paused = true
+	_construction_pause_reason = normalized_reason
+	if was_paused and previous_reason == normalized_reason:
+		return
+	emit_signal("construction_state_changed", "paused", {
+		"paradigm": _construction_paradigm,
+		"worker_path": _construction_assigned_worker_path,
+		"reason": _construction_pause_reason,
+		"progress": get_construction_progress()
+	})
+
+func _is_garrisoned_worker_valid(worker_node: Node) -> bool:
+	if worker_node == null or not is_instance_valid(worker_node):
+		return false
+	if worker_node.has_method("is_alive") and not bool(worker_node.call("is_alive")):
+		return false
+	if worker_node.has_method("is_construction_locked") and not bool(worker_node.call("is_construction_locked")):
+		return false
+	if worker_node.has_method("get_construction_lock_mode"):
+		var lock_mode: String = str(worker_node.call("get_construction_lock_mode")).strip_edges().to_lower()
+		if lock_mode != "garrisoned":
+			return false
+	if worker_node.has_method("get_construction_building_path"):
+		var worker_site_path: NodePath = worker_node.call("get_construction_building_path") as NodePath
+		if worker_site_path != get_path():
+			return false
+	var worker_3d: Node3D = worker_node as Node3D
+	if worker_3d == null:
+		return false
+	var max_distance: float = RTS_INTERACTION.compute_trigger_distance(
+		worker_3d,
+		self,
+		0.0,
+		0.35,
+		0.12,
+		true
+	)
+	return RTS_INTERACTION.is_within_distance_xz(worker_3d.global_position, global_position, max_distance)
+
 func _process_construction(delta: float) -> void:
 	if _construction_paused:
 		return
@@ -435,19 +484,14 @@ func _process_construction(delta: float) -> void:
 		return
 	if _construction_paradigm == CONSTRUCTION_PARADIGM_GARRISONED:
 		if str(_construction_assigned_worker_path) == "":
-			_construction_paused = true
-			_construction_pause_reason = "worker_missing"
+			_pause_garrisoned_construction("worker_missing")
 			return
 		var worker_node: Node = get_node_or_null(_construction_assigned_worker_path)
-		if worker_node == null or not is_instance_valid(worker_node):
-			_construction_paused = true
-			_construction_pause_reason = "worker_missing"
-			emit_signal("construction_state_changed", "paused", {
-				"paradigm": _construction_paradigm,
-				"worker_path": _construction_assigned_worker_path,
-				"reason": _construction_pause_reason,
-				"progress": get_construction_progress()
-			})
+		if not _is_garrisoned_worker_valid(worker_node):
+			var pause_reason: String = "worker_missing"
+			if worker_node != null and is_instance_valid(worker_node):
+				pause_reason = "worker_not_garrisoned"
+			_pause_garrisoned_construction(pause_reason)
 			return
 	_construction_elapsed += delta
 	if _construction_elapsed >= _construction_total_time:

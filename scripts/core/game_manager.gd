@@ -1398,7 +1398,6 @@ func _create_pending_construction_ghost(worker_node: Node3D, kind: String, world
 		"node_path": ghost_node.get_path(),
 		"created_at": float(Time.get_ticks_msec()) / 1000.0
 	})
-	_request_navmesh_rebake("pending_build_ghost_added")
 	return ghost_id
 
 func _create_pending_construction_ghost_node(ghost_id: int, kind: String, world_position: Vector3, rotation_y: float) -> Node3D:
@@ -1430,9 +1429,11 @@ func _create_pending_construction_ghost_node(ghost_id: int, kind: String, world_
 
 	var nav_obstacle: NavigationObstacle3D = NavigationObstacle3D.new()
 	nav_obstacle.name = "GhostObstacle3D"
-	nav_obstacle.affect_navigation_mesh = true
+	# Pending ghosts should not alter global navmesh, otherwise they affect
+	# enemy units and can interfere with the assigned builder pathing.
+	nav_obstacle.affect_navigation_mesh = false
 	nav_obstacle.avoidance_enabled = false
-	nav_obstacle.carve_navigation_mesh = true
+	nav_obstacle.carve_navigation_mesh = false
 	nav_obstacle.height = 4.0
 	var half_x: float = maxf(0.05, footprint.x * 0.5 * PENDING_BUILD_FOOTPRINT_EXPAND_SCALE)
 	var half_z: float = maxf(0.05, footprint.y * 0.5 * PENDING_BUILD_FOOTPRINT_EXPAND_SCALE)
@@ -1469,7 +1470,6 @@ func _remove_pending_construction_ghost(ghost_id: int) -> bool:
 		if ghost_node != null and is_instance_valid(ghost_node):
 			ghost_node.queue_free()
 	_pending_construction_ghosts.remove_at(index)
-	_request_navmesh_rebake("pending_build_ghost_removed")
 	return true
 
 func _set_pending_construction_ghost_invalid(ghost_id: int, invalid: bool) -> void:
@@ -5423,6 +5423,20 @@ func _evacuate_allied_units_from_pending_build(
 	order["allied_units_inside"] = any_inside
 	return order
 
+func _has_earlier_pending_build_order_for_builder(builder_path: NodePath, current_index: int) -> bool:
+	if str(builder_path) == "":
+		return false
+	var normalized_index: int = clampi(current_index, 0, _pending_build_orders.size())
+	for idx in range(normalized_index):
+		var order_value: Variant = _pending_build_orders[idx]
+		if not (order_value is Dictionary):
+			continue
+		var order: Dictionary = order_value as Dictionary
+		var other_path: NodePath = order.get("builder_path", NodePath("")) as NodePath
+		if other_path == builder_path:
+			return true
+	return false
+
 func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int) -> void:
 	if builder == null or not is_instance_valid(builder):
 		return
@@ -5454,6 +5468,14 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"move_repath_timer": 0.0,
 		"retry_timer": 0.0
 	})
+	var new_order_index: int = _pending_build_orders.size() - 1
+	# Keep per-worker build queue strictly FIFO. Later queued orders should not
+	# issue movement until all earlier orders for the same worker are done.
+	if _has_earlier_pending_build_order_for_builder(builder.get_path(), new_order_index):
+		return
+	# If worker is currently locked in construction, defer movement until lock release.
+	if builder.has_method("is_construction_locked") and bool(builder.call("is_construction_locked")):
+		return
 	var first_target: Vector3 = evacuate_target if phase == "evacuate" else world_position
 	var move_command: RTSCommand = RTS_COMMAND.make_move(first_target, false)
 	move_command.payload["internal_build_order"] = true
@@ -5469,6 +5491,9 @@ func _process_pending_build_orders(delta: float) -> void:
 			continue
 		var order: Dictionary = order_value as Dictionary
 		var builder_path: NodePath = order.get("builder_path", NodePath("")) as NodePath
+		# Same worker's queued build orders must execute in strict insertion order.
+		if _has_earlier_pending_build_order_for_builder(builder_path, i):
+			continue
 		var builder_node: Node3D = get_node_or_null(builder_path) as Node3D
 		var kind: String = str(order.get("kind", ""))
 		var ghost_id: int = int(order.get("ghost_id", -1))
@@ -5498,6 +5523,11 @@ func _process_pending_build_orders(delta: float) -> void:
 		var target_position: Vector3 = target_position_value as Vector3
 		if ghost_id >= 0 and not _has_pending_construction_ghost(ghost_id):
 			_pending_build_orders.remove_at(i)
+			continue
+		# When worker is locked to an active construction site (especially garrisoned),
+		# queued follow-up build orders must wait until that lock is released.
+		if builder_node.has_method("is_construction_locked") and bool(builder_node.call("is_construction_locked")):
+			_pending_build_orders[i] = order
 			continue
 
 		order = _evacuate_allied_units_from_pending_build(
