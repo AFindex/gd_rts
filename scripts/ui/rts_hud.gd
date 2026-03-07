@@ -18,6 +18,8 @@ const HUD_FONT_SMALL: int = 12
 const HUD_FONT_TINY: int = 11
 const HUD_FONT_BUTTON: int = 13
 const HUD_FONT_GLYPH: int = 16
+const PRODUCTION_MODE_QUEUE: String = "queue"
+const PRODUCTION_MODE_CONSTRUCTION: String = "construction"
 
 @export var use_manual_bottom_layout: bool = true
 @export var manual_bottom_height_scale: float = 0.8
@@ -213,6 +215,16 @@ var _hud_entry_elapsed_sec: float = 0.0
 var _hud_entry_total_duration_sec: float = 0.0
 var _hud_entry_panels: Array[Control] = []
 var _hud_entry_meta_by_path: Dictionary = {}
+var _current_production_mode: String = PRODUCTION_MODE_QUEUE
+var _construction_row_root: Control
+var _construction_icon_panel: PanelContainer
+var _construction_icon_texture: TextureRect
+var _construction_icon_fallback: Label
+var _construction_detail_root: Control
+var _construction_title_text: Label
+var _construction_progress_bar: ProgressBar
+var _construction_progress_value: Label
+var _construction_icon_cache_path: String = ""
 
 func _t(message: String) -> String:
 	return tr(message)
@@ -260,6 +272,9 @@ func _apply_hud_font_sizes() -> void:
 	_set_font_size(_single_detail_text, HUD_FONT_TINY)
 	_set_font_size(_armor_type_text, HUD_FONT_TINY)
 	_set_font_size(_queue_summary_text, HUD_FONT_SMALL)
+	_set_font_size(_construction_icon_fallback, HUD_FONT_GLYPH)
+	_set_font_size(_construction_title_text, HUD_FONT_SMALL)
+	_set_font_size(_construction_progress_value, HUD_FONT_TINY)
 
 	_set_font_size(_portrait_glyph, HUD_FONT_GLYPH)
 	_set_font_size(_portrait_title_label, HUD_FONT_SMALL)
@@ -299,8 +314,125 @@ func _apply_text_visibility_prefs() -> void:
 	if _command_hint_text != null:
 		_command_hint_text.visible = manual_command_hint_visible
 
+func _ensure_construction_production_controls() -> void:
+	if _production_content == null or not is_instance_valid(_production_content):
+		return
+
+	_construction_row_root = _production_content.get_node_or_null("ConstructionRowRoot") as Control
+	if _construction_row_root == null:
+		_construction_row_root = Control.new()
+		_construction_row_root.name = "ConstructionRowRoot"
+		_production_content.add_child(_construction_row_root)
+	_construction_row_root.layout_mode = 0
+	_construction_row_root.anchor_left = 0.0
+	_construction_row_root.anchor_top = 0.0
+	_construction_row_root.anchor_right = 0.0
+	_construction_row_root.anchor_bottom = 0.0
+	_construction_row_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_construction_row_root.visible = false
+
+	_construction_icon_panel = _construction_row_root.get_node_or_null("ConstructionIconPanel") as PanelContainer
+	if _construction_icon_panel == null:
+		_construction_icon_panel = PanelContainer.new()
+		_construction_icon_panel.name = "ConstructionIconPanel"
+		_construction_row_root.add_child(_construction_icon_panel)
+	_construction_icon_panel.layout_mode = 0
+	_construction_icon_panel.anchor_left = 0.0
+	_construction_icon_panel.anchor_top = 0.0
+	_construction_icon_panel.anchor_right = 0.0
+	_construction_icon_panel.anchor_bottom = 0.0
+	_construction_icon_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	_construction_icon_texture = _construction_icon_panel.get_node_or_null("ConstructionIcon") as TextureRect
+	if _construction_icon_texture == null:
+		_construction_icon_texture = TextureRect.new()
+		_construction_icon_texture.name = "ConstructionIcon"
+		_construction_icon_panel.add_child(_construction_icon_texture)
+	_construction_icon_texture.layout_mode = 0
+	_construction_icon_texture.anchor_left = 0.0
+	_construction_icon_texture.anchor_top = 0.0
+	_construction_icon_texture.anchor_right = 0.0
+	_construction_icon_texture.anchor_bottom = 0.0
+	_construction_icon_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_construction_icon_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_construction_icon_texture.expand_mode = TextureRect.EXPAND_FIT_WIDTH
+	_construction_icon_texture.visible = false
+
+	_construction_icon_fallback = _construction_icon_panel.get_node_or_null("ConstructionIconFallback") as Label
+	if _construction_icon_fallback == null:
+		_construction_icon_fallback = Label.new()
+		_construction_icon_fallback.name = "ConstructionIconFallback"
+		_construction_icon_panel.add_child(_construction_icon_fallback)
+	_construction_icon_fallback.layout_mode = 0
+	_construction_icon_fallback.anchor_left = 0.0
+	_construction_icon_fallback.anchor_top = 0.0
+	_construction_icon_fallback.anchor_right = 0.0
+	_construction_icon_fallback.anchor_bottom = 0.0
+	_construction_icon_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_construction_icon_fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_construction_icon_fallback.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_construction_icon_fallback.text = "B"
+	_construction_icon_fallback.visible = true
+
+	_construction_detail_root = _construction_row_root.get_node_or_null("ConstructionDetailRoot") as Control
+	if _construction_detail_root == null:
+		_construction_detail_root = Control.new()
+		_construction_detail_root.name = "ConstructionDetailRoot"
+		_construction_row_root.add_child(_construction_detail_root)
+	_construction_detail_root.layout_mode = 0
+	_construction_detail_root.anchor_left = 0.0
+	_construction_detail_root.anchor_top = 0.0
+	_construction_detail_root.anchor_right = 0.0
+	_construction_detail_root.anchor_bottom = 0.0
+	_construction_detail_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	_construction_title_text = _construction_detail_root.get_node_or_null("ConstructionTitleText") as Label
+	if _construction_title_text == null:
+		_construction_title_text = Label.new()
+		_construction_title_text.name = "ConstructionTitleText"
+		_construction_detail_root.add_child(_construction_title_text)
+	_construction_title_text.layout_mode = 0
+	_construction_title_text.anchor_left = 0.0
+	_construction_title_text.anchor_top = 0.0
+	_construction_title_text.anchor_right = 0.0
+	_construction_title_text.anchor_bottom = 0.0
+	_construction_title_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_construction_title_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_construction_title_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_construction_title_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_construction_title_text.text = _t("Constructing")
+
+	_construction_progress_bar = _construction_detail_root.get_node_or_null("ConstructionProgressBar") as ProgressBar
+	if _construction_progress_bar == null:
+		_construction_progress_bar = ProgressBar.new()
+		_construction_progress_bar.name = "ConstructionProgressBar"
+		_construction_detail_root.add_child(_construction_progress_bar)
+	_construction_progress_bar.layout_mode = 0
+	_construction_progress_bar.anchor_left = 0.0
+	_construction_progress_bar.anchor_top = 0.0
+	_construction_progress_bar.anchor_right = 0.0
+	_construction_progress_bar.anchor_bottom = 0.0
+	_construction_progress_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_construction_progress_bar.value = 0.0
+
+	_construction_progress_value = _construction_progress_bar.get_node_or_null("ConstructionProgressValue") as Label
+	if _construction_progress_value == null:
+		_construction_progress_value = Label.new()
+		_construction_progress_value.name = "ConstructionProgressValue"
+		_construction_progress_bar.add_child(_construction_progress_value)
+	_construction_progress_value.layout_mode = 0
+	_construction_progress_value.anchor_left = 0.0
+	_construction_progress_value.anchor_top = 0.0
+	_construction_progress_value.anchor_right = 0.0
+	_construction_progress_value.anchor_bottom = 0.0
+	_construction_progress_value.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_construction_progress_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_construction_progress_value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_construction_progress_value.text = "0%"
+
 func _ready() -> void:
 	_cache_control_group_buttons()
+	_ensure_construction_production_controls()
 	_setup_static_styles()
 	_connect_ping_button()
 	_connect_minimap_view()
@@ -487,13 +619,49 @@ func update_hud(snapshot: Dictionary) -> void:
 	_energy_value_label.text = _tf("EN %d%%", [int(round(_energy_bar.value))])
 
 	var show_production: bool = bool(snapshot.get("show_production", false))
+	var production_mode: String = str(snapshot.get("production_mode", PRODUCTION_MODE_QUEUE)).strip_edges().to_lower()
+	if production_mode != PRODUCTION_MODE_CONSTRUCTION:
+		production_mode = PRODUCTION_MODE_QUEUE
+	if not show_production:
+		production_mode = PRODUCTION_MODE_QUEUE
+	_current_production_mode = production_mode
+
 	_single_detail_root.visible = _single_container.visible and not show_production
 	_production_queue_root.visible = _single_container.visible and show_production
-	var queue_size: int = int(snapshot.get("queue_size", 0))
-	var queue_progress: float = clampf(float(snapshot.get("queue_progress", 0.0)), 0.0, 1.0)
-	_queue_summary_text.text = _tf("Queue Size: %d", [queue_size])
-	_queue_progress_bar.value = queue_progress * 100.0
-	_apply_queue_preview(_to_string_array(snapshot.get("queue_preview", [])))
+	var show_construction: bool = _production_queue_root.visible and production_mode == PRODUCTION_MODE_CONSTRUCTION
+	var show_queue: bool = _production_queue_root.visible and not show_construction
+	_queue_summary_text.visible = show_queue
+	_queue_progress_bar.visible = show_queue
+	_queue_slots.visible = show_queue
+	if _construction_row_root != null:
+		_construction_row_root.visible = show_construction
+
+	if show_queue:
+		var queue_size: int = int(snapshot.get("queue_size", 0))
+		var queue_progress: float = clampf(float(snapshot.get("queue_progress", 0.0)), 0.0, 1.0)
+		_queue_summary_text.text = _tf("Queue Size: %d", [queue_size])
+		_queue_progress_bar.value = queue_progress * 100.0
+		_apply_queue_preview(_to_string_array(snapshot.get("queue_preview", [])))
+	else:
+		_queue_summary_text.text = _tf("Queue Size: %d", [0])
+		_queue_progress_bar.value = 0.0
+		_apply_queue_preview([])
+	if show_construction:
+		_apply_construction_snapshot(snapshot)
+	else:
+		_construction_icon_cache_path = ""
+		if _construction_icon_texture != null:
+			_construction_icon_texture.texture = null
+			_construction_icon_texture.visible = false
+		if _construction_icon_fallback != null:
+			_construction_icon_fallback.text = "B"
+			_construction_icon_fallback.visible = true
+		if _construction_title_text != null:
+			_construction_title_text.text = _t("Constructing")
+		if _construction_progress_bar != null:
+			_construction_progress_bar.value = 0.0
+		if _construction_progress_value != null:
+			_construction_progress_value.text = "0%"
 
 	_apply_multi_roles(
 		_to_string_array(snapshot.get("multi_roles", [])),
@@ -530,9 +698,15 @@ func _apply_default_hud() -> void:
 		"single_detail": _t("Select a unit or building to inspect details."),
 		"single_armor": _t("Armor Type: --"),
 		"show_production": false,
+		"production_mode": PRODUCTION_MODE_QUEUE,
 		"queue_size": 0,
 		"queue_progress": 0.0,
 		"queue_preview": [],
+		"construction_title": "",
+		"construction_state_text": "",
+		"construction_progress": 0.0,
+		"construction_icon_path": "",
+		"construction_glyph": "B",
 		"multi_roles": [],
 		"control_group_entries": [],
 		"portrait_glyph": "?",
@@ -583,6 +757,16 @@ func _setup_static_styles() -> void:
 	_style_progress_bar(_shield_bar, Color(0.21, 0.64, 0.98))
 	_style_progress_bar(_energy_bar, Color(0.95, 0.76, 0.22))
 	_style_progress_bar(_queue_progress_bar, Color(0.92, 0.62, 0.22))
+	if _construction_icon_panel != null:
+		_style_panel(_construction_icon_panel, Color(0.05, 0.14, 0.2, 0.92), Color(0.2, 0.48, 0.64, 0.95))
+	if _construction_progress_bar != null:
+		_style_progress_bar(_construction_progress_bar, Color(0.34, 0.82, 0.52))
+	if _construction_title_text != null:
+		_construction_title_text.add_theme_color_override("font_color", Color(0.88, 0.96, 1.0))
+	if _construction_icon_fallback != null:
+		_construction_icon_fallback.add_theme_color_override("font_color", Color(0.9, 0.97, 1.0))
+	if _construction_progress_value != null:
+		_style_bar_overlay_label(_construction_progress_value)
 	_style_bar_overlay_label(_health_value_label)
 	_style_bar_overlay_label(_shield_value_label)
 	_style_bar_overlay_label(_energy_value_label)
@@ -883,6 +1067,47 @@ func _apply_queue_preview(queue_preview: Array[String]) -> void:
 		if i < queue_preview.size():
 			value = queue_preview[i]
 		_queue_slot_labels[i].text = value
+
+func _apply_construction_snapshot(snapshot: Dictionary) -> void:
+	if _construction_row_root == null:
+		return
+	var progress: float = clampf(float(snapshot.get("construction_progress", 0.0)), 0.0, 1.0)
+	var percent: int = int(round(progress * 100.0))
+	var title: String = str(snapshot.get("construction_title", "")).strip_edges()
+	if title == "":
+		title = _t("Construction")
+	var state_text: String = str(snapshot.get("construction_state_text", _t("Building"))).strip_edges()
+	if state_text == "":
+		state_text = _t("Building")
+	if _construction_title_text != null:
+		_construction_title_text.text = _tf("%s | %s", [title, state_text])
+	if _construction_progress_bar != null:
+		_construction_progress_bar.value = progress * 100.0
+	if _construction_progress_value != null:
+		_construction_progress_value.text = "%d%%" % percent
+
+	var icon_path: String = str(snapshot.get("construction_icon_path", "")).strip_edges()
+	var fallback_glyph: String = str(snapshot.get("construction_glyph", title.substr(0, 1))).strip_edges()
+	if fallback_glyph == "":
+		fallback_glyph = "B"
+	_apply_construction_icon(icon_path, fallback_glyph)
+
+func _apply_construction_icon(icon_path: String, fallback_glyph: String) -> void:
+	if _construction_icon_texture == null or _construction_icon_fallback == null:
+		return
+	var texture: Texture2D = null
+	var normalized_icon_path: String = icon_path.strip_edges()
+	if normalized_icon_path != "" and ResourceLoader.exists(normalized_icon_path):
+		if _construction_icon_cache_path != normalized_icon_path:
+			_construction_icon_texture.texture = load(normalized_icon_path) as Texture2D
+			_construction_icon_cache_path = normalized_icon_path
+		texture = _construction_icon_texture.texture
+	else:
+		_construction_icon_cache_path = ""
+		_construction_icon_texture.texture = null
+	_construction_icon_texture.visible = texture != null
+	_construction_icon_fallback.visible = texture == null
+	_construction_icon_fallback.text = fallback_glyph.substr(0, 1).to_upper()
 
 func _apply_multi_roles(multi_roles: Array[String], multi_role_kinds: Array[String], active_subgroup_kind: String = "") -> void:
 	_hudjit_log("apply_multi_roles roles=%d kinds=%d active_subgroup=%s" % [
@@ -1644,6 +1869,67 @@ func _apply_manual_production_content_layout() -> void:
 	var gap: float = maxf(0.0, manual_production_gap)
 	var content_width: float = maxf(0.0, area_size.x - pad_x * 2.0)
 	var content_height: float = maxf(0.0, area_size.y - pad_y * 2.0)
+	var show_construction_layout: bool = _current_production_mode == PRODUCTION_MODE_CONSTRUCTION and _construction_row_root != null and _construction_row_root.visible
+
+	if show_construction_layout:
+		_set_manual_rect(_queue_summary_text, Vector2(pad_x, pad_y), Vector2(0.0, 0.0))
+		_set_manual_rect(_queue_progress_bar, Vector2(pad_x, pad_y), Vector2(0.0, 0.0))
+		_set_manual_rect(_queue_slots, Vector2(pad_x, pad_y), Vector2(0.0, 0.0))
+		_set_manual_rect(_construction_row_root, Vector2(pad_x, pad_y), Vector2(content_width, content_height))
+		if _construction_icon_panel == null or _construction_detail_root == null:
+			return
+
+		var icon_gap: float = maxf(6.0, gap * 2.0)
+		var icon_size: float = clampf(content_height, 28.0, 84.0)
+		if content_width < icon_size + icon_gap + 56.0:
+			icon_size = clampf(content_width * 0.32, 24.0, content_height)
+		icon_size = maxf(0.0, minf(icon_size, content_height))
+		var icon_y: float = floor(maxf(0.0, (content_height - icon_size) * 0.5))
+		_set_manual_rect(_construction_icon_panel, Vector2(0.0, icon_y), Vector2(icon_size, icon_size))
+		if _construction_icon_texture != null and _construction_icon_fallback != null:
+			var icon_content_rect: Rect2 = _get_panel_content_rect(_construction_icon_panel)
+			_set_manual_rect(_construction_icon_texture, icon_content_rect.position, icon_content_rect.size)
+			_set_manual_rect(_construction_icon_fallback, icon_content_rect.position, icon_content_rect.size)
+
+		var right_x: float = icon_size + icon_gap
+		var right_width: float = maxf(0.0, content_width - right_x)
+		_set_manual_rect(_construction_detail_root, Vector2(right_x, 0.0), Vector2(right_width, content_height))
+		if _construction_title_text == null or _construction_progress_bar == null:
+			return
+		var title_height: float = clampf(maxf(manual_queue_summary_height, _construction_title_text.get_combined_minimum_size().y), 0.0, content_height)
+		_set_manual_rect(_construction_title_text, Vector2(0.0, 0.0), Vector2(right_width, title_height))
+
+		var progress_y: float = title_height
+		if content_height > title_height:
+			progress_y += gap
+		var progress_height: float = maxf(0.0, content_height - progress_y)
+		var progress_min_height: float = _construction_progress_bar.get_combined_minimum_size().y
+		if progress_height < progress_min_height and progress_y > 0.0:
+			var shrink: float = minf(progress_y, progress_min_height - progress_height)
+			progress_y -= shrink
+			progress_height = maxf(0.0, content_height - progress_y)
+		_set_manual_rect(_construction_progress_bar, Vector2(0.0, progress_y), Vector2(right_width, progress_height))
+		if _construction_progress_value != null:
+			_set_manual_rect(_construction_progress_value, Vector2(0.0, 0.0), Vector2(right_width, progress_height))
+		return
+
+	if _construction_row_root != null:
+		_construction_row_root.visible = false
+		_set_manual_rect(_construction_row_root, Vector2(pad_x, pad_y), Vector2(0.0, 0.0))
+	if _construction_icon_panel != null:
+		_set_manual_rect(_construction_icon_panel, Vector2.ZERO, Vector2.ZERO)
+	if _construction_detail_root != null:
+		_set_manual_rect(_construction_detail_root, Vector2.ZERO, Vector2.ZERO)
+	if _construction_icon_texture != null:
+		_set_manual_rect(_construction_icon_texture, Vector2.ZERO, Vector2.ZERO)
+	if _construction_icon_fallback != null:
+		_set_manual_rect(_construction_icon_fallback, Vector2.ZERO, Vector2.ZERO)
+	if _construction_title_text != null:
+		_set_manual_rect(_construction_title_text, Vector2.ZERO, Vector2.ZERO)
+	if _construction_progress_bar != null:
+		_set_manual_rect(_construction_progress_bar, Vector2.ZERO, Vector2.ZERO)
+	if _construction_progress_value != null:
+		_set_manual_rect(_construction_progress_value, Vector2.ZERO, Vector2.ZERO)
 
 	var summary_height: float = clampf(manual_queue_summary_height, 0.0, content_height)
 	var summary_min_height: float = _queue_summary_text.get_combined_minimum_size().y

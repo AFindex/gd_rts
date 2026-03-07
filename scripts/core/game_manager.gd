@@ -2308,9 +2308,15 @@ func _build_hud_snapshot() -> Dictionary:
 	var status_energy: float = 0.0
 
 	var show_production: bool = false
+	var production_mode: String = "queue"
 	var queue_size: int = 0
 	var queue_progress: float = 0.0
 	var queue_preview: Array[String] = []
+	var construction_title: String = ""
+	var construction_state_text: String = ""
+	var construction_progress_value: float = 0.0
+	var construction_icon_path: String = ""
+	var construction_glyph: String = "B"
 
 	var portrait_title: String = _t("No Selection")
 	var portrait_subtitle: String = "-"
@@ -2372,6 +2378,13 @@ func _build_hud_snapshot() -> Dictionary:
 				queue_progress = construction_progress
 				queue_preview.append(_t("Constructing"))
 				show_production = true
+				production_mode = "construction"
+				construction_title = building_name
+				construction_state_text = _t("Paused") if paused else _t("Building")
+				construction_progress_value = construction_progress
+				var building_kind: String = str(building.get("building_kind")).strip_edges().to_lower()
+				construction_icon_path = _construction_icon_path_for_building_kind(building_kind)
+				construction_glyph = building_name.substr(0, 1).to_upper() if building_name != "" else "B"
 				portrait_subtitle = _tf("Constructing %d%%", [int(round(construction_progress * 100.0))])
 			else:
 				var can_train_worker: bool = bool(building.call("can_queue_worker_unit")) if building.has_method("can_queue_worker_unit") else false
@@ -2438,9 +2451,15 @@ func _build_hud_snapshot() -> Dictionary:
 		"status_shield": status_shield,
 		"status_energy": status_energy,
 		"show_production": show_production,
+		"production_mode": production_mode,
 		"queue_size": queue_size,
 		"queue_progress": queue_progress,
 		"queue_preview": queue_preview,
+		"construction_title": construction_title,
+		"construction_state_text": construction_state_text,
+		"construction_progress": construction_progress_value,
+		"construction_icon_path": construction_icon_path,
+		"construction_glyph": construction_glyph,
 		"multi_roles": multi_roles,
 		"multi_role_kinds": multi_role_kinds,
 		"control_group_entries": control_group_entries,
@@ -3512,6 +3531,22 @@ func _player_owned_building_count(building_kind: String) -> int:
 func _building_display_name(building_kind: String) -> String:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
 	return str(building_def.get("display_name", _t(building_kind.capitalize())))
+
+func _construction_icon_path_for_building_kind(building_kind: String) -> String:
+	var normalized_kind: String = building_kind.strip_edges().to_lower()
+	if normalized_kind == "":
+		return ""
+	var candidate_skill_ids: Array[String] = []
+	candidate_skill_ids.append_array(RTS_CATALOG.get_unit_build_skill_ids("worker"))
+	candidate_skill_ids.append_array(RTS_CATALOG.get_building_build_skill_ids("base"))
+	for skill_id in candidate_skill_ids:
+		if RTS_CATALOG.get_build_kind_from_skill(skill_id).strip_edges().to_lower() != normalized_kind:
+			continue
+		var skill_def: Dictionary = RTS_CATALOG.get_skill_def(skill_id)
+		var icon_path: String = str(skill_def.get("icon_path", "")).strip_edges()
+		if icon_path != "":
+			return icon_path
+	return ""
 
 func _tech_display_name(tech_id: String) -> String:
 	var tech_def: Dictionary = RTS_CATALOG.get_tech_def(tech_id)
