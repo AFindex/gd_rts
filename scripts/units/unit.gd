@@ -37,6 +37,8 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var mining_interaction_repath_interval: float = 0.35
 @export var interaction_nav_path_desired_distance: float = 0.65
 @export var interaction_nav_target_desired_distance: float = 0.28
+@export var mining_nav_finish_contact_slack: float = 0.18
+@export var mining_nav_finish_anchor_slack: float = 0.9
 @export var nav_agent_radius: float = 0.32
 @export var nav_agent_height: float = 1.0
 @export var nav_avoidance_priority: float = 0.5
@@ -1123,12 +1125,12 @@ func _log_mining_event(tag: String, extra: Dictionary = {}) -> void:
 	var gather_distance: float = -1.0
 	var gather_contact: float = -1.0
 	if _gather_target != null and is_instance_valid(_gather_target):
-		gather_distance = global_position.distance_to(_gather_target.global_position)
+		gather_distance = RTS_INTERACTION.flat_distance_xz(global_position, _gather_target.global_position)
 		gather_contact = _effective_gather_contact_range(_gather_target)
 	var dropoff_distance: float = -1.0
 	var dropoff_contact: float = -1.0
 	if _dropoff_target != null and is_instance_valid(_dropoff_target):
-		dropoff_distance = global_position.distance_to(_dropoff_target.global_position)
+		dropoff_distance = RTS_INTERACTION.flat_distance_xz(global_position, _dropoff_target.global_position)
 		dropoff_contact = _effective_dropoff_contact_range(_dropoff_target)
 	var occupied_text: String = "n/a"
 	var queue_len: int = -1
@@ -1215,13 +1217,43 @@ func _process_moving_to_mineral_state(_delta: float) -> void:
 	var in_hard_contact: bool = RTS_INTERACTION.is_within_distance_xz(global_position, _gather_target.global_position, contact_range)
 	var anchor_contact: bool = false
 	if not in_hard_contact and _has_target:
-		anchor_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, _interaction_anchor_tolerance())
+		var anchor_tolerance: float = _interaction_anchor_tolerance()
+		anchor_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, anchor_tolerance)
+		if not anchor_contact and _can_use_navigation() and _nav_agent.is_navigation_finished():
+			var nav_anchor_tolerance: float = anchor_tolerance + maxf(0.0, mining_nav_finish_anchor_slack)
+			anchor_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, nav_anchor_tolerance)
+			if anchor_contact:
+				_log_mining_event("nav_anchor_contact_fallback", {
+					"anchor_tol": snappedf(anchor_tolerance, 0.01),
+					"nav_anchor_tol": snappedf(nav_anchor_tolerance, 0.01),
+					"dist_anchor": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _target_position), 0.01)
+				})
+	var nav_soft_contact: bool = false
 	if not in_hard_contact and not anchor_contact:
+		nav_soft_contact = _is_navigation_soft_contact(_gather_target, contact_range)
+	if not in_hard_contact and not anchor_contact and not nav_soft_contact:
+		if _has_target and _can_use_navigation() and _nav_agent.is_navigation_finished():
+			_mining_interaction_repath_timer += _delta
+			if _mining_interaction_repath_timer >= maxf(0.15, mining_interaction_repath_interval):
+				_mining_interaction_repath_timer = 0.0
+				_log_mining_event("nav_finished_reissue_mineral_move", {
+					"dist_anchor": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _target_position), 0.01),
+					"dist_target": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _gather_target.global_position), 0.01)
+				})
+				_move_to(_mining_gather_approach_point(_gather_target))
+		else:
+			_mining_interaction_repath_timer = 0.0
 		return
+	_mining_interaction_repath_timer = 0.0
 	if anchor_contact and not in_hard_contact:
 		_log_mining_event("anchor_contact_fallback", {
 			"anchor_tol": snappedf(_interaction_anchor_tolerance(), 0.01),
 			"dist_anchor": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _target_position), 0.01)
+		})
+	elif nav_soft_contact and not in_hard_contact:
+		_log_mining_event("nav_soft_contact_fallback", {
+			"soft_slack": snappedf(maxf(0.0, mining_nav_finish_contact_slack), 0.01),
+			"dist_target": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _gather_target.global_position), 0.01)
 		})
 	_has_target = false
 	velocity = Vector3.ZERO
@@ -1342,7 +1374,24 @@ func _process_moving_to_base_state(_delta: float) -> void:
 			_stop_worker_cycle(true)
 			return
 	var contact_range: float = _effective_dropoff_contact_range(_dropoff_target)
-	if _is_interaction_ready(_dropoff_target, contact_range):
+	var direct_contact: bool = _is_interaction_ready(_dropoff_target, contact_range)
+	if not direct_contact and _has_target and _can_use_navigation() and _nav_agent.is_navigation_finished():
+		var nav_anchor_tolerance: float = _interaction_anchor_tolerance() + maxf(0.0, mining_nav_finish_anchor_slack)
+		direct_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, nav_anchor_tolerance)
+		if direct_contact:
+			_log_mining_event("dropoff_nav_anchor_contact", {
+				"nav_anchor_tol": snappedf(nav_anchor_tolerance, 0.01),
+				"dist_anchor": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _target_position), 0.01)
+			})
+	var nav_soft_contact: bool = false
+	if not direct_contact:
+		nav_soft_contact = _is_navigation_soft_contact(_dropoff_target, contact_range)
+	if direct_contact or nav_soft_contact:
+		if nav_soft_contact and not direct_contact:
+			_log_mining_event("dropoff_nav_soft_contact", {
+				"soft_slack": snappedf(maxf(0.0, mining_nav_finish_contact_slack), 0.01),
+				"dist_target": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _dropoff_target.global_position), 0.01)
+			})
 		_set_mining_state(MiningState.DELIVERING)
 		return
 	if not _has_target:
@@ -1540,6 +1589,20 @@ func _agent_radius_xz() -> float:
 
 func _interaction_anchor_tolerance() -> float:
 	return maxf(0.18, interaction_nav_target_desired_distance + 0.08)
+
+func _is_navigation_soft_contact(target_node: Node3D, contact_range: float) -> bool:
+	if target_node == null or not is_instance_valid(target_node):
+		return false
+	var extra_slack: float = maxf(0.0, mining_nav_finish_contact_slack)
+	if extra_slack <= 0.0:
+		return false
+	if not _can_use_navigation() or not _nav_agent.is_navigation_finished():
+		return false
+	return RTS_INTERACTION.is_within_distance_xz(
+		global_position,
+		target_node.global_position,
+		maxf(0.0, contact_range) + extra_slack
+	)
 
 func _is_interaction_ready(target_node: Node3D, contact_range: float) -> bool:
 	if target_node == null or not is_instance_valid(target_node):
@@ -2192,6 +2255,8 @@ func _apply_runtime_config_for_role() -> void:
 	gather_amount = int(unit_def.get("gather_amount", gather_amount))
 	gather_interval = float(unit_def.get("gather_interval", gather_interval))
 	mining_search_radius = maxf(0.0, float(unit_def.get("mining_search_radius", mining_search_radius)))
+	mining_nav_finish_contact_slack = maxf(0.0, float(unit_def.get("mining_nav_finish_contact_slack", mining_nav_finish_contact_slack)))
+	mining_nav_finish_anchor_slack = maxf(0.0, float(unit_def.get("mining_nav_finish_anchor_slack", mining_nav_finish_anchor_slack)))
 	repair_range = float(unit_def.get("repair_range", repair_range))
 	repair_amount = float(unit_def.get("repair_amount", repair_amount))
 	repair_interval = float(unit_def.get("repair_interval", repair_interval))

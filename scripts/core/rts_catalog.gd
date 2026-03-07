@@ -19,6 +19,8 @@ const UNIT_DEFS: Dictionary = {
 		"gather_amount": 5,
 		"gather_interval": 1.5,
 		"mining_search_radius": 34.0,
+		"mining_nav_finish_contact_slack": 0.18,
+		"mining_nav_finish_anchor_slack": 0.9,
 		"body_radius": 0.32,
 		"nav_agent_radius": 0.3,
 		"nav_agent_height": 1.0,
