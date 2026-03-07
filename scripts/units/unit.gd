@@ -67,6 +67,10 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var debug_mining_log: bool = false
 @export var debug_mining_log_interval: float = 0.8
 @export var debug_mining_stall_threshold: float = 2.0
+@export var debug_mining_timeout_enabled: bool = false
+@export var debug_mining_move_timeout: float = 8.0
+@export var debug_mining_return_timeout: float = 8.0
+@export var debug_mining_timeout_log_interval: float = 1.5
 @export var congestion_ghosting_enabled: bool = true
 @export var congestion_stuck_time: float = 0.35
 @export var congestion_release_time: float = 0.5
@@ -118,6 +122,9 @@ var _mining_interaction_repath_timer: float = 0.0
 var _mining_debug_accum: float = 0.0
 var _mining_harvest_stall_timer: float = 0.0
 var _mining_last_logged_state: int = MiningState.IDLE
+var _mining_timeout_watch_state: int = MiningState.IDLE
+var _mining_timeout_watch_elapsed: float = 0.0
+var _mining_timeout_log_cooldown: float = 0.0
 var _carried_amount: int = 0
 var _attack_target: Node = null
 var _attack_timer: float = 0.0
@@ -996,6 +1003,7 @@ func _process_worker_cycle(delta: float) -> void:
 			_process_delivering_state(delta)
 		_:
 			_stop_worker_cycle(false)
+	_process_mining_timeout_watchdog(delta)
 	_process_mining_debug(delta)
 
 func _set_mining_state(next_state: int) -> void:
@@ -1119,8 +1127,8 @@ func _process_mining_debug(delta: float) -> void:
 	else:
 		_mining_harvest_stall_timer = 0.0
 
-func _log_mining_event(tag: String, extra: Dictionary = {}) -> void:
-	if not _is_mining_debug_candidate():
+func _log_mining_event(tag: String, extra: Dictionary = {}, force_log: bool = false) -> void:
+	if not force_log and not _is_mining_debug_candidate():
 		return
 	var gather_distance: float = -1.0
 	var gather_contact: float = -1.0
@@ -1193,6 +1201,56 @@ func _log_mining_event(tag: String, extra: Dictionary = {}) -> void:
 		if suffix != "":
 			message += " " + suffix
 	print(message)
+
+func _process_mining_timeout_watchdog(delta: float) -> void:
+	if not debug_mining_timeout_enabled:
+		_reset_mining_timeout_watchdog()
+		return
+	if not is_worker:
+		_reset_mining_timeout_watchdog()
+		return
+	var tracked_state: bool = _mining_state == MiningState.MOVING_TO_MINERAL or _mining_state == MiningState.MOVING_TO_BASE
+	if not tracked_state:
+		_reset_mining_timeout_watchdog()
+		return
+	if _mining_timeout_watch_state != _mining_state:
+		_mining_timeout_watch_state = _mining_state
+		_mining_timeout_watch_elapsed = 0.0
+		_mining_timeout_log_cooldown = 0.0
+
+	_mining_timeout_watch_elapsed += maxf(0.0, delta)
+	_mining_timeout_log_cooldown = maxf(0.0, _mining_timeout_log_cooldown - delta)
+	var timeout_limit: float = debug_mining_move_timeout if _mining_state == MiningState.MOVING_TO_MINERAL else debug_mining_return_timeout
+	timeout_limit = maxf(0.5, timeout_limit)
+	if _mining_timeout_watch_elapsed < timeout_limit:
+		return
+	if _mining_timeout_log_cooldown > 0.0:
+		return
+	_mining_timeout_log_cooldown = maxf(0.4, debug_mining_timeout_log_interval)
+
+	var tracked_target: Node3D = _gather_target if _mining_state == MiningState.MOVING_TO_MINERAL else _dropoff_target
+	var dist_target: float = -1.0
+	if tracked_target != null and is_instance_valid(tracked_target):
+		dist_target = RTS_INTERACTION.flat_distance_xz(global_position, tracked_target.global_position)
+	var dist_anchor: float = -1.0
+	if _has_target:
+		dist_anchor = RTS_INTERACTION.flat_distance_xz(global_position, _target_position)
+	var nav_finished: bool = false
+	if _can_use_navigation():
+		nav_finished = _nav_agent.is_navigation_finished()
+	var timeout_tag: String = "gather_move_timeout" if _mining_state == MiningState.MOVING_TO_MINERAL else "return_move_timeout"
+	_log_mining_event(timeout_tag, {
+		"elapsed_sec": snappedf(_mining_timeout_watch_elapsed, 0.01),
+		"timeout_sec": snappedf(timeout_limit, 0.01),
+		"dist_target": snappedf(dist_target, 0.01),
+		"dist_anchor": snappedf(dist_anchor, 0.01),
+		"nav_finished": nav_finished
+	}, true)
+
+func _reset_mining_timeout_watchdog() -> void:
+	_mining_timeout_watch_state = MiningState.IDLE
+	_mining_timeout_watch_elapsed = 0.0
+	_mining_timeout_log_cooldown = 0.0
 
 func _mining_debug_target_name(target_node: Node3D) -> String:
 	if target_node == null or not is_instance_valid(target_node):
