@@ -5819,10 +5819,10 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 	# If worker is currently locked in construction, defer movement until lock release.
 	if builder.has_method("is_construction_locked") and bool(builder.call("is_construction_locked")):
 		return
-	if queue_command:
-		return
 	var first_target: Vector3 = evacuate_target if phase == "evacuate" else world_position
-	var move_command: RTSCommand = RTS_COMMAND.make_move(first_target, false)
+	# For Shift-queued build orders, enqueue an internal move so worker-cycle
+	# checkpoint logic can break mining automation and hand over control.
+	var move_command: RTSCommand = RTS_COMMAND.make_move(first_target, queue_command)
 	move_command.payload["internal_build_order"] = true
 	_schedule_unit_command(builder, move_command)
 
