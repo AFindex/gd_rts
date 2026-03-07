@@ -26,6 +26,7 @@ const BUILD_ORDER_MOVE_REFRESH: float = 0.45
 const BUILD_ORDER_FOOTPRINT_EXIT_PADDING: float = 0.9
 const BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON: float = 0.06
 const PENDING_BUILD_FOOTPRINT_EXPAND_SCALE: float = 1.1
+const BUILD_ORDER_CLEAR_ZONE_TIMEOUT: float = 7.5
 const CONSTRUCTION_GHOST_RETRY_INTERVAL: float = 3.0
 const CONSTRUCTION_GHOST_FLOAT_AMPLITUDE: float = 0.08
 const CONSTRUCTION_GHOST_FLOAT_SPEED: float = 2.4
@@ -5683,6 +5684,78 @@ func _evacuate_allied_units_from_pending_build(
 	order["allied_units_inside"] = any_inside
 	return order
 
+func _is_worker_ready_for_pending_build(builder_node: Node3D, target_position: Vector3) -> bool:
+	if builder_node == null or not is_instance_valid(builder_node):
+		return false
+	if builder_node.has_method("_is_near"):
+		return bool(builder_node.call("_is_near", target_position, BUILD_ORDER_START_DISTANCE))
+	return builder_node.global_position.distance_to(target_position) <= BUILD_ORDER_START_DISTANCE
+
+func _pending_build_has_hard_blockers(
+	_order_index: int,
+	builder_node: Node3D,
+	target_position: Vector3,
+	rotation_y: float,
+	footprint_size: Vector2
+) -> bool:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return false
+	var builder_team_id: int = _team_id_from_node(builder_node, PLAYER_TEAM_ID)
+
+	var unit_nodes: Array[Node] = tree.get_nodes_in_group("selectable_unit")
+	for unit_value in unit_nodes:
+		var unit_node: Node3D = unit_value as Node3D
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if unit_node == builder_node:
+			continue
+		if unit_node.has_method("is_alive") and not bool(unit_node.call("is_alive")):
+			continue
+		if _team_id_from_node(unit_node, builder_team_id) == builder_team_id:
+			continue
+		if _is_point_inside_build_footprint(
+			unit_node.global_position,
+			target_position,
+			rotation_y,
+			footprint_size,
+			BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON
+		):
+			return true
+
+	var building_nodes: Array[Node] = tree.get_nodes_in_group("selectable_building")
+	for building_value in building_nodes:
+		var building_node: Node3D = building_value as Node3D
+		if building_node == null or not is_instance_valid(building_node):
+			continue
+		if building_node.has_method("is_alive") and not bool(building_node.call("is_alive")):
+			continue
+		if _is_point_inside_build_footprint(
+			building_node.global_position,
+			target_position,
+			rotation_y,
+			footprint_size,
+			BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON
+		):
+			return true
+
+	var resource_nodes: Array[Node] = tree.get_nodes_in_group("resource_node")
+	for resource_value in resource_nodes:
+		var resource_node: Node3D = resource_value as Node3D
+		if resource_node == null or not is_instance_valid(resource_node):
+			continue
+		if resource_node.has_method("is_depleted") and bool(resource_node.call("is_depleted")):
+			continue
+		if _is_point_inside_build_footprint(
+			resource_node.global_position,
+			target_position,
+			rotation_y,
+			footprint_size,
+			BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON
+		):
+			return true
+	return false
+
 func _has_earlier_pending_build_order_for_builder(builder_path: NodePath, current_index: int) -> bool:
 	if str(builder_path) == "":
 		return false
@@ -5728,6 +5801,8 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"queue_command": queue_command,
 		"queue_activated": not queue_command,
 		"move_repath_timer": 0.0,
+		"clear_zone_elapsed": 0.0,
+		"clear_zone_timeout": BUILD_ORDER_CLEAR_ZONE_TIMEOUT,
 		"retry_timer": 0.0
 	})
 	var new_order_index: int = _pending_build_orders.size() - 1
@@ -5801,16 +5876,6 @@ func _process_pending_build_orders(delta: float) -> void:
 				continue
 			order["queue_activated"] = true
 
-		order = _evacuate_allied_units_from_pending_build(
-			order,
-			builder_node,
-			target_position,
-			rotation_y,
-			footprint_size,
-			delta
-		)
-		var allied_units_inside: bool = bool(order.get("allied_units_inside", false))
-
 		var phase: String = str(order.get("phase", "approach"))
 		if phase == "evacuate":
 			var still_inside: bool = _is_point_inside_build_footprint(
@@ -5846,21 +5911,80 @@ func _process_pending_build_orders(delta: float) -> void:
 			_pending_build_orders[i] = order
 			continue
 
-		var repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
-		if repath_timer <= 0.0:
-			repath_timer = BUILD_ORDER_MOVE_REFRESH
-			var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
-			move_command.payload["internal_build_order"] = true
-			_schedule_unit_command(builder_node, move_command)
-		order["move_repath_timer"] = repath_timer
-
-		if builder_node.global_position.distance_to(target_position) > BUILD_ORDER_START_DISTANCE:
+		if phase == "approach":
+			var approach_repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
+			if approach_repath_timer <= 0.0:
+				approach_repath_timer = BUILD_ORDER_MOVE_REFRESH
+				var approach_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+				approach_command.payload["internal_build_order"] = true
+				_schedule_unit_command(builder_node, approach_command)
+			order["move_repath_timer"] = approach_repath_timer
+			if not _is_worker_ready_for_pending_build(builder_node, target_position):
+				_pending_build_orders[i] = order
+				continue
+			order["phase"] = "clear_zone"
+			order["move_repath_timer"] = 0.0
+			order["clear_zone_elapsed"] = 0.0
 			_pending_build_orders[i] = order
 			continue
 
-		if allied_units_inside:
+		if phase != "clear_zone":
+			order["phase"] = "approach"
+			order["move_repath_timer"] = 0.0
 			_pending_build_orders[i] = order
 			continue
+
+		if not _is_worker_ready_for_pending_build(builder_node, target_position):
+			order["phase"] = "approach"
+			order["move_repath_timer"] = 0.0
+			_pending_build_orders[i] = order
+			continue
+
+		# Worker reached interaction range: keep nearby and repeatedly clear the footprint.
+		var clear_repath_timer: float = float(order.get("move_repath_timer", 0.0)) - delta
+		if clear_repath_timer <= 0.0:
+			clear_repath_timer = BUILD_ORDER_MOVE_REFRESH
+			var clear_hold_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+			clear_hold_command.payload["internal_build_order"] = true
+			_schedule_unit_command(builder_node, clear_hold_command)
+		order["move_repath_timer"] = clear_repath_timer
+
+		order = _evacuate_allied_units_from_pending_build(
+			order,
+			builder_node,
+			target_position,
+			rotation_y,
+			footprint_size,
+			delta
+		)
+		var allied_units_inside: bool = bool(order.get("allied_units_inside", false))
+		var hard_blocked: bool = _pending_build_has_hard_blockers(
+			i,
+			builder_node,
+			target_position,
+			rotation_y,
+			footprint_size
+		)
+		if allied_units_inside or hard_blocked:
+			var clear_zone_elapsed: float = float(order.get("clear_zone_elapsed", 0.0)) + delta
+			var clear_zone_timeout: float = maxf(0.5, float(order.get("clear_zone_timeout", BUILD_ORDER_CLEAR_ZONE_TIMEOUT)))
+			order["clear_zone_elapsed"] = clear_zone_elapsed
+			if ghost_id >= 0:
+				_set_pending_construction_ghost_invalid(ghost_id, true)
+			if clear_zone_elapsed >= clear_zone_timeout:
+				if spent and build_cost > 0:
+					add_minerals(build_cost)
+				if ghost_id >= 0:
+					_remove_pending_construction_ghost(ghost_id)
+				_pending_build_orders.remove_at(i)
+				_set_ui_notice(_tf("Construction canceled: %s blocked for too long.", [_building_display_name(kind)]), 1.3)
+				continue
+			_pending_build_orders[i] = order
+			continue
+
+		order["clear_zone_elapsed"] = 0.0
+		if ghost_id >= 0:
+			_set_pending_construction_ghost_invalid(ghost_id, false)
 
 		if build_cost > 0 and _minerals < build_cost:
 			var retry_timer: float = float(order.get("retry_timer", 0.0)) - delta
