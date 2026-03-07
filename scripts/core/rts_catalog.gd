@@ -18,6 +18,7 @@ const UNIT_DEFS: Dictionary = {
 		"carry_capacity": 5,
 		"gather_amount": 5,
 		"gather_interval": 1.5,
+		"mining_search_radius": 34.0,
 		"body_radius": 0.32,
 		"nav_agent_radius": 0.3,
 		"nav_agent_height": 1.0,

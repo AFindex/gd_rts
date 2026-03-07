@@ -27,7 +27,7 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var carry_capacity: int = 24
 @export var gather_amount: int = 4
 @export var gather_interval: float = 0.55
-@export var mining_search_radius: float = 28.0
+@export var mining_search_radius: float = 34.0
 @export var mining_queue_timeout: float = 3.0
 @export var mining_queue_distance: float = 1.0
 @export var mining_delivery_duration: float = 0.5
@@ -801,7 +801,7 @@ func _notify_game_manager_worker_queue_transition(event_type: String) -> void:
 	if game_manager == null:
 		return
 	if game_manager.has_method("_on_worker_queue_transition"):
-		game_manager.call("_on_worker_queue_transition", self, event_type)
+		game_manager.call("_on_worker_queue_transition", self , event_type)
 
 func _start_next_queued_command() -> void:
 	if _command_queue.is_empty():
@@ -1479,7 +1479,7 @@ func _interaction_edge_approach_point(target_node: Node3D, include_obstacle: boo
 
 func _effective_gather_contact_range(mineral: Node3D) -> float:
 	return RTS_INTERACTION.compute_trigger_distance(
-		self,
+		self ,
 		mineral,
 		gather_range,
 		gather_trigger_buffer,
@@ -1490,7 +1490,7 @@ func _effective_gather_contact_range(mineral: Node3D) -> float:
 func _effective_dropoff_contact_range(dropoff: Node3D) -> float:
 	var nav_contact_padding: float = maxf(0.08, NAV_VERTICAL_POINT_TOLERANCE * 0.25)
 	return RTS_INTERACTION.compute_trigger_distance(
-		self,
+		self ,
 		dropoff,
 		dropoff_range,
 		dropoff_trigger_buffer + nav_contact_padding,
@@ -1500,7 +1500,7 @@ func _effective_dropoff_contact_range(dropoff: Node3D) -> float:
 
 func _effective_repair_contact_range(target_node: Node3D) -> float:
 	return RTS_INTERACTION.compute_trigger_distance(
-		self,
+		self ,
 		target_node,
 		repair_range,
 		0.0,
@@ -1510,7 +1510,7 @@ func _effective_repair_contact_range(target_node: Node3D) -> float:
 
 func _effective_attack_contact_range(target_node: Node3D) -> float:
 	return RTS_INTERACTION.compute_trigger_distance(
-		self,
+		self ,
 		target_node,
 		attack_range,
 		0.0,
@@ -1525,7 +1525,7 @@ func _target_obstacle_radius_xz(target_node: Node3D) -> float:
 	return RTS_INTERACTION.obstacle_radius_xz(target_node)
 
 func _agent_radius_xz() -> float:
-	return RTS_INTERACTION.collision_radius_xz(self, false)
+	return RTS_INTERACTION.collision_radius_xz(self , false)
 
 func _interaction_anchor_tolerance() -> float:
 	return maxf(0.18, interaction_nav_target_desired_distance + 0.08)
@@ -1569,7 +1569,7 @@ func _can_queue_for_mineral(mineral: Node3D) -> bool:
 	if mineral == null or not is_instance_valid(mineral):
 		return false
 	if mineral.has_method("can_accept_waiter"):
-		return bool(mineral.call("can_accept_waiter", self))
+		return bool(mineral.call("can_accept_waiter", self ))
 	return false
 
 func _estimate_mineral_wait(mineral: Node3D) -> float:
@@ -1589,7 +1589,7 @@ func _request_mineral_slot(mineral: Node3D, allow_enqueue: bool = true) -> Strin
 		return "depleted"
 	if not mineral.has_method("request_harvest_slot"):
 		return "granted"
-	var request_result_value: Variant = mineral.call("request_harvest_slot", self, allow_enqueue)
+	var request_result_value: Variant = mineral.call("request_harvest_slot", self , allow_enqueue)
 	if request_result_value is Dictionary:
 		var request_result: Dictionary = request_result_value as Dictionary
 		return str(request_result.get("status", "denied"))
@@ -1599,9 +1599,9 @@ func _abort_active_mining_target() -> void:
 	if _gather_target == null or not is_instance_valid(_gather_target):
 		return
 	if _gather_target.has_method("release_harvest_slot"):
-		_gather_target.call("release_harvest_slot", self)
+		_gather_target.call("release_harvest_slot", self )
 	elif _gather_target.has_method("remove_waiter"):
-		_gather_target.call("remove_waiter", self)
+		_gather_target.call("remove_waiter", self )
 
 func _nearest_valid_dropoff(from_position: Vector3) -> Node3D:
 	var nearest: Node3D = null
@@ -1665,7 +1665,7 @@ func _process_repair_cycle(delta: float) -> void:
 		_repair_timer = 0.0
 		var repaired: bool = false
 		if _repair_target.has_method("repair"):
-			repaired = bool(_repair_target.call("repair", maxf(0.0, repair_amount), self))
+			repaired = bool(_repair_target.call("repair", maxf(0.0, repair_amount), self ))
 		if not repaired or not _is_repair_target_damaged(_repair_target):
 			command_stop(true)
 		return
@@ -1712,7 +1712,7 @@ func _process_combat_cycle(delta: float) -> void:
 		if _attack_timer >= cooldown:
 			_attack_timer = 0.0
 			if _attack_target != null and _attack_target.has_method("apply_damage"):
-				_attack_target.call("apply_damage", attack_damage, self)
+				_attack_target.call("apply_damage", attack_damage, self )
 				_spawn_attack_vfx(target_position)
 		return
 
@@ -1866,7 +1866,7 @@ func _harvest_resource(resource_node: Node3D, amount: int) -> int:
 		return 0
 	if not resource_node.has_method("harvest"):
 		return 0
-	var harvested_value: Variant = resource_node.call("harvest", amount, self)
+	var harvested_value: Variant = resource_node.call("harvest", amount, self )
 	return maxi(0, int(harvested_value))
 
 func _deposit_to_game_manager(amount: int) -> void:
@@ -2180,6 +2180,7 @@ func _apply_runtime_config_for_role() -> void:
 	carry_capacity = int(unit_def.get("carry_capacity", carry_capacity))
 	gather_amount = int(unit_def.get("gather_amount", gather_amount))
 	gather_interval = float(unit_def.get("gather_interval", gather_interval))
+	mining_search_radius = maxf(0.0, float(unit_def.get("mining_search_radius", mining_search_radius)))
 	repair_range = float(unit_def.get("repair_range", repair_range))
 	repair_amount = float(unit_def.get("repair_amount", repair_amount))
 	repair_interval = float(unit_def.get("repair_interval", repair_interval))
@@ -2376,7 +2377,7 @@ func _setup_navigation_agent() -> void:
 	_nav_agent.target_desired_distance = _default_nav_target_desired_distance
 	_nav_agent.avoidance_enabled = true
 	_apply_nav_avoidance_profile()
-	var callback: Callable = Callable(self, "_on_nav_velocity_computed")
+	var callback: Callable = Callable(self , "_on_nav_velocity_computed")
 	if not _nav_agent.is_connected("velocity_computed", callback):
 		_nav_agent.connect("velocity_computed", callback)
 	_sync_nav_debug_draw()

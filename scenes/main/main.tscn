@@ -87,7 +87,7 @@ is_worker = true
 [node name="Buildings" type="Node3D" parent="." unique_id=582541461]
 
 [node name="MainBase" parent="Buildings" unique_id=973704050 instance=ExtResource("4_building")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30.722267, 0, -41.72145)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30.627745, 0, -43.504265)
 
 [node name="EnemyMainBase" parent="Buildings" unique_id=1064395502 instance=ExtResource("4_building")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36.002415, 0, 36.146782)
