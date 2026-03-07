@@ -17,6 +17,7 @@ enum MineralType {
 @export var harvest_yield: int = 5
 @export var harvest_time: float = 1.5
 @export var wait_queue_limit: int = 1
+@export var optimal_worker_count: int = 2
 @export var enforce_type_capacity_on_ready: bool = true
 
 @onready var _sprite: Sprite3D = $Sprite3D
@@ -57,6 +58,9 @@ func get_wait_queue_length() -> int:
 
 func get_wait_queue_limit() -> int:
 	return maxi(0, wait_queue_limit)
+
+func get_optimal_worker_count() -> int:
+	return maxi(1, optimal_worker_count)
 
 func get_occupier() -> Node:
 	_cleanup_runtime_state()

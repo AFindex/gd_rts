@@ -14,12 +14,16 @@ const BUILDING_HEALTH_BAR_SCALE_HEIGHT_FACTOR: float = 0.45
 const BUILDING_HEALTH_BAR_WIDTH: float = 1.42
 const BUILDING_HEALTH_BAR_HEIGHT: float = 0.14
 const BUILDING_HEALTH_BAR_PADDING: float = 0.02
+const BASE_MINING_UI_LABEL_Y_OFFSET: float = 0.92
 
 @export var sprite_match_collider: bool = true
 @export var sprite_outline_enabled: bool = true
 @export var sprite_outline_color: Color = Color(0.25, 0.95, 1.0, 0.9)
 @export var sprite_outline_scale: float = 1.1
 @export var sprite_outline_check_interval: float = 0.12
+@export var base_mining_ui_enabled: bool = true
+@export var base_mining_ui_update_interval: float = 0.4
+@export var base_mining_ui_scan_radius: float = 26.0
 
 signal production_finished(unit_kind: String, spawn_position: Vector3)
 signal construction_state_changed(event_type: String, payload: Dictionary)
@@ -79,6 +83,10 @@ var _outline_sprite: Sprite3D = null
 var _outline_material: StandardMaterial3D = null
 var _outline_timer: float = 0.0
 var _outline_visible: bool = false
+var _base_mining_ui_root: Node3D = null
+var _base_mining_ui_label: Label3D = null
+var _base_mining_ui_timer: float = 0.0
+var _base_mining_ui_last_text: String = ""
 
 func _ready() -> void:
 	add_to_group("selectable_building")
@@ -89,10 +97,13 @@ func _ready() -> void:
 	_apply_building_visual()
 	_ensure_health_bar_nodes()
 	_update_health_bar_visual()
+	_refresh_base_mining_ui_nodes()
+	_update_base_mining_ui(0.0, true)
 	_selection_ring.visible = false
 
 func _process(delta: float) -> void:
 	_update_sprite_outline(delta)
+	_update_base_mining_ui(delta)
 	if _rally_alert_timer > 0.0:
 		_rally_alert_timer = maxf(0.0, _rally_alert_timer - delta)
 	if _construction_active:
@@ -589,6 +600,8 @@ func configure_by_kind(kind: String) -> void:
 	_apply_building_visual()
 	_ensure_health_bar_nodes()
 	_update_health_bar_visual()
+	_refresh_base_mining_ui_nodes()
+	_update_base_mining_ui(0.0, true)
 
 func configure_as_barracks() -> void:
 	configure_by_kind("barracks")
@@ -960,6 +973,126 @@ func _update_health_bar_visual() -> void:
 	if fill_material != null:
 		fill_material.albedo_color = hp_color
 		fill_material.emission = Color(hp_color.r * 0.85, hp_color.g * 0.85, hp_color.b * 0.85, 1.0)
+
+func _supports_base_mining_ui() -> bool:
+	if not base_mining_ui_enabled:
+		return false
+	if building_kind != "base":
+		return false
+	if not is_resource_dropoff:
+		return false
+	return is_alive()
+
+func _refresh_base_mining_ui_nodes() -> void:
+	if not _supports_base_mining_ui():
+		_clear_base_mining_ui_nodes()
+		return
+	_ensure_base_mining_ui_nodes()
+
+func _ensure_base_mining_ui_nodes() -> void:
+	if _base_mining_ui_root != null and is_instance_valid(_base_mining_ui_root):
+		return
+	_base_mining_ui_root = Node3D.new()
+	_base_mining_ui_root.name = "BaseMiningUI"
+	_base_mining_ui_root.position = Vector3(0.0, _compute_base_mining_ui_height(), 0.0)
+	add_child(_base_mining_ui_root)
+
+	_base_mining_ui_label = Label3D.new()
+	_base_mining_ui_label.name = "MiningStatusLabel3D"
+	_base_mining_ui_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_base_mining_ui_label.modulate = Color(0.9, 0.95, 1.0, 0.98)
+	_base_mining_ui_label.outline_size = 8
+	_base_mining_ui_label.outline_modulate = Color(0.03, 0.04, 0.06, 0.9)
+	_base_mining_ui_label.pixel_size = 0.0068
+	_base_mining_ui_label.text = ""
+	_base_mining_ui_root.add_child(_base_mining_ui_label)
+	_base_mining_ui_timer = 0.0
+	_base_mining_ui_last_text = ""
+
+func _clear_base_mining_ui_nodes() -> void:
+	if _base_mining_ui_root != null and is_instance_valid(_base_mining_ui_root):
+		_base_mining_ui_root.queue_free()
+	_base_mining_ui_root = null
+	_base_mining_ui_label = null
+	_base_mining_ui_timer = 0.0
+	_base_mining_ui_last_text = ""
+
+func _update_base_mining_ui(delta: float, force_update: bool = false) -> void:
+	if not _supports_base_mining_ui():
+		_clear_base_mining_ui_nodes()
+		return
+	_ensure_base_mining_ui_nodes()
+	if _base_mining_ui_root == null or not is_instance_valid(_base_mining_ui_root):
+		return
+	if _base_mining_ui_label == null or not is_instance_valid(_base_mining_ui_label):
+		return
+	_base_mining_ui_root.position.y = _compute_base_mining_ui_height()
+	if not force_update:
+		_base_mining_ui_timer = maxf(0.0, _base_mining_ui_timer - delta)
+		if _base_mining_ui_timer > 0.0:
+			return
+	_base_mining_ui_timer = maxf(0.08, base_mining_ui_update_interval)
+
+	var current_miners: int = _count_active_miners_for_this_base()
+	var optimal_miners: int = _count_optimal_miners_for_this_base()
+	var status_text: String = tr("矿工 %d/%d") % [current_miners, optimal_miners]
+	if status_text != _base_mining_ui_last_text:
+		_base_mining_ui_label.text = status_text
+		_base_mining_ui_last_text = status_text
+
+	if optimal_miners <= 0:
+		_base_mining_ui_label.modulate = Color(0.72, 0.78, 0.9, 0.9)
+	elif current_miners < optimal_miners:
+		_base_mining_ui_label.modulate = Color(0.98, 0.88, 0.42, 0.98)
+	else:
+		_base_mining_ui_label.modulate = Color(0.48, 0.96, 0.62, 0.98)
+
+func _count_active_miners_for_this_base() -> int:
+	var count: int = 0
+	var units: Array[Node] = get_tree().get_nodes_in_group("selectable_unit")
+	for node in units:
+		if node == null or not is_instance_valid(node):
+			continue
+		if not node.has_method("get_team_id"):
+			continue
+		if int(node.call("get_team_id")) != team_id:
+			continue
+		if node.has_method("is_alive") and not bool(node.call("is_alive")):
+			continue
+		if not node.has_method("is_worker_unit") or not bool(node.call("is_worker_unit")):
+			continue
+		if node.has_method("is_collecting_for_dropoff") and bool(node.call("is_collecting_for_dropoff", self)):
+			count += 1
+	return count
+
+func _count_optimal_miners_for_this_base() -> int:
+	var resources: Array[Node] = get_tree().get_nodes_in_group("resource_node")
+	if resources.is_empty():
+		return 0
+	var optimal_total: int = 0
+	var scan_radius_sq: float = INF
+	if base_mining_ui_scan_radius > 0.0:
+		scan_radius_sq = base_mining_ui_scan_radius * base_mining_ui_scan_radius
+	for node in resources:
+		var mineral: Node3D = node as Node3D
+		if mineral == null or not is_instance_valid(mineral):
+			continue
+		if mineral.has_method("is_depleted") and bool(mineral.call("is_depleted")):
+			continue
+		if scan_radius_sq < INF:
+			var distance_sq: float = _flat_distance_sq(global_position, mineral.global_position)
+			if distance_sq > scan_radius_sq:
+				continue
+		var optimal_for_patch: int = 2
+		if mineral.has_method("get_optimal_worker_count"):
+			optimal_for_patch = maxi(1, int(mineral.call("get_optimal_worker_count")))
+		elif mineral.has_method("get_wait_queue_limit"):
+			optimal_for_patch = maxi(1, int(mineral.call("get_wait_queue_limit")) + 1)
+		optimal_total += optimal_for_patch
+	return optimal_total
+
+func _compute_base_mining_ui_height() -> float:
+	return _compute_health_bar_world_height() + BASE_MINING_UI_LABEL_Y_OFFSET
 
 func _compute_health_bar_world_height() -> float:
 	var sprite_scale_y: float = 1.0

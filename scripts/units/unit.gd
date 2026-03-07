@@ -380,6 +380,17 @@ func get_carry_fill_ratio() -> float:
 func has_cargo() -> bool:
 	return _carried_amount > 0
 
+func is_collecting_for_dropoff(dropoff_node: Node) -> bool:
+	if not is_worker:
+		return false
+	if dropoff_node == null or not is_instance_valid(dropoff_node):
+		return false
+	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
+		return false
+	if _dropoff_target != dropoff_node:
+		return false
+	return _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE
+
 func set_worker_role(worker: bool) -> void:
 	is_worker = worker
 	_apply_runtime_config_for_role()
