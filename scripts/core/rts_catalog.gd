@@ -436,7 +436,8 @@ const SKILL_DEFS: Dictionary = {
 		"label": "Gather",
 		"icon_path": ICON_ROOT_SKILLS + "cmd_gather.png",
 		"hotkey": "",
-		"target_mode": "resource"
+		"target_mode": "resource",
+		"queue_idle_dispatch": true
 	},
 	"repair": {
 		"id": "repair",
@@ -444,14 +445,16 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_ROOT_SKILLS + "cmd_build.png",
 		"hotkey": "",
 		"target_mode": "friendly_building",
-		"description": "Repair a damaged friendly building."
+		"description": "Repair a damaged friendly building.",
+		"queue_idle_dispatch": true
 	},
 	"return_resource": {
 		"id": "return_resource",
 		"label": "Return",
 		"icon_path": ICON_ROOT_SKILLS + "cmd_return.png",
 		"hotkey": "",
-		"target_mode": "none"
+		"target_mode": "none",
+		"queue_idle_dispatch": true
 	},
 	"build_menu": {
 		"id": "build_menu",
@@ -499,7 +502,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_ROOT_BUILDINGS + "building_barracks.png",
 		"hotkey": "Q",
 		"target_mode": "placement",
-		"building_kind": "barracks"
+		"building_kind": "barracks",
+		"queue_idle_dispatch": true
 	},
 	"build_supply_depot": {
 		"id": "build_supply_depot",
@@ -507,7 +511,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "G",
 		"target_mode": "placement",
-		"building_kind": "supply_depot"
+		"building_kind": "supply_depot",
+		"queue_idle_dispatch": true
 	},
 	"build_tower": {
 		"id": "build_tower",
@@ -515,7 +520,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_ROOT_BUILDINGS + "building_tower.png",
 		"hotkey": "W",
 		"target_mode": "placement",
-		"building_kind": "tower"
+		"building_kind": "tower",
+		"queue_idle_dispatch": true
 	},
 	"build_academy": {
 		"id": "build_academy",
@@ -523,7 +529,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "E",
 		"target_mode": "placement",
-		"building_kind": "academy"
+		"building_kind": "academy",
+		"queue_idle_dispatch": true
 	},
 	"build_engineering_bay": {
 		"id": "build_engineering_bay",
@@ -531,7 +538,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "D",
 		"target_mode": "placement",
-		"building_kind": "engineering_bay"
+		"building_kind": "engineering_bay",
+		"queue_idle_dispatch": true
 	},
 	"build_tech_lab": {
 		"id": "build_tech_lab",
@@ -539,7 +547,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "C",
 		"target_mode": "placement",
-		"building_kind": "tech_lab"
+		"building_kind": "tech_lab",
+		"queue_idle_dispatch": true
 	},
 	"build_warp_gate": {
 		"id": "build_warp_gate",
@@ -547,7 +556,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "F",
 		"target_mode": "placement",
-		"building_kind": "warp_gate"
+		"building_kind": "warp_gate",
+		"queue_idle_dispatch": true
 	},
 	"build_psionic_relay": {
 		"id": "build_psionic_relay",
@@ -555,7 +565,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "Z",
 		"target_mode": "placement",
-		"building_kind": "psionic_relay"
+		"building_kind": "psionic_relay",
+		"queue_idle_dispatch": true
 	},
 	"build_bio_vat": {
 		"id": "build_bio_vat",
@@ -563,7 +574,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "X",
 		"target_mode": "placement",
-		"building_kind": "bio_vat"
+		"building_kind": "bio_vat",
+		"queue_idle_dispatch": true
 	},
 	"build_void_core": {
 		"id": "build_void_core",
@@ -571,7 +583,8 @@ const SKILL_DEFS: Dictionary = {
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "V",
 		"target_mode": "placement",
-		"building_kind": "void_core"
+		"building_kind": "void_core",
+		"queue_idle_dispatch": true
 	},
 	"close_menu": {
 		"id": "close_menu",

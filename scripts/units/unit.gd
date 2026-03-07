@@ -542,6 +542,21 @@ func get_pending_command_count() -> int:
 	var active_count: int = 1 if _active_command != null else 0
 	return active_count + _command_queue.size()
 
+func is_command_idle() -> bool:
+	if _construction_lock_mode != ConstructionLockMode.NONE:
+		return false
+	if _active_command != null:
+		return false
+	if not _command_queue.is_empty():
+		return false
+	if _mining_state != MiningState.IDLE:
+		return false
+	if _has_target:
+		return false
+	if _mode != UnitMode.IDLE and _mode != UnitMode.MOVE:
+		return false
+	return true
+
 func can_enqueue_command() -> bool:
 	return get_pending_command_count() < maxi(1, max_command_queue)
 

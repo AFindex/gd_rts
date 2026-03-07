@@ -90,6 +90,7 @@ var _soldier_cost: int = SOLDIER_COST
 
 var _placing_building: bool = false
 var _placing_kind: String = ""
+var _placing_skill_id: String = ""
 var _placing_cost: int = 0
 var _placement_current_position: Vector3 = Vector3.ZERO
 var _placement_can_place: bool = false
@@ -2779,6 +2780,130 @@ func _command_units() -> Array[Node]:
 		units.append(selected_unit)
 	return units
 
+func _skill_supports_queue_idle_dispatch(skill_id: String) -> bool:
+	if skill_id == "":
+		return false
+	var skill_def: Dictionary = RTS_CATALOG.get_skill_def(skill_id)
+	if skill_def.is_empty():
+		return false
+	return bool(skill_def.get("queue_idle_dispatch", false))
+
+func _is_dispatch_candidate_valid(unit_node: Node) -> bool:
+	if unit_node == null or not is_instance_valid(unit_node):
+		return false
+	if not _is_player_owned(unit_node):
+		return false
+	if unit_node.has_method("is_alive") and not bool(unit_node.call("is_alive")):
+		return false
+	return true
+
+func _unit_pending_command_load(unit_node: Node) -> int:
+	if not _is_dispatch_candidate_valid(unit_node):
+		return 1000000
+	if unit_node.has_method("get_pending_command_count"):
+		return maxi(0, int(unit_node.call("get_pending_command_count")))
+	return 0
+
+func _is_unit_idle_for_queue_idle_dispatch(unit_node: Node) -> bool:
+	if not _is_dispatch_candidate_valid(unit_node):
+		return false
+	if unit_node.has_method("is_construction_locked") and bool(unit_node.call("is_construction_locked")):
+		return false
+	if unit_node.has_method("is_command_idle"):
+		return bool(unit_node.call("is_command_idle"))
+	return _unit_pending_command_load(unit_node) <= 0
+
+func _dispatch_distance_sq(unit_node: Node, preferred_position: Vector3, use_preferred_position: bool) -> float:
+	if not use_preferred_position:
+		return 0.0
+	var unit_3d: Node3D = unit_node as Node3D
+	if unit_3d == null or not is_instance_valid(unit_3d):
+		return INF
+	return unit_3d.global_position.distance_squared_to(preferred_position)
+
+func _pick_idle_dispatch_unit(candidates: Array[Node], preferred_position: Vector3, use_preferred_position: bool = true) -> Node:
+	var selected: Node = null
+	var best_distance_sq: float = INF
+	for unit_node in candidates:
+		if not _is_unit_idle_for_queue_idle_dispatch(unit_node):
+			continue
+		var distance_sq: float = _dispatch_distance_sq(unit_node, preferred_position, use_preferred_position)
+		if selected == null or distance_sq < best_distance_sq:
+			selected = unit_node
+			best_distance_sq = distance_sq
+	return selected
+
+func _pick_least_loaded_dispatch_unit(candidates: Array[Node], preferred_position: Vector3, use_preferred_position: bool = true) -> Node:
+	var selected: Node = null
+	var best_load: int = 1000000
+	var best_distance_sq: float = INF
+	for unit_node in candidates:
+		if not _is_dispatch_candidate_valid(unit_node):
+			continue
+		var load: int = _unit_pending_command_load(unit_node)
+		var distance_sq: float = _dispatch_distance_sq(unit_node, preferred_position, use_preferred_position)
+		if selected == null or load < best_load or (load == best_load and distance_sq < best_distance_sq):
+			selected = unit_node
+			best_load = load
+			best_distance_sq = distance_sq
+	return selected
+
+func _resolve_queue_idle_dispatch_target(
+	skill_id: String,
+	candidates: Array[Node],
+	queue_command: bool,
+	preferred_position: Vector3 = Vector3.ZERO,
+	use_preferred_position: bool = true
+) -> Dictionary:
+	if not queue_command:
+		return {}
+	if not _skill_supports_queue_idle_dispatch(skill_id):
+		return {}
+	var idle_unit: Node = _pick_idle_dispatch_unit(candidates, preferred_position, use_preferred_position)
+	if idle_unit != null:
+		return {
+			"unit": idle_unit,
+			"queue_for_unit": false
+		}
+	var queued_unit: Node = _pick_least_loaded_dispatch_unit(candidates, preferred_position, use_preferred_position)
+	if queued_unit == null:
+		return {}
+	return {
+		"unit": queued_unit,
+		"queue_for_unit": true
+	}
+
+func _selected_worker_units() -> Array[Node]:
+	var workers: Array[Node] = []
+	for unit_node in _command_units():
+		if not unit_node.has_method("is_worker_unit"):
+			continue
+		if not bool(unit_node.call("is_worker_unit")):
+			continue
+		workers.append(unit_node)
+	return workers
+
+func _resolve_build_order_worker(target_position: Vector3, queue_command: bool) -> Dictionary:
+	var workers: Array[Node] = _selected_worker_units()
+	if workers.is_empty():
+		return {}
+	var dispatch_target: Dictionary = _resolve_queue_idle_dispatch_target(
+		_placing_skill_id,
+		workers,
+		queue_command,
+		target_position,
+		true
+	)
+	if not dispatch_target.is_empty():
+		return dispatch_target
+	var nearest_worker: Node3D = _nearest_selected_worker(target_position)
+	if nearest_worker == null:
+		return {}
+	return {
+		"unit": nearest_worker,
+		"queue_for_unit": queue_command
+	}
+
 func _build_command_hint() -> String:
 	if _ui_notice_timer > 0.0 and _ui_notice_text != "":
 		return _ui_notice_text
@@ -4114,7 +4239,7 @@ func _execute_command(command_id: String) -> void:
 			if not _can_start_build_skill(command_id):
 				return
 			_close_build_menu()
-			_start_building_placement(build_kind)
+			_start_building_placement(build_kind, command_id)
 	_refresh_hint_label()
 
 func _begin_target_skill(skill_id: String) -> void:
@@ -4577,14 +4702,23 @@ func _issue_gather_command(resource_node: Node3D, fallback_screen_pos: Vector2, 
 		_issue_move_command(fallback_screen_pos, queue_command)
 		return
 
-	var command_units: Array[Node] = _command_units()
+	var worker_units: Array[Node] = _selected_worker_units()
 	var issued_count: int = 0
-	for unit_node in command_units:
-		var is_worker: bool = false
-		if unit_node.has_method("is_worker_unit"):
-			var worker_value: Variant = unit_node.call("is_worker_unit")
-			is_worker = bool(worker_value)
-		if is_worker and unit_node.has_method("command_gather"):
+	var dispatch_target: Dictionary = _resolve_queue_idle_dispatch_target(
+		"gather",
+		worker_units,
+		queue_command,
+		resource_node.global_position
+	)
+	if not dispatch_target.is_empty():
+		var target_unit: Node = dispatch_target.get("unit") as Node
+		var queue_for_unit: bool = bool(dispatch_target.get("queue_for_unit", queue_command))
+		if target_unit != null:
+			var gather_command: RTSCommand = RTS_COMMAND.make_gather(resource_node, dropoff, queue_for_unit)
+			_schedule_unit_command(target_unit, gather_command)
+			issued_count = 1
+	else:
+		for unit_node in worker_units:
 			var gather_command: RTSCommand = RTS_COMMAND.make_gather(resource_node, dropoff, queue_command)
 			_schedule_unit_command(unit_node, gather_command)
 			issued_count += 1
@@ -4597,15 +4731,26 @@ func _issue_repair_command(target_node: Node3D, _fallback_screen_pos: Vector2, q
 		return
 	if not _is_repairable_friendly_target(target_node):
 		return
+	var worker_units: Array[Node] = _selected_worker_units()
 	var issued_count: int = 0
-	for unit_node in _command_units():
-		if not unit_node.has_method("is_worker_unit"):
-			continue
-		if not bool(unit_node.call("is_worker_unit")):
-			continue
-		var repair_command: RTSCommand = RTS_COMMAND.make_repair(target_node, queue_command)
-		_schedule_unit_command(unit_node, repair_command)
-		issued_count += 1
+	var dispatch_target: Dictionary = _resolve_queue_idle_dispatch_target(
+		"repair",
+		worker_units,
+		queue_command,
+		target_node.global_position
+	)
+	if not dispatch_target.is_empty():
+		var target_unit: Node = dispatch_target.get("unit") as Node
+		var queue_for_unit: bool = bool(dispatch_target.get("queue_for_unit", queue_command))
+		if target_unit != null:
+			var repair_command: RTSCommand = RTS_COMMAND.make_repair(target_node, queue_for_unit)
+			_schedule_unit_command(target_unit, repair_command)
+			issued_count = 1
+	else:
+		for unit_node in worker_units:
+			var repair_command: RTSCommand = RTS_COMMAND.make_repair(target_node, queue_command)
+			_schedule_unit_command(unit_node, repair_command)
+			issued_count += 1
 	if issued_count <= 0:
 		_set_ui_notice(_t("No available worker to repair target."), 1.0)
 		_play_feedback_tone("error")
@@ -5036,20 +5181,46 @@ func _issue_follow_command(target_node: Node3D, queue_command: bool = false) -> 
 func _issue_return_command_to_dropoff(dropoff_node: Node3D, queue_command: bool = false) -> void:
 	if dropoff_node == null or not is_instance_valid(dropoff_node):
 		return
-	for unit_node in _command_units():
-		if not unit_node.has_method("is_worker_unit"):
-			continue
-		if not bool(unit_node.call("is_worker_unit")):
-			continue
+	var worker_units: Array[Node] = _selected_worker_units()
+	var dispatch_target: Dictionary = _resolve_queue_idle_dispatch_target(
+		"return_resource",
+		worker_units,
+		queue_command,
+		dropoff_node.global_position
+	)
+	if not dispatch_target.is_empty():
+		var target_unit: Node = dispatch_target.get("unit") as Node
+		var queue_for_unit: bool = bool(dispatch_target.get("queue_for_unit", queue_command))
+		if target_unit != null:
+			var return_command: RTSCommand = RTS_COMMAND.make_return(dropoff_node, queue_for_unit)
+			_schedule_unit_command(target_unit, return_command)
+			return
+	for unit_node in worker_units:
 		var return_command: RTSCommand = RTS_COMMAND.make_return(dropoff_node, queue_command)
 		_schedule_unit_command(unit_node, return_command)
 
 func _issue_return_command(queue_command: bool = false) -> void:
-	for unit_node in _command_units():
-		if not unit_node.has_method("is_worker_unit"):
-			continue
-		if not bool(unit_node.call("is_worker_unit")):
-			continue
+	var worker_units: Array[Node] = _selected_worker_units()
+	var dispatch_target: Dictionary = _resolve_queue_idle_dispatch_target(
+		"return_resource",
+		worker_units,
+		queue_command,
+		Vector3.ZERO,
+		false
+	)
+	if not dispatch_target.is_empty():
+		var target_unit_3d: Node3D = dispatch_target.get("unit") as Node3D
+		if target_unit_3d != null:
+			var target_team_id: int = PLAYER_TEAM_ID
+			if target_unit_3d.has_method("get_team_id"):
+				target_team_id = int(target_unit_3d.call("get_team_id"))
+			var target_dropoff: Node3D = _nearest_dropoff(target_unit_3d.global_position, target_team_id)
+			if target_dropoff != null:
+				var queue_for_unit: bool = bool(dispatch_target.get("queue_for_unit", queue_command))
+				var queued_return_command: RTSCommand = RTS_COMMAND.make_return(target_dropoff, queue_for_unit)
+				_schedule_unit_command(target_unit_3d, queued_return_command)
+				return
+	for unit_node in worker_units:
 		var unit_3d: Node3D = unit_node as Node3D
 		if unit_3d == null:
 			continue
@@ -5135,7 +5306,7 @@ func _nearest_resource_node(from_position: Vector3, max_distance: float = INF) -
 			nearest = resource_node
 	return nearest
 
-func _start_building_placement(kind: String) -> void:
+func _start_building_placement(kind: String, source_skill_id: String = "") -> void:
 	var build_cost: int = _building_cost(kind)
 	if build_cost <= 0:
 		return
@@ -5143,6 +5314,7 @@ func _start_building_placement(kind: String) -> void:
 	_pending_target_skill = ""
 	_close_build_menu()
 	_placing_kind = kind
+	_placing_skill_id = source_skill_id.strip_edges()
 	_placing_cost = build_cost
 	_placement_rotation_y = 0.0
 	_placement_footprint = _build_footprint_for_kind(kind)
@@ -5156,6 +5328,7 @@ func _start_building_placement(kind: String) -> void:
 func _cancel_building_placement() -> void:
 	_placing_building = false
 	_placing_kind = ""
+	_placing_skill_id = ""
 	_placing_cost = 0
 	_placement_footprint = DEFAULT_BUILD_FOOTPRINT
 	_placement_can_place = false
@@ -5340,10 +5513,12 @@ func _confirm_building_placement(keep_mode: bool = false) -> void:
 	if not _placement_can_place:
 		return
 	var target_position: Vector3 = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
-	var builder: Node3D = _nearest_selected_worker(target_position)
+	var builder_dispatch: Dictionary = _resolve_build_order_worker(target_position, keep_mode)
+	var builder: Node3D = builder_dispatch.get("unit") as Node3D
+	var queue_for_builder: bool = bool(builder_dispatch.get("queue_for_unit", keep_mode))
 	if builder != null:
 		var ghost_id: int = _create_pending_construction_ghost(builder, _placing_kind, target_position, _placement_rotation_y, keep_mode)
-		_schedule_worker_build_order(builder, _placing_kind, target_position, _placement_rotation_y, _placing_cost, ghost_id)
+		_schedule_worker_build_order(builder, _placing_kind, target_position, _placement_rotation_y, _placing_cost, ghost_id, queue_for_builder)
 	else:
 		if not try_spend_minerals(_placing_cost):
 			return
@@ -5522,7 +5697,7 @@ func _has_earlier_pending_build_order_for_builder(builder_path: NodePath, curren
 			return true
 	return false
 
-func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int) -> void:
+func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int, queue_command: bool = false) -> void:
 	if builder == null or not is_instance_valid(builder):
 		return
 	var paradigm: String = _building_construction_paradigm(kind)
@@ -5550,6 +5725,8 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"paradigm": paradigm,
 		"build_time": build_time,
 		"cancel_refund_ratio": cancel_refund_ratio,
+		"queue_command": queue_command,
+		"queue_activated": not queue_command,
 		"move_repath_timer": 0.0,
 		"retry_timer": 0.0
 	})
@@ -5560,6 +5737,8 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		return
 	# If worker is currently locked in construction, defer movement until lock release.
 	if builder.has_method("is_construction_locked") and bool(builder.call("is_construction_locked")):
+		return
+	if queue_command:
 		return
 	var first_target: Vector3 = evacuate_target if phase == "evacuate" else world_position
 	var move_command: RTSCommand = RTS_COMMAND.make_move(first_target, false)
@@ -5614,6 +5793,13 @@ func _process_pending_build_orders(delta: float) -> void:
 		if builder_node.has_method("is_construction_locked") and bool(builder_node.call("is_construction_locked")):
 			_pending_build_orders[i] = order
 			continue
+		var queue_mode: bool = bool(order.get("queue_command", false))
+		var queue_activated: bool = bool(order.get("queue_activated", not queue_mode))
+		if queue_mode and not queue_activated:
+			if not _is_unit_idle_for_queue_idle_dispatch(builder_node):
+				_pending_build_orders[i] = order
+				continue
+			order["queue_activated"] = true
 
 		order = _evacuate_allied_units_from_pending_build(
 			order,
