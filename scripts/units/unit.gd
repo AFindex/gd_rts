@@ -138,6 +138,7 @@ var _nav_target_cached: Vector3 = Vector3.ZERO
 var _has_nav_target_cached: bool = false
 var _default_nav_path_desired_distance: float = NAV_VERTICAL_POINT_TOLERANCE
 var _default_nav_target_desired_distance: float = NAV_VERTICAL_POINT_TOLERANCE
+var _interaction_fallback_table: Dictionary = {}
 var _interaction_nav_precision_active: bool = false
 var _target_progress_timer: float = 0.0
 var _target_progress_best_distance: float = INF
@@ -1270,6 +1271,7 @@ func _process_moving_to_mineral_state(_delta: float) -> void:
 			_stop_worker_cycle(false)
 		return
 	var contact_range: float = _effective_gather_contact_range(_gather_target)
+	var interaction_key: String = "gather"
 	if not _has_target:
 		_move_to(_mining_gather_approach_point(_gather_target))
 	var in_hard_contact: bool = RTS_INTERACTION.is_within_distance_xz(global_position, _gather_target.global_position, contact_range)
@@ -1278,7 +1280,7 @@ func _process_moving_to_mineral_state(_delta: float) -> void:
 		var anchor_tolerance: float = _interaction_anchor_tolerance()
 		anchor_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, anchor_tolerance)
 		if not anchor_contact and _can_use_navigation() and _nav_agent.is_navigation_finished():
-			var nav_anchor_tolerance: float = anchor_tolerance + maxf(0.0, mining_nav_finish_anchor_slack)
+			var nav_anchor_tolerance: float = anchor_tolerance + _interaction_anchor_slack(interaction_key, mining_nav_finish_anchor_slack)
 			anchor_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, nav_anchor_tolerance)
 			if anchor_contact:
 				_log_mining_event("nav_anchor_contact_fallback", {
@@ -1288,11 +1290,13 @@ func _process_moving_to_mineral_state(_delta: float) -> void:
 				})
 	var nav_soft_contact: bool = false
 	if not in_hard_contact and not anchor_contact:
-		nav_soft_contact = _is_navigation_soft_contact(_gather_target, contact_range)
+		nav_soft_contact = _is_navigation_soft_contact(_gather_target, contact_range, interaction_key)
 	if not in_hard_contact and not anchor_contact and not nav_soft_contact:
-		if _has_target and _can_use_navigation() and _nav_agent.is_navigation_finished():
+		var allow_reissue: bool = _interaction_fallback_bool(interaction_key, "enable_nav_reissue", true)
+		if allow_reissue and _has_target and _can_use_navigation() and _nav_agent.is_navigation_finished():
 			_mining_interaction_repath_timer += _delta
-			if _mining_interaction_repath_timer >= maxf(0.15, mining_interaction_repath_interval):
+			var reissue_interval: float = _interaction_fallback_float(interaction_key, "reissue_interval", mining_interaction_repath_interval)
+			if _mining_interaction_repath_timer >= maxf(0.15, reissue_interval):
 				_mining_interaction_repath_timer = 0.0
 				_log_mining_event("nav_finished_reissue_mineral_move", {
 					"dist_anchor": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _target_position), 0.01),
@@ -1310,7 +1314,7 @@ func _process_moving_to_mineral_state(_delta: float) -> void:
 		})
 	elif nav_soft_contact and not in_hard_contact:
 		_log_mining_event("nav_soft_contact_fallback", {
-			"soft_slack": snappedf(maxf(0.0, mining_nav_finish_contact_slack), 0.01),
+			"soft_slack": snappedf(_interaction_contact_slack(interaction_key, mining_nav_finish_contact_slack), 0.01),
 			"dist_target": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _gather_target.global_position), 0.01)
 		})
 	_has_target = false
@@ -1432,9 +1436,10 @@ func _process_moving_to_base_state(_delta: float) -> void:
 			_stop_worker_cycle(true)
 			return
 	var contact_range: float = _effective_dropoff_contact_range(_dropoff_target)
+	var interaction_key: String = "dropoff"
 	var direct_contact: bool = _is_interaction_ready(_dropoff_target, contact_range)
 	if not direct_contact and _has_target and _can_use_navigation() and _nav_agent.is_navigation_finished():
-		var nav_anchor_tolerance: float = _interaction_anchor_tolerance() + maxf(0.0, mining_nav_finish_anchor_slack)
+		var nav_anchor_tolerance: float = _interaction_anchor_tolerance() + _interaction_anchor_slack(interaction_key, mining_nav_finish_anchor_slack)
 		direct_contact = RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, nav_anchor_tolerance)
 		if direct_contact:
 			_log_mining_event("dropoff_nav_anchor_contact", {
@@ -1443,15 +1448,28 @@ func _process_moving_to_base_state(_delta: float) -> void:
 			})
 	var nav_soft_contact: bool = false
 	if not direct_contact:
-		nav_soft_contact = _is_navigation_soft_contact(_dropoff_target, contact_range)
+		nav_soft_contact = _is_navigation_soft_contact(_dropoff_target, contact_range, interaction_key)
 	if direct_contact or nav_soft_contact:
 		if nav_soft_contact and not direct_contact:
 			_log_mining_event("dropoff_nav_soft_contact", {
-				"soft_slack": snappedf(maxf(0.0, mining_nav_finish_contact_slack), 0.01),
+				"soft_slack": snappedf(_interaction_contact_slack(interaction_key, mining_nav_finish_contact_slack), 0.01),
 				"dist_target": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _dropoff_target.global_position), 0.01)
 			})
 		_set_mining_state(MiningState.DELIVERING)
 		return
+	if _interaction_fallback_bool(interaction_key, "enable_nav_reissue", true) and _has_target and _can_use_navigation() and _nav_agent.is_navigation_finished():
+		_mining_interaction_repath_timer += _delta
+		var reissue_interval: float = _interaction_fallback_float(interaction_key, "reissue_interval", mining_interaction_repath_interval)
+		if _mining_interaction_repath_timer >= maxf(0.15, reissue_interval):
+			_mining_interaction_repath_timer = 0.0
+			_log_mining_event("nav_finished_reissue_dropoff_move", {
+				"dist_anchor": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _target_position), 0.01),
+				"dist_target": snappedf(RTS_INTERACTION.flat_distance_xz(global_position, _dropoff_target.global_position), 0.01)
+			})
+			_move_to(_mining_dropoff_approach_point(_dropoff_target))
+			return
+	else:
+		_mining_interaction_repath_timer = 0.0
 	if not _has_target:
 		_move_to(_mining_dropoff_approach_point(_dropoff_target))
 
@@ -1648,10 +1666,41 @@ func _agent_radius_xz() -> float:
 func _interaction_anchor_tolerance() -> float:
 	return maxf(0.18, interaction_nav_target_desired_distance + 0.08)
 
-func _is_navigation_soft_contact(target_node: Node3D, contact_range: float) -> bool:
+func _interaction_fallback_config(interaction_key: String) -> Dictionary:
+	var key: String = interaction_key.strip_edges().to_lower()
+	if key == "":
+		return {}
+	var config_value: Variant = _interaction_fallback_table.get(key, {})
+	if config_value is Dictionary:
+		return config_value as Dictionary
+	return {}
+
+func _interaction_fallback_bool(interaction_key: String, field: String, default_value: bool = false) -> bool:
+	var config: Dictionary = _interaction_fallback_config(interaction_key)
+	if config.is_empty():
+		return default_value
+	return bool(config.get(field, default_value))
+
+func _interaction_fallback_float(interaction_key: String, field: String, default_value: float = 0.0) -> float:
+	var config: Dictionary = _interaction_fallback_config(interaction_key)
+	if config.is_empty():
+		return default_value
+	return float(config.get(field, default_value))
+
+func _interaction_contact_slack(interaction_key: String, default_slack: float = 0.0) -> float:
+	if not _interaction_fallback_bool(interaction_key, "enable_nav_soft_contact", false):
+		return 0.0
+	return maxf(0.0, _interaction_fallback_float(interaction_key, "contact_slack", default_slack))
+
+func _interaction_anchor_slack(interaction_key: String, default_slack: float = 0.0) -> float:
+	if not _interaction_fallback_bool(interaction_key, "enable_nav_anchor_fallback", false):
+		return 0.0
+	return maxf(0.0, _interaction_fallback_float(interaction_key, "anchor_slack", default_slack))
+
+func _is_navigation_soft_contact(target_node: Node3D, contact_range: float, interaction_key: String) -> bool:
 	if target_node == null or not is_instance_valid(target_node):
 		return false
-	var extra_slack: float = maxf(0.0, mining_nav_finish_contact_slack)
+	var extra_slack: float = _interaction_contact_slack(interaction_key, 0.0)
 	if extra_slack <= 0.0:
 		return false
 	if not _can_use_navigation() or not _nav_agent.is_navigation_finished():
@@ -1662,14 +1711,21 @@ func _is_navigation_soft_contact(target_node: Node3D, contact_range: float) -> b
 		maxf(0.0, contact_range) + extra_slack
 	)
 
-func _is_interaction_ready(target_node: Node3D, contact_range: float) -> bool:
+func _is_interaction_ready(target_node: Node3D, contact_range: float, interaction_key: String = "") -> bool:
 	if target_node == null or not is_instance_valid(target_node):
 		return false
 	if RTS_INTERACTION.is_within_distance_xz(global_position, target_node.global_position, contact_range):
 		return true
-	if not _has_target:
+	var anchor_tolerance: float = _interaction_anchor_tolerance()
+	if _has_target and RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, anchor_tolerance):
+		return true
+	if interaction_key.strip_edges().is_empty():
 		return false
-	return RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, _interaction_anchor_tolerance())
+	if _has_target and _can_use_navigation() and _nav_agent.is_navigation_finished():
+		var nav_anchor_tolerance: float = anchor_tolerance + _interaction_anchor_slack(interaction_key, 0.0)
+		if nav_anchor_tolerance > anchor_tolerance and RTS_INTERACTION.is_within_distance_xz(global_position, _target_position, nav_anchor_tolerance):
+			return true
+	return _is_navigation_soft_contact(target_node, contact_range, interaction_key)
 
 func _harvest_duration_for_target(mineral: Node3D) -> float:
 	if mineral != null and is_instance_valid(mineral) and mineral.has_method("get_harvest_time"):
@@ -1787,7 +1843,7 @@ func _process_repair_cycle(delta: float) -> void:
 		command_stop(true)
 		return
 	var effective_repair_range: float = _effective_repair_contact_range(_repair_target)
-	if _is_interaction_ready(_repair_target, effective_repair_range):
+	if _is_interaction_ready(_repair_target, effective_repair_range, "repair"):
 		_has_target = false
 		velocity = Vector3.ZERO
 		_repair_timer += delta
@@ -1836,7 +1892,7 @@ func _process_combat_cycle(delta: float) -> void:
 
 	var target_position: Vector3 = attack_target_3d.global_position
 	var effective_attack_range: float = _effective_attack_contact_range(attack_target_3d)
-	if _is_interaction_ready(attack_target_3d, effective_attack_range):
+	if _is_interaction_ready(attack_target_3d, effective_attack_range, "attack"):
 		_has_target = false
 		velocity = Vector3.ZERO
 		_attack_timer += delta
@@ -2327,6 +2383,7 @@ func _apply_runtime_config_for_role() -> void:
 	push_priority = int(unit_def.get("push_priority", push_priority))
 	push_can_be_displaced = bool(unit_def.get("push_can_be_displaced", push_can_be_displaced))
 	push_allow_cross_team_displace = bool(unit_def.get("push_allow_cross_team_displace", push_allow_cross_team_displace))
+	_apply_interaction_fallback_table(unit_def)
 	var body_radius: float = float(unit_def.get("body_radius", -1.0))
 	if body_radius > 0.0:
 		_apply_body_radius_profile(body_radius)
@@ -2334,6 +2391,64 @@ func _apply_runtime_config_for_role() -> void:
 	if _nav_agent != null:
 		_nav_agent.max_speed = move_speed
 	_update_health_bar_visual()
+
+func _default_interaction_fallback_table() -> Dictionary:
+	return {
+		"gather": {
+			"enable_nav_soft_contact": true,
+			"contact_slack": mining_nav_finish_contact_slack,
+			"enable_nav_anchor_fallback": true,
+			"anchor_slack": mining_nav_finish_anchor_slack,
+			"enable_nav_reissue": true,
+			"reissue_interval": mining_interaction_repath_interval
+		},
+		"dropoff": {
+			"enable_nav_soft_contact": true,
+			"contact_slack": mining_nav_finish_contact_slack,
+			"enable_nav_anchor_fallback": true,
+			"anchor_slack": mining_nav_finish_anchor_slack,
+			"enable_nav_reissue": true,
+			"reissue_interval": mining_interaction_repath_interval
+		},
+		"repair": {
+			"enable_nav_soft_contact": false,
+			"contact_slack": 0.0,
+			"enable_nav_anchor_fallback": false,
+			"anchor_slack": 0.0,
+			"enable_nav_reissue": true,
+			"reissue_interval": 0.45
+		},
+		"attack": {
+			"enable_nav_soft_contact": false,
+			"contact_slack": 0.0,
+			"enable_nav_anchor_fallback": false,
+			"anchor_slack": 0.0,
+			"enable_nav_reissue": true,
+			"reissue_interval": 0.35
+		}
+	}
+
+func _apply_interaction_fallback_table(unit_def: Dictionary) -> void:
+	var resolved: Dictionary = _default_interaction_fallback_table()
+	var override_value: Variant = unit_def.get("interaction_fallbacks", {})
+	if override_value is Dictionary:
+		var overrides: Dictionary = override_value as Dictionary
+		for key_value in overrides.keys():
+			var key: String = str(key_value).strip_edges().to_lower()
+			if key == "":
+				continue
+			var override_config_value: Variant = overrides.get(key_value, {})
+			if not (override_config_value is Dictionary):
+				continue
+			var merged_config: Dictionary = {}
+			var existing_value: Variant = resolved.get(key, {})
+			if existing_value is Dictionary:
+				merged_config = (existing_value as Dictionary).duplicate(true)
+			var override_config: Dictionary = override_config_value as Dictionary
+			for field_value in override_config.keys():
+				merged_config[str(field_value)] = override_config.get(field_value)
+			resolved[key] = merged_config
+	_interaction_fallback_table = resolved
 
 func _apply_body_radius_profile(body_radius: float) -> void:
 	var shape_node: CollisionShape3D = get_node_or_null("CollisionShape3D") as CollisionShape3D

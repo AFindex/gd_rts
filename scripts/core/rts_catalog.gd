@@ -21,6 +21,32 @@ const UNIT_DEFS: Dictionary = {
 		"mining_search_radius": 34.0,
 		"mining_nav_finish_contact_slack": 0.18,
 		"mining_nav_finish_anchor_slack": 0.9,
+		"interaction_fallbacks": {
+			"gather": {
+				"enable_nav_soft_contact": true,
+				"contact_slack": 0.18,
+				"enable_nav_anchor_fallback": true,
+				"anchor_slack": 0.9,
+				"enable_nav_reissue": true,
+				"reissue_interval": 0.35
+			},
+			"dropoff": {
+				"enable_nav_soft_contact": true,
+				"contact_slack": 0.18,
+				"enable_nav_anchor_fallback": true,
+				"anchor_slack": 0.9,
+				"enable_nav_reissue": true,
+				"reissue_interval": 0.35
+			},
+			"repair": {
+				"enable_nav_soft_contact": false,
+				"contact_slack": 0.0,
+				"enable_nav_anchor_fallback": false,
+				"anchor_slack": 0.0,
+				"enable_nav_reissue": true,
+				"reissue_interval": 0.45
+			}
+		},
 		"body_radius": 0.32,
 		"nav_agent_radius": 0.3,
 		"nav_agent_height": 1.0,
@@ -62,6 +88,16 @@ const UNIT_DEFS: Dictionary = {
 		"attack_damage": 12.0,
 		"attack_range": 2.4,
 		"attack_cooldown": 0.8,
+		"interaction_fallbacks": {
+			"attack": {
+				"enable_nav_soft_contact": false,
+				"contact_slack": 0.0,
+				"enable_nav_anchor_fallback": false,
+				"anchor_slack": 0.0,
+				"enable_nav_reissue": true,
+				"reissue_interval": 0.35
+			}
+		},
 		"requires_buildings": [],
 		"requires_tech": [],
 		"skills": ["move", "attack", "stop"],
