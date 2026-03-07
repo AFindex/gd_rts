@@ -94,6 +94,13 @@ const HUD_FONT_GLYPH: int = 16
 @export var debug_matrix_cells_to_log: int = 8
 @export var debug_matrix_log_burst_only: bool = true
 @export var debug_matrix_log_burst_seconds: float = 5.0
+@export var enable_hud_entry_animation: bool = true
+@export var hud_entry_duration_sec: float = 1.6
+@export var hud_entry_stagger_sec: float = 0.05
+@export var hud_entry_slide_distance: float = 88.0
+@export var hud_entry_fade_from_alpha: float = 0.0
+@export var hud_entry_transition: Tween.TransitionType = Tween.TRANS_CUBIC
+@export var hud_entry_ease: Tween.EaseType = Tween.EASE_OUT
 
 @onready var _top_bar: PanelContainer = $TopBar
 @onready var _top_bar_row: Control = $TopBar/TopBarRow
@@ -201,6 +208,11 @@ var _selection_layout_root: Control
 var _selection_button_strip: Control
 var _selection_side_buttons: Array[Button] = []
 var _bottom_hud_base_height: float = -1.0
+var _hud_entry_anim_active: bool = false
+var _hud_entry_elapsed_sec: float = 0.0
+var _hud_entry_total_duration_sec: float = 0.0
+var _hud_entry_panels: Array[Control] = []
+var _hud_entry_meta_by_path: Dictionary = {}
 
 func _t(message: String) -> String:
 	return tr(message)
@@ -276,7 +288,7 @@ func _apply_text_visibility_prefs() -> void:
 		_portrait_viewport.visible = true
 
 	if _command_hover_panel != null:
-		_command_hover_panel.visible = true
+		_command_hover_panel.visible = false
 		_command_hover_panel.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
 		_command_hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if _command_hover_text != null:
@@ -302,6 +314,7 @@ func _ready() -> void:
 	_build_matrix_cells()
 	_apply_hud_font_sizes()
 	_apply_text_visibility_prefs()
+	_start_hud_entry_animation()
 	_apply_localized_static_texts()
 	_apply_default_hud()
 	_apply_fixed_button_theme()
@@ -321,6 +334,100 @@ func _process(delta: float) -> void:
 	if _manual_layout_warmup_frames > 0:
 		_manual_layout_warmup_frames -= 1
 		_request_manual_bottom_layout_refresh()
+	if _hud_entry_anim_active:
+		_update_hud_entry_animation(delta)
+
+func _start_hud_entry_animation() -> void:
+	_hud_entry_anim_active = false
+	_hud_entry_elapsed_sec = 0.0
+	_hud_entry_total_duration_sec = 0.0
+	_hud_entry_panels.clear()
+	_hud_entry_meta_by_path.clear()
+	if not enable_hud_entry_animation:
+		return
+
+	_register_hud_entry_panel(_resource_panel, Vector2(0.0, -1.0))
+	_register_hud_entry_panel(_center_top, Vector2(0.0, -1.0))
+	_register_hud_entry_panel(_system_panel, Vector2(0.0, -1.0))
+	_register_hud_entry_panel(_selection_panel, Vector2(-1.0, 0.0))
+	_register_hud_entry_panel(_queue_column, Vector2(0.0, 1.0))
+	_register_hud_entry_panel(_portrait_column, Vector2(0.0, 1.0))
+	_register_hud_entry_panel(_command_column, Vector2(1.0, 0.0))
+
+	if _hud_entry_panels.is_empty():
+		return
+
+	var duration: float = maxf(0.01, hud_entry_duration_sec)
+	var stagger: float = maxf(0.0, hud_entry_stagger_sec)
+	_hud_entry_total_duration_sec = duration + stagger * float(maxi(0, _hud_entry_panels.size() - 1))
+	_hud_entry_anim_active = true
+	_request_manual_bottom_layout_refresh()
+
+func _register_hud_entry_panel(panel: Control, direction: Vector2) -> void:
+	if panel == null or not is_instance_valid(panel):
+		return
+	var key: String = str(panel.get_path())
+	var normalized_direction: Vector2 = direction.normalized()
+	if normalized_direction == Vector2.ZERO:
+		normalized_direction = Vector2(0.0, 1.0)
+	var order: int = _hud_entry_panels.size()
+	_hud_entry_panels.append(panel)
+	_hud_entry_meta_by_path[key] = {
+		"index": order,
+		"direction": normalized_direction
+	}
+	var color: Color = panel.self_modulate
+	color.a = clampf(hud_entry_fade_from_alpha, 0.0, 1.0)
+	panel.self_modulate = color
+
+func _update_hud_entry_animation(delta: float) -> void:
+	_hud_entry_elapsed_sec += delta
+	if _hud_entry_elapsed_sec >= _hud_entry_total_duration_sec:
+		_hud_entry_anim_active = false
+		_finalize_hud_entry_animation()
+		return
+	_request_manual_bottom_layout_refresh()
+
+func _finalize_hud_entry_animation() -> void:
+	for panel in _hud_entry_panels:
+		if panel == null or not is_instance_valid(panel):
+			continue
+		var color: Color = panel.self_modulate
+		if color.a != 1.0:
+			color.a = 1.0
+			panel.self_modulate = color
+	_request_manual_bottom_layout_refresh()
+
+func _apply_hud_entry_transform(control: Control, base_position: Vector2) -> Vector2:
+	var key: String = str(control.get_path())
+	var state_variant: Variant = _hud_entry_meta_by_path.get(key, null)
+	if state_variant == null:
+		return base_position
+	var state: Dictionary = state_variant as Dictionary
+	if state.is_empty():
+		return base_position
+
+	var progress: float = _get_hud_entry_progress(state)
+	var direction: Vector2 = state.get("direction", Vector2.ZERO)
+	var slide_distance: float = maxf(0.0, hud_entry_slide_distance)
+	var position_offset: Vector2 = direction * slide_distance * (1.0 - progress)
+	var target_alpha: float = lerpf(clampf(hud_entry_fade_from_alpha, 0.0, 1.0), 1.0, progress)
+	var color: Color = control.self_modulate
+	if absf(color.a - target_alpha) > 0.001:
+		color.a = target_alpha
+		control.self_modulate = color
+	return base_position + position_offset
+
+func _get_hud_entry_progress(state: Dictionary) -> float:
+	var panel_index: int = int(state.get("index", 0))
+	var duration: float = maxf(0.01, hud_entry_duration_sec)
+	var stagger: float = maxf(0.0, hud_entry_stagger_sec)
+	var local_elapsed: float = _hud_entry_elapsed_sec - float(panel_index) * stagger
+	if local_elapsed <= 0.0:
+		return 0.0
+	if local_elapsed >= duration:
+		return 1.0
+	return float(Tween.interpolate_value(0.0, 1.0, local_elapsed, duration, hud_entry_transition, hud_entry_ease))
 
 func update_hud(snapshot: Dictionary) -> void:
 	_debug_hud_update_seq += 1
@@ -867,8 +974,16 @@ func _on_command_item_hover_started(hover_data: Dictionary) -> void:
 		return
 	if _command_hover_text == null or _command_hover_panel == null:
 		return
-	_command_hover_panel.visible = true
-	_command_hover_text.text = _format_command_hover_text(hover_data)
+	var hover_id: String = str(hover_data.get("id", "")).strip_edges()
+	var hover_label: String = str(hover_data.get("label", "")).strip_edges()
+	if hover_id == "" and hover_label == "":
+		_set_command_hover_default()
+		return
+	var hover_text: String = _format_command_hover_text(hover_data)
+	if hover_text.strip_edges() == "":
+		_set_command_hover_default()
+		return
+	_command_hover_text.text = hover_text
 	_refresh_command_hover_layout_for_text_change()
 
 func _on_command_item_hover_ended() -> void:
@@ -1696,8 +1811,8 @@ func _apply_manual_command_column_layout() -> void:
 		var hover_y: float = -hover_height - gap
 		_set_manual_rect(_command_hover_panel, Vector2(0.0, hover_y), Vector2(area_size.x, hover_height))
 		var hover_has_text: bool = _command_hover_text != null and _command_hover_text.text.strip_edges() != ""
-		_command_hover_panel.visible = true
-		_command_hover_panel.self_modulate = Color(1.0, 1.0, 1.0, 1.0 if hover_has_text else 0.0)
+		_command_hover_panel.visible = hover_has_text
+		_command_hover_panel.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
 		_command_hover_panel.mouse_filter = Control.MOUSE_FILTER_STOP if hover_has_text else Control.MOUSE_FILTER_IGNORE
 		if _command_hover_text != null:
 			_command_hover_text.visible = hover_has_text
@@ -1872,8 +1987,11 @@ func _set_manual_rect(control: Control, position: Vector2, size: Vector2) -> voi
 	if control.anchor_bottom != 0.0:
 		control.anchor_bottom = 0.0
 	var clamped_size: Vector2 = Vector2(maxf(0.0, size.x), maxf(0.0, size.y))
-	if control.position != position:
-		control.position = position
+	var target_position: Vector2 = position
+	if _hud_entry_anim_active:
+		target_position = _apply_hud_entry_transform(control, position)
+	if control.position != target_position:
+		control.position = target_position
 	if control.size != clamped_size:
 		control.size = clamped_size
 	if trace_rect and (prev_position != control.position or prev_size != control.size):
