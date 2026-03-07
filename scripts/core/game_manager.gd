@@ -2323,6 +2323,7 @@ func _build_hud_snapshot() -> Dictionary:
 	var portrait_glyph: String = "?"
 	var multi_roles: Array[String] = []
 	var multi_role_kinds: Array[String] = []
+	var multi_role_health_ratios: Array[float] = []
 	var control_group_entries: Array[Dictionary] = _build_control_group_entries()
 	var matrix_page_index: int = 0
 	var matrix_page_count: int = 1
@@ -2421,6 +2422,10 @@ func _build_hud_snapshot() -> Dictionary:
 		if kinds_value is Array:
 			for kind_value in kinds_value:
 				multi_role_kinds.append(str(kind_value))
+		var health_ratios_value: Variant = page_snapshot.get("health_ratios", [])
+		if health_ratios_value is Array:
+			for ratio_value in health_ratios_value:
+				multi_role_health_ratios.append(clampf(float(ratio_value), 0.0, 1.0))
 		matrix_page_index = int(page_snapshot.get("page_index", 0))
 		matrix_page_count = int(page_snapshot.get("page_count", 1))
 		portrait_title = _tf("%d Selected", [selection_total])
@@ -2462,6 +2467,7 @@ func _build_hud_snapshot() -> Dictionary:
 		"construction_glyph": construction_glyph,
 		"multi_roles": multi_roles,
 		"multi_role_kinds": multi_role_kinds,
+		"multi_role_health_ratios": multi_role_health_ratios,
 		"control_group_entries": control_group_entries,
 		"matrix_page_index": matrix_page_index,
 		"matrix_page_count": matrix_page_count,
@@ -3271,10 +3277,18 @@ func _build_multi_role_page_snapshot(active_subgroup_kind: String = "") -> Dicti
 	var end_index: int = mini(total_entries, start_index + HUD_MULTI_MAX)
 	var roles: Array[String] = []
 	var kinds: Array[String] = []
+	var health_ratios: Array[float] = []
 	for i in range(start_index, end_index):
 		var entry: Dictionary = entries[i]
 		roles.append(str(entry.get("role", "")))
 		kinds.append(str(entry.get("kind", "")))
+		var health_ratio: float = 1.0
+		var entry_node_value: Variant = entry.get("node", null)
+		if entry_node_value is Node:
+			var entry_node: Node = entry_node_value as Node
+			if entry_node != null and is_instance_valid(entry_node) and entry_node.has_method("get_health_ratio"):
+				health_ratio = clampf(float(entry_node.call("get_health_ratio")), 0.0, 1.0)
+		health_ratios.append(health_ratio)
 
 	var page_text: String = _tf("Page %d/%d", [_multi_matrix_page_index + 1, page_count])
 	if total_entries > 0:
@@ -3294,6 +3308,7 @@ func _build_multi_role_page_snapshot(active_subgroup_kind: String = "") -> Dicti
 	return {
 		"roles": roles,
 		"kinds": kinds,
+		"health_ratios": health_ratios,
 		"page_text": page_text,
 		"page_index": _multi_matrix_page_index,
 		"total_entries": total_entries,

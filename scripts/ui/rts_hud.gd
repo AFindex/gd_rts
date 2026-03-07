@@ -44,6 +44,7 @@ const PRODUCTION_MODE_CONSTRUCTION: String = "construction"
 @export var manual_single_status_padding: Vector2 = Vector2(6.0, 6.0)
 @export var manual_single_status_gap: float = 2.0
 @export var manual_single_name_height: float = 20.0
+@export var manual_single_status_icon_height: float = 38.0
 @export var manual_single_bar_height: float = 18.0
 @export var manual_single_detail_padding: Vector2 = Vector2(6.0, 6.0)
 @export var manual_single_detail_gap: float = 2.0
@@ -194,6 +195,7 @@ var _matrix_labels: Array[Label] = []
 var _queue_slot_labels: Array[Label] = []
 var _notification_labels: Array[Label] = []
 var _current_multi_role_kinds: Array[String] = []
+var _current_multi_role_health_ratios: Array[float] = []
 var _control_group_buttons: Array[Button] = []
 var _matrix_page_buttons: Array[Button] = []
 var _manual_layout_refresh_pending: bool = false
@@ -225,6 +227,9 @@ var _construction_title_text: Label
 var _construction_progress_bar: ProgressBar
 var _construction_progress_value: Label
 var _construction_icon_cache_path: String = ""
+var _single_status_icon_panel: PanelContainer
+var _single_status_icon_texture: TextureRect
+var _single_status_icon_fallback: Label
 
 func _t(message: String) -> String:
 	return tr(message)
@@ -265,6 +270,7 @@ func _apply_hud_font_sizes() -> void:
 	_set_font_size(_subgroup_text, HUD_FONT_SMALL)
 
 	_set_font_size(_single_name_text, HUD_FONT_BASE)
+	_set_font_size(_single_status_icon_fallback, HUD_FONT_TINY)
 	_set_font_size(_health_value_label, HUD_FONT_TINY)
 	_set_font_size(_shield_value_label, HUD_FONT_TINY)
 	_set_font_size(_energy_value_label, HUD_FONT_TINY)
@@ -430,8 +436,61 @@ func _ensure_construction_production_controls() -> void:
 	_construction_progress_value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_construction_progress_value.text = "0%"
 
+func _ensure_single_status_placeholder_icon() -> void:
+	if _single_status_content == null or not is_instance_valid(_single_status_content):
+		return
+	_single_status_icon_panel = _single_status_content.get_node_or_null("SingleStatusIconPanel") as PanelContainer
+	if _single_status_icon_panel == null:
+		_single_status_icon_panel = PanelContainer.new()
+		_single_status_icon_panel.name = "SingleStatusIconPanel"
+		_single_status_content.add_child(_single_status_icon_panel)
+	_single_status_icon_panel.layout_mode = 0
+	_single_status_icon_panel.anchor_left = 0.0
+	_single_status_icon_panel.anchor_top = 0.0
+	_single_status_icon_panel.anchor_right = 0.0
+	_single_status_icon_panel.anchor_bottom = 0.0
+	_single_status_icon_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	_single_status_icon_texture = _single_status_icon_panel.get_node_or_null("SingleStatusIcon") as TextureRect
+	if _single_status_icon_texture == null:
+		_single_status_icon_texture = TextureRect.new()
+		_single_status_icon_texture.name = "SingleStatusIcon"
+		_single_status_icon_panel.add_child(_single_status_icon_texture)
+	_single_status_icon_texture.layout_mode = 0
+	_single_status_icon_texture.anchor_left = 0.0
+	_single_status_icon_texture.anchor_top = 0.0
+	_single_status_icon_texture.anchor_right = 0.0
+	_single_status_icon_texture.anchor_bottom = 0.0
+	_single_status_icon_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_single_status_icon_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_single_status_icon_texture.expand_mode = TextureRect.EXPAND_FIT_WIDTH
+
+	_single_status_icon_fallback = _single_status_icon_panel.get_node_or_null("SingleStatusIconFallback") as Label
+	if _single_status_icon_fallback == null:
+		_single_status_icon_fallback = Label.new()
+		_single_status_icon_fallback.name = "SingleStatusIconFallback"
+		_single_status_icon_panel.add_child(_single_status_icon_fallback)
+	_single_status_icon_fallback.layout_mode = 0
+	_single_status_icon_fallback.anchor_left = 0.0
+	_single_status_icon_fallback.anchor_top = 0.0
+	_single_status_icon_fallback.anchor_right = 0.0
+	_single_status_icon_fallback.anchor_bottom = 0.0
+	_single_status_icon_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_single_status_icon_fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_single_status_icon_fallback.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_single_status_icon_fallback.text = "ICON"
+
+	var placeholder_path: String = "res://icon_unit_tmp.png"
+	var texture: Texture2D = null
+	if ResourceLoader.exists(placeholder_path):
+		texture = load(placeholder_path) as Texture2D
+	_single_status_icon_texture.texture = texture
+	_single_status_icon_texture.visible = texture != null
+	_single_status_icon_fallback.visible = texture == null
+
 func _ready() -> void:
 	_cache_control_group_buttons()
+	_ensure_single_status_placeholder_icon()
 	_ensure_construction_production_controls()
 	_setup_static_styles()
 	_connect_ping_button()
@@ -666,7 +725,8 @@ func update_hud(snapshot: Dictionary) -> void:
 	_apply_multi_roles(
 		_to_string_array(snapshot.get("multi_roles", [])),
 		_to_string_array(snapshot.get("multi_role_kinds", [])),
-		str(snapshot.get("active_subgroup_kind", ""))
+		str(snapshot.get("active_subgroup_kind", "")),
+		_to_float_array(snapshot.get("multi_role_health_ratios", []))
 	)
 	var matrix_page_index: int = int(snapshot.get("matrix_page_index", 0))
 	var matrix_page_count: int = maxi(1, int(snapshot.get("matrix_page_count", 1)))
@@ -708,6 +768,7 @@ func _apply_default_hud() -> void:
 		"construction_icon_path": "",
 		"construction_glyph": "B",
 		"multi_roles": [],
+		"multi_role_health_ratios": [],
 		"control_group_entries": [],
 		"portrait_glyph": "?",
 		"portrait_title": _t("No Selection"),
@@ -749,6 +810,8 @@ func _setup_static_styles() -> void:
 	_style_panel(_system_panel, Color(0.05, 0.12, 0.2, 0.84), Color(0.18, 0.42, 0.58, 0.95))
 	_style_panel(_notification_panel, Color(0.02, 0.07, 0.14, 0.75), Color(0.14, 0.34, 0.5, 0.85))
 	_style_panel(_single_status_root, Color(0.03, 0.09, 0.16, 0.85), Color(0.14, 0.34, 0.5, 0.92))
+	if _single_status_icon_panel != null:
+		_style_panel(_single_status_icon_panel, Color(0.05, 0.14, 0.2, 0.92), Color(0.2, 0.48, 0.64, 0.95))
 	_style_panel(_single_detail_root, Color(0.03, 0.09, 0.16, 0.85), Color(0.14, 0.34, 0.5, 0.92))
 	_style_panel(_production_queue_root, Color(0.03, 0.09, 0.16, 0.85), Color(0.14, 0.34, 0.5, 0.92))
 	_style_panel(_multi_matrix_root, Color(0.03, 0.09, 0.16, 0.85), Color(0.14, 0.34, 0.5, 0.92))
@@ -767,6 +830,8 @@ func _setup_static_styles() -> void:
 		_construction_icon_fallback.add_theme_color_override("font_color", Color(0.9, 0.97, 1.0))
 	if _construction_progress_value != null:
 		_style_bar_overlay_label(_construction_progress_value)
+	if _single_status_icon_fallback != null:
+		_single_status_icon_fallback.add_theme_color_override("font_color", Color(0.84, 0.95, 1.0))
 	_style_bar_overlay_label(_health_value_label)
 	_style_bar_overlay_label(_shield_value_label)
 	_style_bar_overlay_label(_energy_value_label)
@@ -1109,13 +1174,14 @@ func _apply_construction_icon(icon_path: String, fallback_glyph: String) -> void
 	_construction_icon_fallback.visible = texture == null
 	_construction_icon_fallback.text = fallback_glyph.substr(0, 1).to_upper()
 
-func _apply_multi_roles(multi_roles: Array[String], multi_role_kinds: Array[String], active_subgroup_kind: String = "") -> void:
+func _apply_multi_roles(multi_roles: Array[String], multi_role_kinds: Array[String], active_subgroup_kind: String = "", multi_role_health_ratios: Array[float] = []) -> void:
 	_hudjit_log("apply_multi_roles roles=%d kinds=%d active_subgroup=%s" % [
 		multi_roles.size(),
 		multi_role_kinds.size(),
 		active_subgroup_kind
 	], true)
 	_current_multi_role_kinds = multi_role_kinds.duplicate()
+	_current_multi_role_health_ratios = multi_role_health_ratios.duplicate()
 	for i in _matrix_labels.size():
 		if i < multi_roles.size():
 			var role: String = multi_roles[i]
@@ -1123,8 +1189,11 @@ func _apply_multi_roles(multi_roles: Array[String], multi_role_kinds: Array[Stri
 			var role_kind: String = ""
 			if i < multi_role_kinds.size():
 				role_kind = multi_role_kinds[i]
+			var health_ratio: float = -1.0
+			if i < multi_role_health_ratios.size():
+				health_ratio = clampf(multi_role_health_ratios[i], 0.0, 1.0)
 			var highlighted: bool = _role_matches_subgroup(role, role_kind, active_subgroup_kind)
-			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style_with_highlight(role, highlighted))
+			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style_with_highlight(role, highlighted, health_ratio))
 		else:
 			_matrix_labels[i].text = "--"
 			_matrix_panels[i].add_theme_stylebox_override("panel", _matrix_style("empty"))
@@ -1163,8 +1232,8 @@ func _role_matches_subgroup(role: String, role_kind: String, subgroup_kind: Stri
 		_:
 			return false
 
-func _matrix_style_with_highlight(role: String, highlighted: bool) -> StyleBoxFlat:
-	var style: StyleBoxFlat = _matrix_style(role)
+func _matrix_style_with_highlight(role: String, highlighted: bool, health_ratio: float = -1.0) -> StyleBoxFlat:
+	var style: StyleBoxFlat = _matrix_health_style(health_ratio) if health_ratio >= 0.0 else _matrix_style(role)
 	if not highlighted:
 		return style
 	style.border_color = Color(1.0, 0.95, 0.55, 0.98)
@@ -1173,6 +1242,27 @@ func _matrix_style_with_highlight(role: String, highlighted: bool) -> StyleBoxFl
 	style.border_width_right = 2
 	style.border_width_bottom = 2
 	return style
+
+func _matrix_health_style(health_ratio: float) -> StyleBoxFlat:
+	var clamped_ratio: float = clampf(health_ratio, 0.0, 1.0)
+	var fill: Color = _matrix_health_color(clamped_ratio)
+	var border: Color = fill.lightened(0.22)
+	return _build_stylebox(fill, border, 1, 4)
+
+func _matrix_health_color(health_ratio: float) -> Color:
+	var ratio: float = clampf(health_ratio, 0.0, 1.0)
+	var deep_green: Color = Color(0.07, 0.34, 0.13, 0.92)
+	var green: Color = Color(0.14, 0.5, 0.18, 0.92)
+	var light_green: Color = Color(0.46, 0.72, 0.26, 0.92)
+	var yellow: Color = Color(0.84, 0.76, 0.22, 0.92)
+	var red: Color = Color(0.78, 0.24, 0.2, 0.92)
+	if ratio >= 0.75:
+		return green.lerp(deep_green, (ratio - 0.75) / 0.25)
+	if ratio >= 0.5:
+		return light_green.lerp(green, (ratio - 0.5) / 0.25)
+	if ratio >= 0.25:
+		return yellow.lerp(light_green, (ratio - 0.25) / 0.25)
+	return red.lerp(yellow, ratio / 0.25)
 
 func _apply_command_entries(entries_variant: Variant) -> void:
 	var entries: Array = []
@@ -1814,7 +1904,28 @@ func _apply_manual_single_status_content_layout() -> void:
 		y += gap
 		remaining = maxf(0.0, remaining - gap)
 
-	var preferred_bar_height: float = maxf(0.0, manual_single_bar_height)
+	var icon_height: float = clampf(manual_single_status_icon_height, 0.0, remaining)
+	if _single_status_icon_panel != null:
+		var icon_size: float = minf(icon_height, content_width)
+		var icon_x: float = pad_x + floor(maxf(0.0, (content_width - icon_size) * 0.5))
+		_set_manual_rect(_single_status_icon_panel, Vector2(icon_x, y), Vector2(icon_size, icon_height))
+		if _single_status_icon_texture != null and _single_status_icon_fallback != null:
+			var icon_content_rect: Rect2 = _get_panel_content_rect(_single_status_icon_panel)
+			_set_manual_rect(_single_status_icon_texture, icon_content_rect.position, icon_content_rect.size)
+			_set_manual_rect(_single_status_icon_fallback, icon_content_rect.position, icon_content_rect.size)
+	else:
+		if _single_status_icon_texture != null:
+			_set_manual_rect(_single_status_icon_texture, Vector2.ZERO, Vector2.ZERO)
+		if _single_status_icon_fallback != null:
+			_set_manual_rect(_single_status_icon_fallback, Vector2.ZERO, Vector2.ZERO)
+	if icon_height > 0.0:
+		y += icon_height
+		remaining = maxf(0.0, remaining - icon_height)
+	if remaining > 0.0:
+		y += gap
+		remaining = maxf(0.0, remaining - gap)
+
+	var preferred_bar_height: float = maxf(0.0, manual_single_bar_height * 0.82)
 	var bar_gap_total: float = gap * 2.0
 	var bar_height: float = 0.0
 	if preferred_bar_height * 3.0 + bar_gap_total <= remaining:
@@ -2387,6 +2498,13 @@ func _to_string_array(value: Variant) -> Array[String]:
 	if value is Array:
 		for item in value:
 			result.append(str(item))
+	return result
+
+func _to_float_array(value: Variant) -> Array[float]:
+	var result: Array[float] = []
+	if value is Array:
+		for item in value:
+			result.append(clampf(float(item), 0.0, 1.0))
 	return result
 
 func begin_debug_log_burst(duration_sec: float = -1.0, reason: String = "") -> void:
