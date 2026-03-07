@@ -12,6 +12,7 @@ const SUPPLY_CAP: int = 40
 const HUD_MULTI_MAX: int = 30
 const DEFAULT_BUILD_FOOTPRINT: Vector2 = Vector2(2.6, 1.8)
 const PLAYER_TEAM_ID: int = 1
+const DEFAULT_TEAM_START_MINERALS: int = 220
 const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
 const QUEUE_MARKER_GROUP: StringName = &"command_queue_marker"
 const QUEUE_MARKER_LAYER: int = 1 << 5
@@ -82,6 +83,7 @@ var _selected_buildings: Array[Node] = []
 var _hovered_unit: Node = null
 
 var _minerals: int = 220
+var _team_minerals: Dictionary = {}
 var _worker_cost: int = WORKER_COST
 var _soldier_cost: int = SOLDIER_COST
 
@@ -179,6 +181,7 @@ func _ready() -> void:
 	_register_existing_buildings()
 	_refresh_building_health_snapshot()
 	_register_existing_resources()
+	_init_team_minerals()
 	_request_navmesh_rebake("startup")
 	_refresh_resource_label()
 	_refresh_hint_label()
@@ -1897,22 +1900,76 @@ func _fallback_execute_unit_command(unit_node: Node, command: RTSCommand) -> voi
 				unit_node.call("command_stop")
 
 func add_minerals(amount: int) -> void:
-	if amount <= 0:
-		return
-	_minerals += amount
-	_refresh_resource_label()
+	add_minerals_for_team(PLAYER_TEAM_ID, amount)
 
 func try_spend_minerals(cost: int) -> bool:
-	if cost <= 0:
-		return true
-	if _minerals < cost:
-		return false
-	_minerals -= cost
-	_refresh_resource_label()
-	return true
+	return try_spend_minerals_for_team(PLAYER_TEAM_ID, cost)
 
 func get_minerals() -> int:
-	return _minerals
+	return get_minerals_for_team(PLAYER_TEAM_ID)
+
+func add_minerals_for_team(team_id: int, amount: int) -> void:
+	if amount <= 0:
+		return
+	_ensure_team_mineral_entry(team_id)
+	var current: int = int(_team_minerals.get(team_id, 0))
+	_team_minerals[team_id] = current + amount
+	if team_id == PLAYER_TEAM_ID:
+		_minerals = int(_team_minerals.get(PLAYER_TEAM_ID, _minerals))
+		_refresh_resource_label()
+
+func try_spend_minerals_for_team(team_id: int, cost: int) -> bool:
+	if cost <= 0:
+		return true
+	_ensure_team_mineral_entry(team_id)
+	var current: int = int(_team_minerals.get(team_id, 0))
+	if current < cost:
+		return false
+	_team_minerals[team_id] = current - cost
+	if team_id == PLAYER_TEAM_ID:
+		_minerals = int(_team_minerals.get(PLAYER_TEAM_ID, _minerals))
+		_refresh_resource_label()
+	return true
+
+func get_minerals_for_team(team_id: int) -> int:
+	_ensure_team_mineral_entry(team_id)
+	return int(_team_minerals.get(team_id, 0))
+
+func _init_team_minerals() -> void:
+	_team_minerals.clear()
+	_team_minerals[PLAYER_TEAM_ID] = _minerals
+
+	var discovered_teams: Dictionary = {}
+	discovered_teams[PLAYER_TEAM_ID] = true
+
+	var unit_nodes: Array[Node] = get_tree().get_nodes_in_group("selectable_unit")
+	for node in unit_nodes:
+		if node == null or not is_instance_valid(node):
+			continue
+		if not node.has_method("get_team_id"):
+			continue
+		discovered_teams[int(node.call("get_team_id"))] = true
+
+	var building_nodes: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
+	for node in building_nodes:
+		if node == null or not is_instance_valid(node):
+			continue
+		if not node.has_method("get_team_id"):
+			continue
+		discovered_teams[int(node.call("get_team_id"))] = true
+
+	for team_key in discovered_teams.keys():
+		_ensure_team_mineral_entry(int(team_key))
+
+	_minerals = int(_team_minerals.get(PLAYER_TEAM_ID, _minerals))
+
+func _ensure_team_mineral_entry(team_id: int) -> void:
+	if team_id <= 0:
+		return
+	if _team_minerals.has(team_id):
+		return
+	var initial_value: int = _minerals if team_id == PLAYER_TEAM_ID else DEFAULT_TEAM_START_MINERALS
+	_team_minerals[team_id] = initial_value
 
 func _refresh_resource_label() -> void:
 	_push_hud_update()

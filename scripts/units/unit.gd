@@ -1873,7 +1873,9 @@ func _deposit_to_game_manager(amount: int) -> void:
 	if amount <= 0:
 		return
 	var game_manager: Node = get_tree().get_first_node_in_group("game_manager")
-	if game_manager != null and game_manager.has_method("add_minerals"):
+	if game_manager != null and game_manager.has_method("add_minerals_for_team"):
+		game_manager.call("add_minerals_for_team", team_id, amount)
+	elif game_manager != null and game_manager.has_method("add_minerals"):
 		game_manager.call("add_minerals", amount)
 
 func _apply_movement(delta: float) -> void:

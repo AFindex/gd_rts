@@ -12,7 +12,7 @@ const UNIT_DEFS: Dictionary = {
 		"cost": 50,
 		"supply": 1,
 		"max_health": 60.0,
-		"move_speed": 3.0,
+		"move_speed": 4.8,
 		"gather_range": 1.8,
 		"dropoff_range": 2.4,
 		"carry_capacity": 5,
