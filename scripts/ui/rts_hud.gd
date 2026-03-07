@@ -22,6 +22,8 @@ const HUD_FONT_GLYPH: int = 16
 @export var use_manual_bottom_layout: bool = true
 @export var manual_bottom_height_scale: float = 0.8
 @export var manual_bottom_min_height: float = 180.0
+# Keeps runtime target height stable even if scene preview height is hand-tuned.
+@export var manual_bottom_base_height_override: float = 257.0
 @export var manual_bottom_gap: float = 2.0
 @export var manual_bottom_padding: Vector2 = Vector2(0.0, 0.0)
 @export var manual_bottom_section_ratios: Vector4 = Vector4(24.0, 32.0, 10.0, 34.0)
@@ -1293,7 +1295,10 @@ func _apply_bottom_hud_height() -> bool:
 	if current_height <= 1.0:
 		return false
 	if _bottom_hud_base_height <= 0.0:
-		_bottom_hud_base_height = current_height
+		if manual_bottom_base_height_override > 0.0:
+			_bottom_hud_base_height = manual_bottom_base_height_override
+		else:
+			_bottom_hud_base_height = current_height
 	var target_height: float = maxf(manual_bottom_min_height, _bottom_hud_base_height * manual_bottom_height_scale)
 	var bottom_offset: float = _bottom_hud.offset_bottom
 	var desired_top: float = bottom_offset - target_height

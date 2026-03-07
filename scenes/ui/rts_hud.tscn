@@ -55,7 +55,9 @@ offset_bottom = 71.405
 layout_mode = 2
 
 [node name="ResourcePanel" type="PanelContainer" parent="TopBar/TopBarRow" unique_id=1275658498]
-layout_mode = 2
+layout_mode = 0
+offset_right = 831.0
+offset_bottom = 59.405
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 7.4
 
@@ -96,7 +98,10 @@ layout_mode = 2
 text = "M: 0   G: 0   Supply: 0/40"
 
 [node name="CenterTop" type="PanelContainer" parent="TopBar/TopBarRow" unique_id=1194163850]
-layout_mode = 2
+layout_mode = 0
+offset_left = 833.0
+offset_right = 967.0
+offset_bottom = 59.405
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.2
 
@@ -115,7 +120,10 @@ text = "Mission"
 horizontal_alignment = 1
 
 [node name="SystemPanel" type="PanelContainer" parent="TopBar/TopBarRow" unique_id=759921194]
-layout_mode = 2
+layout_mode = 0
+offset_left = 969.0
+offset_right = 1128.0
+offset_bottom = 59.405
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.4
 
@@ -137,7 +145,7 @@ anchors_preset = 0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -252.0
+offset_top = -200.6
 offset_bottom = 5.0
 
 [node name="BottomRow" type="Control" parent="BottomHUD" unique_id=452074639]
@@ -151,7 +159,9 @@ offset_right = -8.0
 offset_bottom = -8.0
 
 [node name="SelectionPanel" type="PanelContainer" parent="BottomHUD/BottomRow" unique_id=376722838]
-layout_mode = 2
+layout_mode = 0
+offset_right = 271.0
+offset_bottom = 189.6
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 21.0
 
@@ -204,7 +214,10 @@ text = "Terrain"
 
 [node name="QueueColumn" type="Control" parent="BottomHUD/BottomRow" unique_id=465028157]
 self_modulate = Color(1, 1, 1, 0)
-layout_mode = 2
+layout_mode = 0
+offset_left = 273.0
+offset_right = 750.0
+offset_bottom = 189.6
 size_flags_horizontal = 3
 size_flags_vertical = 3
 size_flags_stretch_ratio = 45.0
@@ -212,17 +225,16 @@ size_flags_stretch_ratio = 45.0
 [node name="QueueTopSpacer" type="Control" parent="BottomHUD/BottomRow/QueueColumn" unique_id=1436523887]
 self_modulate = Color(1, 1, 1, 0)
 custom_minimum_size = Vector2(0, 84)
-layout_mode = 2
+layout_mode = 0
+offset_right = 477.0
+offset_bottom = 24.0
 
 [node name="ControlGroupBar" type="HBoxContainer" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer"]
 self_modulate = Color(1, 1, 1, 0)
 layout_mode = 0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 52.0
-offset_right = -8.0
-offset_bottom = -8.0
+offset_left = 4.0
+offset_right = 473.0
+offset_bottom = 24.0
 theme_override_constants/separation = 4
 
 [node name="ControlGroupButton0" type="Button" parent="BottomHUD/BottomRow/QueueColumn/QueueTopSpacer/ControlGroupBar"]
@@ -286,37 +298,62 @@ size_flags_horizontal = 3
 text = ""
 
 [node name="QueuePanel" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn" unique_id=2129553495]
-layout_mode = 2
+layout_mode = 0
+offset_top = 24.0
+offset_right = 477.0
+offset_bottom = 189.6
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="QueueContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel" unique_id=522090330]
-layout_mode = 2
+layout_mode = 0
+offset_right = 477.0
+offset_bottom = 165.6
 size_flags_vertical = 0
 
 [node name="SelectionHintText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent" unique_id=1541801656]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = 471.0
+offset_bottom = 26.0
 text = "No selection."
 autowrap_mode = 3
 
 [node name="SingleContainer" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent" unique_id=335850404]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 28.0
+offset_right = 471.0
+offset_bottom = 159.6
 size_flags_vertical = 3
 
 [node name="SingleStatusRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer" unique_id=478067262]
-layout_mode = 2
+layout_mode = 0
+offset_right = 243.0
+offset_bottom = 131.6
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 0.95
 
 [node name="SingleStatusContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot" unique_id=58574333]
-layout_mode = 2
+layout_mode = 0
+offset_right = 243.0
+offset_bottom = 131.6
 
 [node name="SingleNameText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=989872851]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = 237.0
+offset_bottom = 26.0
 text = "No Selection"
 
 [node name="HealthBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=1217402375]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 28.0
+offset_right = 237.0
+offset_bottom = 46.0
 value = 100.0
 
 [node name="HealthValueLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/HealthBar"]
@@ -331,7 +368,11 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="ShieldBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=982109608]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 48.0
+offset_right = 237.0
+offset_bottom = 66.0
 
 [node name="ShieldValueLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/ShieldBar"]
 layout_mode = 1
@@ -345,7 +386,11 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="EnergyBar" type="ProgressBar" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent" unique_id=581421425]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 68.0
+offset_right = 237.0
+offset_bottom = 86.0
 
 [node name="EnergyValueLabel" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleStatusRoot/SingleStatusContent/EnergyBar"]
 layout_mode = 1
@@ -359,34 +404,55 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SingleDetailRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer" unique_id=514579815]
-layout_mode = 2
+layout_mode = 0
+offset_left = 245.0
+offset_right = 465.0
+offset_bottom = 131.6
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.7
 
 [node name="SingleDetailContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot" unique_id=1352551765]
-layout_mode = 2
+layout_mode = 0
+offset_right = 220.0
+offset_bottom = 131.6
 
 [node name="SingleDetailTitle" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent" unique_id=465014954]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = 214.0
+offset_bottom = 24.0
 text = "Details"
 
 [node name="SingleDetailText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent" unique_id=229566344]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 26.0
+offset_right = 214.0
+offset_bottom = 105.6
 text = "-"
 autowrap_mode = 3
 
 [node name="ArmorTypeText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/SingleDetailRoot/SingleDetailContent" unique_id=398723227]
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 107.6
+offset_right = 214.0
+offset_bottom = 125.6
 text = "Armor Type: --"
 
 [node name="ProductionQueueRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer" unique_id=1503817880]
 visible = false
-layout_mode = 2
+layout_mode = 0
+offset_left = 245.0
+offset_top = 131.6
+offset_right = 245.0
+offset_bottom = 131.6
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.7
 
 [node name="ProductionContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot" unique_id=1361623097]
-layout_mode = 2
+layout_mode = 0
 
 [node name="QueueSummaryText" type="Label" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/SingleContainer/ProductionQueueRoot/ProductionContent" unique_id=491742894]
 layout_mode = 2
@@ -401,32 +467,39 @@ theme_override_constants/separation = 4
 
 [node name="MultiMatrixRoot" type="PanelContainer" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent" unique_id=1656326465]
 visible = false
-layout_mode = 2
+layout_mode = 0
+offset_left = 6.0
+offset_top = 28.0
+offset_right = 471.0
+offset_bottom = 28.0
 size_flags_vertical = 3
 
 [node name="MultiMatrixContent" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot" unique_id=1017123371]
-layout_mode = 2
+layout_mode = 0
 
 [node name="MatrixBody" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent"]
-layout_mode = 2
+layout_mode = 0
 size_flags_vertical = 3
 
 [node name="MatrixFooter" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1831428208]
 visible = false
 custom_minimum_size = Vector2(52, 0)
-layout_mode = 2
+layout_mode = 0
 
 [node name="MatrixPageButtons" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody/MatrixFooter"]
-layout_mode = 2
+layout_mode = 0
 
 [node name="MatrixGrid" type="Control" parent="BottomHUD/BottomRow/QueueColumn/QueuePanel/QueueContent/MultiMatrixRoot/MultiMatrixContent/MatrixBody" unique_id=1818788423]
-layout_mode = 2
+layout_mode = 0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="PortraitColumn" type="Control" parent="BottomHUD/BottomRow" unique_id=450057549]
 self_modulate = Color(1, 1, 1, 0)
-layout_mode = 2
+layout_mode = 0
+offset_left = 752.0
+offset_right = 865.0
+offset_bottom = 189.6
 size_flags_horizontal = 3
 size_flags_vertical = 3
 size_flags_stretch_ratio = 9.0
@@ -434,10 +507,12 @@ size_flags_stretch_ratio = 9.0
 [node name="PortraitTopSpacer" type="Control" parent="BottomHUD/BottomRow/PortraitColumn" unique_id=2005125402]
 self_modulate = Color(1, 1, 1, 0)
 custom_minimum_size = Vector2(0, 84)
-layout_mode = 2
+layout_mode = 0
 
 [node name="PortraitPanel" type="PanelContainer" parent="BottomHUD/BottomRow/PortraitColumn" unique_id=510049210]
-layout_mode = 2
+layout_mode = 0
+offset_right = 113.0
+offset_bottom = 189.6
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
@@ -476,7 +551,10 @@ horizontal_alignment = 1
 autowrap_mode = 3
 
 [node name="CommandColumn" type="Control" parent="BottomHUD/BottomRow"]
-layout_mode = 2
+layout_mode = 0
+offset_left = 867.0
+offset_right = 1136.0
+offset_bottom = 189.6
 size_flags_horizontal = 3
 size_flags_vertical = 3
 size_flags_stretch_ratio = 25.0
@@ -484,7 +562,10 @@ size_flags_stretch_ratio = 25.0
 [node name="CommandHoverPanel" type="PanelContainer" parent="BottomHUD/BottomRow/CommandColumn"]
 visible = false
 custom_minimum_size = Vector2(0, 64)
-layout_mode = 2
+layout_mode = 0
+offset_top = -30.0
+offset_right = 269.0
+offset_bottom = -2.0
 size_flags_vertical = 0
 mouse_filter = 2
 
@@ -496,22 +577,38 @@ autowrap_mode = 3
 mouse_filter = 2
 
 [node name="CommandPanel" type="PanelContainer" parent="BottomHUD/BottomRow/CommandColumn" unique_id=1878818253]
-layout_mode = 2
+layout_mode = 0
+offset_right = 269.0
+offset_bottom = 189.6
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="CommandContent" type="Control" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel" unique_id=1127085611]
-layout_mode = 2
+layout_mode = 0
+offset_right = 269.0
+offset_bottom = 189.6
 
 [node name="SubgroupText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=1993498507]
 visible = false
-layout_mode = 2
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 265.0
+offset_bottom = 4.0
 text = "Subgroup -"
 
 [node name="CommandGrid" type="Control" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=2120930169]
-layout_mode = 2
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 265.0
+offset_bottom = 185.6
 
 [node name="CommandHintText" type="Label" parent="BottomHUD/BottomRow/CommandColumn/CommandPanel/CommandContent" unique_id=2043072637]
-layout_mode = 2
+layout_mode = 0
+offset_left = 4.0
+offset_top = 187.6
+offset_right = 265.0
+offset_bottom = 187.6
 text = "No active command card."
 autowrap_mode = 3
