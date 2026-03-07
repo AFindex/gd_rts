@@ -119,6 +119,7 @@ var _mining_auto_cycle_enabled: bool = false
 var _mining_queue_timer: float = 0.0
 var _mining_delivery_timer: float = 0.0
 var _mining_interaction_repath_timer: float = 0.0
+var _last_successful_mineral_target: Node3D = null
 var _mining_debug_accum: float = 0.0
 var _mining_harvest_stall_timer: float = 0.0
 var _mining_last_logged_state: int = MiningState.IDLE
@@ -1404,6 +1405,7 @@ func _process_harvesting_state(delta: float) -> void:
 	else:
 		_carried_amount += harvested
 	if harvested > 0:
+		_remember_last_successful_mineral(_gather_target)
 		_mining_harvest_stall_timer = 0.0
 		_log_mining_event("harvest_success", {
 			"harvested": harvested,
@@ -1502,8 +1504,11 @@ func _process_delivering_state(delta: float) -> void:
 		_notify_game_manager_worker_queue_transition("interrupt_checkpoint")
 		return
 
-	if _mining_auto_cycle_enabled and _transition_to_next_mineral():
-		return
+	if _mining_auto_cycle_enabled:
+		if _try_transition_to_last_successful_mineral():
+			return
+		if _transition_to_next_mineral():
+			return
 	_stop_worker_cycle(false)
 
 func _transition_to_next_mineral(excluded_target: Node3D = null) -> bool:
@@ -1519,6 +1524,28 @@ func _transition_to_next_mineral(excluded_target: Node3D = null) -> bool:
 	_log_mining_event("next_mineral_selected", {
 		"next_target": _mining_debug_target_name(next_target),
 		"excluded": _mining_debug_target_name(excluded_target)
+	})
+	_set_mining_state(MiningState.MOVING_TO_MINERAL)
+	return true
+
+func _remember_last_successful_mineral(mineral: Node3D) -> void:
+	if mineral == null or not is_instance_valid(mineral):
+		return
+	_last_successful_mineral_target = mineral
+
+func _try_transition_to_last_successful_mineral() -> bool:
+	var remembered_target: Node3D = _last_successful_mineral_target
+	if remembered_target == null or not is_instance_valid(remembered_target):
+		_last_successful_mineral_target = null
+		return false
+	if _is_mineral_depleted(remembered_target):
+		_last_successful_mineral_target = null
+		return false
+	if _gather_target != null and _gather_target != remembered_target:
+		_abort_active_mining_target()
+	_gather_target = remembered_target
+	_log_mining_event("resume_last_success_mineral", {
+		"target": _mining_debug_target_name(remembered_target)
 	})
 	_set_mining_state(MiningState.MOVING_TO_MINERAL)
 	return true
@@ -1831,6 +1858,8 @@ func _on_mineral_depleted(mineral_node: Node) -> void:
 		_gather_target = null
 	if _mining_preferred_target == mineral:
 		_mining_preferred_target = null
+	if _last_successful_mineral_target == mineral:
+		_last_successful_mineral_target = null
 
 func _process_repair_cycle(delta: float) -> void:
 	if not is_worker:
