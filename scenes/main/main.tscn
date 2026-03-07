@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://scenes/world/resource_node.tscn" id="7_resource_node"]
 [ext_resource type="PackedScene" uid="uid://rru2owkiha5t" path="res://scenes/ui/rts_hud.tscn" id="8_hud"]
 [ext_resource type="Script" uid="uid://d0gb4hjf0ppu0" path="res://scripts/core/enemy_ai_manager.gd" id="9_enemy_ai"]
+[ext_resource type="Script" uid="uid://bxge5junqrf3v" path="res://scripts/core/camera_start_point.gd" id="10_camera_start"]
 
 [node name="Main" type="Node3D" unique_id=1580196605]
 script = ExtResource("1_game_manager")
@@ -165,6 +166,12 @@ max_visual_minerals = 15000
 transform = Transform3D(0.9776623, 0, -0.21018168, 0, 1, 0, 0.21018168, 0, 0.9776623, -26.902235, 0, -48.429787)
 total_minerals = 15000
 max_visual_minerals = 15000
+
+[node name="CameraStartPoint" type="Marker3D" parent="." unique_id=1203345807]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30.899948, 1.5735817, -43.733707)
+script = ExtResource("10_camera_start")
+camera_distance = 30.0
+intro_height_offset = 15.0
 
 [node name="RTSCamera" type="Camera3D" parent="." unique_id=1809562840]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 30, 24)

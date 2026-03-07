@@ -1,4 +1,4 @@
-﻿extends Camera3D
+extends Camera3D
 
 @export var pan_speed: float = 24.0
 @export var edge_scroll_enabled: bool = true
@@ -9,14 +9,35 @@
 @export var min_zoom: float = 10.0
 @export var max_zoom: float = 55.0
 @export var map_half_size: Vector2 = Vector2(58.0, 58.0)
+@export var start_point_path: NodePath = NodePath("../CameraStartPoint")
+@export var intro_enabled: bool = true
+@export var intro_lock_input: bool = true
+@export var intro_height_offset: float = 30.0
+@export var intro_duration: float = 1.6
+@export var intro_delay: float = 0.0
 
 var _target_zoom: float
+var _intro_playing: bool = false
 
 func _ready() -> void:
 	rotation_degrees = Vector3(-55.0, 0.0, 0.0)
-	_target_zoom = global_position.y
+	var start_anchor: Node3D = _resolve_start_anchor()
+	var start_position: Vector3 = _resolve_start_position(start_anchor)
+	start_position = _clamp_camera_to_map(start_position)
+	_target_zoom = clampf(start_position.y, min_zoom, max_zoom)
+	intro_height_offset = _start_anchor_number(start_anchor, "intro_height_offset", intro_height_offset)
+	intro_duration = _start_anchor_number(start_anchor, "intro_duration", intro_duration)
+	intro_delay = _start_anchor_number(start_anchor, "intro_delay", intro_delay)
+	intro_lock_input = _start_anchor_bool(start_anchor, "intro_lock_input", intro_lock_input)
+	if intro_enabled:
+		global_position = start_position + Vector3(0.0, maxf(0.0, intro_height_offset), 0.0)
+		_play_intro_to(start_position)
+	else:
+		global_position = start_position
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _intro_playing and intro_lock_input:
+		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_target_zoom = max(min_zoom, _target_zoom - zoom_speed)
@@ -24,6 +45,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_target_zoom = min(max_zoom, _target_zoom + zoom_speed)
 
 func _process(delta: float) -> void:
+	if _intro_playing and intro_lock_input:
+		return
 	var input_dir := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 	var edge_dir := _edge_scroll_direction()
 	var move_dir := input_dir + edge_dir
@@ -47,6 +70,62 @@ func _process(delta: float) -> void:
 	var zoom_diff := _target_zoom - global_position.y
 	if absf(zoom_diff) > 0.01:
 		global_position.y += zoom_diff * min(1.0, delta * 10.0)
+
+func _resolve_start_anchor() -> Node3D:
+	var start_node: Node3D = get_node_or_null(start_point_path) as Node3D
+	if start_node == null or not is_instance_valid(start_node):
+		return null
+	return start_node
+
+func _resolve_start_position(start_anchor: Node3D) -> Vector3:
+	if start_anchor == null:
+		return global_position
+	var aim_point: Vector3 = start_anchor.global_position
+	var camera_distance: float = _resolve_start_distance(start_anchor)
+	var forward: Vector3 = -global_transform.basis.z
+	if forward.length_squared() <= 0.0001:
+		forward = Vector3(0.0, -0.8, -0.6)
+	return aim_point - forward.normalized() * camera_distance
+
+func _resolve_start_distance(start_anchor: Node3D) -> float:
+	if start_anchor == null:
+		return maxf(8.0, global_position.length())
+	var fallback_distance: float = maxf(8.0, global_position.distance_to(start_anchor.global_position))
+	return _start_anchor_number(start_anchor, "camera_distance", fallback_distance)
+
+func _start_anchor_number(start_anchor: Node3D, property_name: String, fallback: float) -> float:
+	if start_anchor == null:
+		return fallback
+	var value: Variant = start_anchor.get(property_name)
+	if value is float or value is int:
+		return float(value)
+	return fallback
+
+func _start_anchor_bool(start_anchor: Node3D, property_name: String, fallback: bool) -> bool:
+	if start_anchor == null:
+		return fallback
+	var value: Variant = start_anchor.get(property_name)
+	if value is bool:
+		return value as bool
+	return fallback
+
+func _play_intro_to(target_position: Vector3) -> void:
+	_intro_playing = true
+	var tween: Tween = create_tween()
+	if intro_delay > 0.0:
+		tween.tween_interval(intro_delay)
+	tween.tween_property(self, "global_position", target_position, maxf(0.05, intro_duration)).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(Callable(self, "_on_intro_finished"))
+
+func _on_intro_finished() -> void:
+	_intro_playing = false
+	global_position = _clamp_camera_to_map(global_position)
+	_target_zoom = clampf(global_position.y, min_zoom, max_zoom)
+
+func _clamp_camera_to_map(position: Vector3) -> Vector3:
+	position.x = clampf(position.x, -map_half_size.x, map_half_size.x)
+	position.z = clampf(position.z, -map_half_size.y, map_half_size.y)
+	return position
 
 func _edge_scroll_direction() -> Vector2:
 	if not edge_scroll_enabled:
