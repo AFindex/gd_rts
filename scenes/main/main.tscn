@@ -9,7 +9,7 @@
 [ext_resource type="PackedScene" path="res://scenes/world/resource_node.tscn" id="7_resource_node"]
 [ext_resource type="PackedScene" uid="uid://rru2owkiha5t" path="res://scenes/ui/rts_hud.tscn" id="8_hud"]
 [ext_resource type="Script" uid="uid://d0gb4hjf0ppu0" path="res://scripts/core/enemy_ai_manager.gd" id="9_enemy_ai"]
-[ext_resource type="Script" uid="uid://bxge5junqrf3v" path="res://scripts/core/camera_start_point.gd" id="10_camera_start"]
+[ext_resource type="Script" path="res://scripts/core/camera_start_point.gd" id="10_camera_start"]
 
 [node name="Main" type="Node3D" unique_id=1580196605]
 script = ExtResource("1_game_manager")
