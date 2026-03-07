@@ -2247,12 +2247,13 @@ func _build_hud_snapshot() -> Dictionary:
 	var total_units: int = _count_total_units()
 	var queued_units: int = _count_total_queued_units()
 	var supply_used: int = total_units + queued_units
-	var top_legacy_text: String = _tf("M: %d   G: 0   Supply: %d/%d", [_minerals, supply_used, SUPPLY_CAP])
+	var supply_cap: int = _current_supply_cap()
+	var top_legacy_text: String = _tf("M: %d   G: 0   Supply: %d/%d", [_minerals, supply_used, supply_cap])
 	var snapshot: Dictionary = {
 		"minerals": _minerals,
 		"gas": 0,
 		"supply_used": supply_used,
-		"supply_cap": SUPPLY_CAP,
+		"supply_cap": supply_cap,
 		"top_legacy_text": top_legacy_text,
 		"input_state": _input_state_label(),
 		"mode": mode,
@@ -3124,10 +3125,35 @@ func _count_total_queued_units() -> int:
 		count += int(building_node.call("get_queue_size"))
 	return count
 
+func _building_supply_bonus(building_kind: String) -> int:
+	if building_kind == "":
+		return 0
+	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
+	return maxi(0, int(building_def.get("supply_bonus", 0)))
+
+func _count_supply_bonus_from_buildings() -> int:
+	var total_bonus: int = 0
+	var buildings: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
+	for building_node in buildings:
+		if building_node == null or not is_instance_valid(building_node):
+			continue
+		if not _is_player_owned(building_node):
+			continue
+		if building_node.has_method("is_alive") and not bool(building_node.call("is_alive")):
+			continue
+		if building_node.has_method("is_under_construction") and bool(building_node.call("is_under_construction")):
+			continue
+		var kind: String = str(building_node.get("building_kind"))
+		total_bonus += _building_supply_bonus(kind)
+	return maxi(0, total_bonus)
+
+func _current_supply_cap() -> int:
+	return maxi(1, SUPPLY_CAP + _count_supply_bonus_from_buildings())
+
 func _has_supply_for(extra_units: int = 1) -> bool:
 	if extra_units <= 0:
 		return true
-	return _count_total_units() + _count_total_queued_units() + extra_units <= SUPPLY_CAP
+	return _count_total_units() + _count_total_queued_units() + extra_units <= _current_supply_cap()
 
 func _selection_has_worker() -> bool:
 	for selected_unit in _command_units():

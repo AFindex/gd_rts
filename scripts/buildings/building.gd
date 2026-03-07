@@ -613,6 +613,9 @@ func _apply_building_visual() -> void:
 	if building_kind == "barracks":
 		building_color = Color(1.0, 0.6, 0.25, 1.0)
 		scale_factor = 1.3
+	elif building_kind == "supply_depot":
+		building_color = Color(0.86, 0.92, 0.76, 1.0)
+		scale_factor = 1.22
 	elif building_kind == "tower":
 		building_color = Color(0.95, 0.72, 0.3, 1.0)
 		scale_factor = 1.15

@@ -37,6 +37,15 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var mining_interaction_repath_interval: float = 0.35
 @export var interaction_nav_path_desired_distance: float = 0.65
 @export var interaction_nav_target_desired_distance: float = 0.28
+@export var nav_agent_radius: float = 0.32
+@export var nav_agent_height: float = 1.0
+@export var nav_avoidance_priority: float = 0.5
+@export var push_priority: int = 1
+@export var push_can_be_displaced: bool = true
+@export var push_allow_cross_team_displace: bool = false
+@export var push_yield_scan_interval: float = 0.08
+@export var push_yield_duration: float = 0.24
+@export var push_contact_padding: float = 0.1
 @export var hover_acceleration_time: float = 0.5
 @export var hover_deceleration_factor: float = 2.0
 @export var hover_brake_release_duration: float = 0.2
@@ -131,6 +140,9 @@ var _congestion_stuck_timer: float = 0.0
 var _congestion_release_timer: float = 0.0
 var _congestion_repath_cooldown: float = 0.0
 var _unit_collision_ghosted: bool = false
+var _priority_yield_collision_ghosted: bool = false
+var _push_yield_timer: float = 0.0
+var _push_yield_scan_timer: float = 0.0
 var _stuck_log_accum: float = 0.0
 var _last_desired_velocity: Vector3 = Vector3.ZERO
 var _default_collision_mask: int = 0
@@ -187,6 +199,7 @@ func _physics_process(delta: float) -> void:
 		_process_combat_cycle(delta)
 	_sync_worker_collection_navigation_profile()
 	_sync_navigation_precision_profile()
+	_process_priority_push_yield(delta)
 	_apply_movement(delta)
 	_process_command_queue()
 
@@ -205,6 +218,26 @@ func get_unit_role_tag() -> String:
 
 func get_unit_kind() -> String:
 	return "worker" if is_worker else "soldier"
+
+func get_push_priority() -> int:
+	return push_priority
+
+func can_be_displaced_by_push() -> bool:
+	return push_can_be_displaced
+
+func get_push_body_radius() -> float:
+	return _agent_radius_xz()
+
+func has_active_push_motion() -> bool:
+	if _construction_hidden:
+		return false
+	if _worker_collection_profile_active:
+		return true
+	if _has_target:
+		return true
+	if _last_desired_velocity.length_squared() > 0.01:
+		return true
+	return velocity.length_squared() > 0.01
 
 func get_skill_ids() -> Array[String]:
 	if _construction_lock_mode == ConstructionLockMode.CAST:
@@ -352,6 +385,7 @@ func set_worker_role(worker: bool) -> void:
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
+	_sync_sprite_to_collider()
 	_update_health_bar_visual()
 
 func submit_command(command: RefCounted) -> bool:
@@ -2101,9 +2135,38 @@ func _apply_runtime_config_for_role() -> void:
 	attack_damage = float(unit_def.get("attack_damage", attack_damage))
 	attack_range = float(unit_def.get("attack_range", attack_range))
 	attack_cooldown = float(unit_def.get("attack_cooldown", attack_cooldown))
+	nav_agent_radius = maxf(0.08, float(unit_def.get("nav_agent_radius", nav_agent_radius)))
+	nav_agent_height = maxf(0.2, float(unit_def.get("nav_agent_height", nav_agent_height)))
+	nav_avoidance_priority = clampf(float(unit_def.get("nav_avoidance_priority", nav_avoidance_priority)), 0.0, 1.0)
+	push_priority = int(unit_def.get("push_priority", push_priority))
+	push_can_be_displaced = bool(unit_def.get("push_can_be_displaced", push_can_be_displaced))
+	push_allow_cross_team_displace = bool(unit_def.get("push_allow_cross_team_displace", push_allow_cross_team_displace))
+	var body_radius: float = float(unit_def.get("body_radius", -1.0))
+	if body_radius > 0.0:
+		_apply_body_radius_profile(body_radius)
+	_apply_nav_avoidance_profile()
 	if _nav_agent != null:
 		_nav_agent.max_speed = move_speed
 	_update_health_bar_visual()
+
+func _apply_body_radius_profile(body_radius: float) -> void:
+	var shape_node: CollisionShape3D = get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node != null and shape_node.shape is CapsuleShape3D:
+		var source_capsule: CapsuleShape3D = shape_node.shape as CapsuleShape3D
+		var capsule: CapsuleShape3D = source_capsule.duplicate(true) as CapsuleShape3D
+		if capsule != null:
+			capsule.radius = clampf(body_radius, 0.12, 1.5)
+			shape_node.shape = capsule
+	var obstacle_node: NavigationObstacle3D = get_node_or_null("Obstacle3D") as NavigationObstacle3D
+	if obstacle_node != null:
+		obstacle_node.set("radius", clampf(body_radius + 0.05, 0.12, 1.8))
+
+func _apply_nav_avoidance_profile() -> void:
+	if _nav_agent == null:
+		return
+	_nav_agent.radius = maxf(0.08, nav_agent_radius)
+	_nav_agent.height = maxf(0.2, nav_agent_height)
+	_nav_agent.avoidance_priority = clampf(nav_avoidance_priority, 0.0, 1.0)
 
 func _target_is_enemy(target_node) -> bool:
 	if target_node == null:
@@ -2234,6 +2297,9 @@ func _set_construction_hidden(hidden: bool) -> void:
 			remove_from_group("selectable_unit")
 		collision_layer = 0
 		collision_mask = 0
+		_push_yield_timer = 0.0
+		_push_yield_scan_timer = 0.0
+		_set_priority_yield_collision_ghosted(false)
 		_reset_congestion_ghosting()
 		if _nav_agent != null:
 			_nav_agent.avoidance_enabled = false
@@ -2258,8 +2324,7 @@ func _setup_navigation_agent() -> void:
 	_nav_agent.path_desired_distance = _default_nav_path_desired_distance
 	_nav_agent.target_desired_distance = _default_nav_target_desired_distance
 	_nav_agent.avoidance_enabled = true
-	_nav_agent.radius = 0.32
-	_nav_agent.height = 1.0
+	_apply_nav_avoidance_profile()
 	var callback: Callable = Callable(self, "_on_nav_velocity_computed")
 	if not _nav_agent.is_connected("velocity_computed", callback):
 		_nav_agent.connect("velocity_computed", callback)
@@ -2384,7 +2449,7 @@ func _refresh_unit_collision_mask() -> void:
 		desired_layer |= WORKER_COLLECTION_GHOST_LAYER_BIT
 		desired_mask &= ~UNIT_COLLISION_LAYER_BIT
 		desired_mask &= ~BUILDING_COLLISION_LAYER_BIT
-	elif _unit_collision_ghosted:
+	elif _unit_collision_ghosted or _priority_yield_collision_ghosted:
 		# Congestion ghosting only needs to pass through other units.
 		desired_layer &= ~UNIT_COLLISION_LAYER_BIT
 		desired_layer |= WORKER_COLLECTION_GHOST_LAYER_BIT
@@ -2400,14 +2465,68 @@ func _set_unit_collision_ghosted(ghosted: bool) -> void:
 	_unit_collision_ghosted = ghosted
 	_refresh_unit_collision_mask()
 
+func _set_priority_yield_collision_ghosted(ghosted: bool) -> void:
+	if _priority_yield_collision_ghosted == ghosted:
+		return
+	_priority_yield_collision_ghosted = ghosted
+	_refresh_unit_collision_mask()
+
 func _reset_congestion_ghosting() -> void:
 	_congestion_stuck_timer = 0.0
 	_congestion_release_timer = 0.0
 	_congestion_repath_cooldown = 0.0
 	_set_unit_collision_ghosted(false)
 
+func _process_priority_push_yield(delta: float) -> void:
+	_push_yield_timer = maxf(0.0, _push_yield_timer - delta)
+	_push_yield_scan_timer = maxf(0.0, _push_yield_scan_timer - delta)
+	if _construction_hidden or _worker_collection_profile_active:
+		if _priority_yield_collision_ghosted:
+			_set_priority_yield_collision_ghosted(false)
+		return
+	var should_yield: bool = _push_yield_timer > 0.0
+	if push_can_be_displaced and _push_yield_scan_timer <= 0.0:
+		_push_yield_scan_timer = maxf(0.03, push_yield_scan_interval)
+		if _should_yield_to_higher_priority_unit():
+			_push_yield_timer = maxf(_push_yield_timer, maxf(0.05, push_yield_duration))
+			should_yield = true
+	_set_priority_yield_collision_ghosted(should_yield)
+
+func _should_yield_to_higher_priority_unit() -> bool:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return false
+	var self_radius: float = _agent_radius_xz()
+	var check_padding: float = maxf(0.0, push_contact_padding)
+	var nodes: Array[Node] = tree.get_nodes_in_group("selectable_unit")
+	for node in nodes:
+		if node == self:
+			continue
+		var other: Node3D = node as Node3D
+		if other == null or not is_instance_valid(other):
+			continue
+		if other.has_method("is_alive") and not bool(other.call("is_alive")):
+			continue
+		if not push_allow_cross_team_displace and other.has_method("get_team_id"):
+			if int(other.call("get_team_id")) != team_id:
+				continue
+		if not other.has_method("get_push_priority"):
+			continue
+		var other_priority: int = int(other.call("get_push_priority"))
+		if other_priority <= push_priority:
+			continue
+		if other.has_method("has_active_push_motion") and not bool(other.call("has_active_push_motion")):
+			continue
+		var other_radius: float = 0.32
+		if other.has_method("get_push_body_radius"):
+			other_radius = maxf(0.05, float(other.call("get_push_body_radius")))
+		var trigger_distance: float = self_radius + other_radius + check_padding
+		if RTS_INTERACTION.flat_distance_xz(global_position, other.global_position) <= trigger_distance:
+			return true
+	return false
+
 func _update_congestion_state(delta: float, target_distance: float, desired_speed: float, frame_start_position: Vector3) -> void:
-	if not congestion_ghosting_enabled or _worker_collection_profile_active or _construction_hidden:
+	if not congestion_ghosting_enabled or _worker_collection_profile_active or _construction_hidden or not push_can_be_displaced:
 		_reset_congestion_ghosting()
 		return
 	_congestion_repath_cooldown = maxf(0.0, _congestion_repath_cooldown - delta)
