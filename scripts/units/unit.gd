@@ -33,6 +33,7 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var mining_delivery_duration: float = 0.5
 @export var gather_trigger_buffer: float = 0.12
 @export var dropoff_trigger_buffer: float = 0.25
+@export var interaction_edge_padding: float = 0.03
 @export var mining_interaction_repath_interval: float = 0.35
 @export var interaction_nav_path_desired_distance: float = 0.65
 @export var interaction_nav_target_desired_distance: float = 0.28
@@ -51,6 +52,7 @@ const HEALTH_BAR_PADDING: float = 0.02
 @export var max_command_queue: int = 32
 @export var debug_nav_log: bool = false
 @export var debug_nav_log_interval: float = 0.8
+@export var debug_nav_draw_path: bool = false
 @export var debug_mining_log: bool = false
 @export var debug_mining_log_interval: float = 0.8
 @export var debug_mining_stall_threshold: float = 2.0
@@ -153,6 +155,8 @@ var _outline_sprite: Sprite3D = null
 var _outline_material: StandardMaterial3D = null
 var _outline_timer: float = 0.0
 var _outline_visible: bool = false
+var _nav_debug_draw_initialized: bool = false
+var _nav_debug_draw_last_enabled: bool = false
 
 signal command_queue_changed
 
@@ -172,6 +176,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_update_sprite_outline(delta)
+	_sync_nav_debug_draw()
 
 func _physics_process(delta: float) -> void:
 	if _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE:
@@ -915,7 +920,7 @@ func _set_mining_state(next_state: int) -> void:
 			_mining_queue_timer = 0.0
 			_mining_interaction_repath_timer = 0.0
 			if _gather_target != null and is_instance_valid(_gather_target):
-				_move_to(_gather_target.global_position)
+				_move_to(_mining_gather_approach_point(_gather_target))
 		MiningState.QUEUED:
 			_mode = UnitMode.GATHER_RESOURCE
 			_mining_queue_timer = 0.0
@@ -935,7 +940,7 @@ func _set_mining_state(next_state: int) -> void:
 			if _dropoff_target == null or not is_instance_valid(_dropoff_target):
 				_dropoff_target = _nearest_valid_dropoff(global_position)
 			if _dropoff_target != null and is_instance_valid(_dropoff_target):
-				_move_to(_dropoff_target.global_position)
+				_move_to(_mining_dropoff_approach_point(_dropoff_target))
 		MiningState.DELIVERING:
 			_mode = UnitMode.RETURN_RESOURCE
 			_mining_delivery_timer = 0.0
@@ -1112,7 +1117,7 @@ func _process_moving_to_mineral_state(_delta: float) -> void:
 		return
 	var contact_range: float = _effective_gather_contact_range(_gather_target)
 	if not _has_target:
-		_move_to(_gather_target.global_position)
+		_move_to(_mining_gather_approach_point(_gather_target))
 	var in_hard_contact: bool = RTS_INTERACTION.is_within_distance_xz(global_position, _gather_target.global_position, contact_range)
 	var anchor_contact: bool = false
 	if not in_hard_contact and _has_target:
@@ -1247,7 +1252,7 @@ func _process_moving_to_base_state(_delta: float) -> void:
 		_set_mining_state(MiningState.DELIVERING)
 		return
 	if not _has_target:
-		_move_to(_dropoff_target.global_position)
+		_move_to(_mining_dropoff_approach_point(_dropoff_target))
 
 func _process_delivering_state(delta: float) -> void:
 	if _dropoff_target == null or not is_instance_valid(_dropoff_target):
@@ -1256,7 +1261,7 @@ func _process_delivering_state(delta: float) -> void:
 			_log_mining_event("no_dropoff_while_delivering")
 			_stop_worker_cycle(false)
 			return
-		_move_to(_dropoff_target.global_position)
+		_move_to(_mining_dropoff_approach_point(_dropoff_target))
 		_set_mining_state(MiningState.MOVING_TO_BASE)
 		return
 
@@ -1362,6 +1367,32 @@ func _queue_anchor_for_mineral(mineral: Node3D) -> Vector3:
 	anchor_direction = anchor_direction.normalized()
 	var offset: float = maxf(_effective_gather_contact_range(mineral) + 0.1, mining_queue_distance)
 	return mineral.global_position + anchor_direction * offset
+
+func _mining_gather_approach_point(mineral: Node3D) -> Vector3:
+	return _interaction_edge_approach_point(mineral, true)
+
+func _mining_dropoff_approach_point(dropoff: Node3D) -> Vector3:
+	return _interaction_edge_approach_point(dropoff, true)
+
+func _interaction_edge_approach_point(target_node: Node3D, include_obstacle: bool) -> Vector3:
+	if target_node == null or not is_instance_valid(target_node):
+		return global_position
+	var outward: Vector3 = global_position - target_node.global_position
+	outward.y = 0.0
+	if outward.length_squared() <= 0.0001 and _has_target:
+		outward = _target_position - target_node.global_position
+		outward.y = 0.0
+	if outward.length_squared() <= 0.0001:
+		outward = Vector3.RIGHT
+	var direction: Vector3 = outward.normalized()
+	var target_radius: float = RTS_INTERACTION.collision_radius_xz(target_node, false)
+	if include_obstacle:
+		target_radius = maxf(target_radius, RTS_INTERACTION.obstacle_radius_xz(target_node))
+	var edge_padding: float = clampf(interaction_edge_padding, 0.0, 0.25)
+	var distance_from_target: float = maxf(0.05, target_radius + edge_padding)
+	var approach_point: Vector3 = target_node.global_position + direction * distance_from_target
+	approach_point.y = global_position.y
+	return approach_point
 
 func _effective_gather_contact_range(mineral: Node3D) -> float:
 	return RTS_INTERACTION.compute_trigger_distance(
@@ -2232,8 +2263,18 @@ func _setup_navigation_agent() -> void:
 	var callback: Callable = Callable(self, "_on_nav_velocity_computed")
 	if not _nav_agent.is_connected("velocity_computed", callback):
 		_nav_agent.connect("velocity_computed", callback)
+	_sync_nav_debug_draw()
 	_sync_worker_collection_navigation_profile()
 	_sync_navigation_precision_profile()
+
+func _sync_nav_debug_draw() -> void:
+	if _nav_agent == null:
+		return
+	if _nav_debug_draw_initialized and _nav_debug_draw_last_enabled == debug_nav_draw_path:
+		return
+	_nav_agent.debug_enabled = debug_nav_draw_path
+	_nav_debug_draw_last_enabled = debug_nav_draw_path
+	_nav_debug_draw_initialized = true
 
 func _can_use_navigation() -> bool:
 	if _nav_agent == null:

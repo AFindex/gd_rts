@@ -64,6 +64,7 @@ is_worker = true
 [node name="WorkerC3" parent="Units" unique_id=1420058558 instance=ExtResource("3_unit")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3844347, 0, 8.1577)
 is_worker = true
+debug_nav_draw_path = true
 debug_mining_log = true
 
 [node name="WorkerA4" parent="Units" unique_id=398429407 instance=ExtResource("3_unit")]
@@ -109,10 +110,12 @@ is_worker = true
 [node name="WorkerB7" parent="Units" unique_id=857112868 instance=ExtResource("3_unit")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.4931674, 0, 5.055523)
 is_worker = true
+debug_nav_draw_path = true
 
 [node name="WorkerC7" parent="Units" unique_id=404307448 instance=ExtResource("3_unit")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.4931674, 0, 7.055523)
 is_worker = true
+debug_nav_draw_path = true
 
 [node name="WorkerA8" parent="Units" unique_id=1160628764 instance=ExtResource("3_unit")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.249739, 3.8146973e-06, -7.7578163)
