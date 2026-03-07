@@ -4,6 +4,8 @@ const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
 const RTS_INTERACTION: Script = preload("res://scripts/core/rts_interaction.gd")
 const RALLY_MAX_HOPS: int = 3
 const RALLY_ALERT_DURATION: float = 1.2
+const QUEUE_ENTRY_TYPE_UNIT: String = "unit"
+const QUEUE_ENTRY_TYPE_RESEARCH: String = "research"
 const CONSTRUCTION_PARADIGM_SUMMONING: String = "summoning"
 const CONSTRUCTION_PARADIGM_GARRISONED: String = "garrisoned"
 const CONSTRUCTION_PARADIGM_INCORPORATED: String = "incorporated"
@@ -26,6 +28,7 @@ const BASE_MINING_UI_LABEL_Y_OFFSET: float = 0.92
 @export var base_mining_ui_scan_radius: float = 26.0
 
 signal production_finished(unit_kind: String, spawn_position: Vector3)
+signal research_finished(tech_id: String)
 signal construction_state_changed(event_type: String, payload: Dictionary)
 
 @export var building_kind: String = "base"
@@ -48,8 +51,7 @@ signal construction_state_changed(event_type: String, payload: Dictionary)
 @onready var _selection_ring: MeshInstance3D = $SelectionRing
 @onready var _sprite: Sprite3D = $Sprite3D
 
-var _queue_unit_kinds: Array[String] = []
-var _queue_build_times: Array[float] = []
+var _production_queue: Array[Dictionary] = []
 var _production_timer: float = 0.0
 var _health: float = 1200.0
 var _attack_target: Node = null
@@ -110,17 +112,22 @@ func _process(delta: float) -> void:
 		_process_construction(delta)
 		return
 
-	if _queue_unit_kinds.is_empty():
+	if _production_queue.is_empty():
 		_production_timer = 0.0
 	else:
 		_production_timer += delta
-		var current_build_time: float = _queue_build_times[0]
+		var current_entry: Dictionary = _production_queue[0]
+		var current_build_time: float = maxf(0.01, float(current_entry.get("build_time", 0.01)))
 		if _production_timer >= current_build_time:
 			_production_timer = 0.0
-			var unit_kind: String = _queue_unit_kinds[0]
-			_queue_unit_kinds.remove_at(0)
-			_queue_build_times.remove_at(0)
-			emit_signal("production_finished", unit_kind, _get_spawn_position())
+			_production_queue.remove_at(0)
+			var entry_type: String = str(current_entry.get("entry_type", QUEUE_ENTRY_TYPE_UNIT))
+			var entry_id: String = str(current_entry.get("entry_id", "")).strip_edges()
+			if entry_type == QUEUE_ENTRY_TYPE_RESEARCH:
+				if entry_id != "":
+					emit_signal("research_finished", entry_id)
+			elif entry_id != "":
+				emit_signal("production_finished", entry_id, _get_spawn_position())
 
 	if building_kind == "tower":
 		_process_tower_combat(delta)
@@ -188,19 +195,68 @@ func can_queue_soldier_unit() -> bool:
 func queue_worker() -> bool:
 	if not can_queue_worker_unit():
 		return false
-	_queue_unit_kinds.append("worker")
-	_queue_build_times.append(worker_build_time)
-	return true
+	return _enqueue_production_entry(QUEUE_ENTRY_TYPE_UNIT, "worker", worker_build_time)
 
 func queue_soldier() -> bool:
 	if not can_queue_soldier_unit():
 		return false
-	_queue_unit_kinds.append("soldier")
-	_queue_build_times.append(soldier_build_time)
-	return true
+	return _enqueue_production_entry(QUEUE_ENTRY_TYPE_UNIT, "soldier", soldier_build_time)
+
+func can_queue_research_tech(tech_id: String) -> bool:
+	if _construction_active:
+		return false
+	var normalized: String = tech_id.strip_edges()
+	if normalized == "":
+		return false
+	if not _supports_research_tech(normalized):
+		return false
+	return not is_queue_full()
+
+func queue_research_tech(tech_id: String, research_time: float) -> bool:
+	if not can_queue_research_tech(tech_id):
+		return false
+	var normalized: String = tech_id.strip_edges()
+	if normalized == "":
+		return false
+	return _enqueue_production_entry(QUEUE_ENTRY_TYPE_RESEARCH, normalized, research_time)
+
+func has_tech_in_queue(tech_id: String) -> bool:
+	var normalized: String = tech_id.strip_edges()
+	if normalized == "":
+		return false
+	for entry in _production_queue:
+		if str(entry.get("entry_type", "")) != QUEUE_ENTRY_TYPE_RESEARCH:
+			continue
+		if str(entry.get("entry_id", "")).strip_edges() == normalized:
+			return true
+	return false
+
+func get_active_research_info() -> Dictionary:
+	if _production_queue.is_empty():
+		return {}
+	var entry: Dictionary = _production_queue[0]
+	if str(entry.get("entry_type", "")) != QUEUE_ENTRY_TYPE_RESEARCH:
+		return {}
+	var tech_id: String = str(entry.get("entry_id", "")).strip_edges()
+	if tech_id == "":
+		return {}
+	var total: float = maxf(0.01, float(entry.get("build_time", 0.01)))
+	var remaining: float = clampf(total - _production_timer, 0.0, total)
+	return {
+		"tech_id": tech_id,
+		"remaining": remaining,
+		"total": total
+	}
+
+func get_queued_unit_count() -> int:
+	var count: int = 0
+	for entry in _production_queue:
+		if str(entry.get("entry_type", "")) == QUEUE_ENTRY_TYPE_UNIT:
+			count += 1
+	return count
 
 func get_queue_size() -> int:
-	return _queue_unit_kinds.size()
+	return _production_queue.size()
 
 func get_queue_limit() -> int:
 	return queue_limit
@@ -208,31 +264,32 @@ func get_queue_limit() -> int:
 func is_queue_full() -> bool:
 	if queue_limit <= 0:
 		return true
-	return _queue_unit_kinds.size() >= queue_limit
+	return _production_queue.size() >= queue_limit
 
 func has_active_queue() -> bool:
-	return not _queue_unit_kinds.is_empty()
+	return not _production_queue.is_empty()
 
 func get_production_progress() -> float:
-	if _queue_unit_kinds.is_empty():
+	if _production_queue.is_empty():
 		return 0.0
-	var current_build_time: float = _queue_build_times[0]
+	var current_entry: Dictionary = _production_queue[0]
+	var current_build_time: float = maxf(0.01, float(current_entry.get("build_time", 0.01)))
 	if current_build_time <= 0.0:
 		return 1.0
 	return clampf(_production_timer / current_build_time, 0.0, 1.0)
 
 func get_primary_queue_kind() -> String:
-	if _queue_unit_kinds.is_empty():
+	if _production_queue.is_empty():
 		return ""
-	return _queue_unit_kinds[0]
+	return str(_production_queue[0].get("entry_id", ""))
 
 func get_queue_preview(max_items: int = 5) -> Array[String]:
 	var preview: Array[String] = []
 	if max_items <= 0:
 		return preview
-	var max_count: int = mini(max_items, _queue_unit_kinds.size())
+	var max_count: int = mini(max_items, _production_queue.size())
 	for i in max_count:
-		preview.append(_format_unit_kind(_queue_unit_kinds[i]))
+		preview.append(_format_queue_entry_label(_production_queue[i]))
 	return preview
 
 func get_building_display_name() -> String:
@@ -279,9 +336,7 @@ func has_construction_assigned_worker() -> bool:
 	return str(_construction_assigned_worker_path) != ""
 
 func start_construction(paradigm: String, build_time: float, assigned_worker: Node = null, build_cost: int = 0, cancel_refund_ratio: float = 0.75) -> void:
-	_queue_unit_kinds.clear()
-	_queue_build_times.clear()
-	_production_timer = 0.0
+	_clear_production_queue()
 	_construction_active = true
 	_construction_paused = false
 	_construction_pause_reason = ""
@@ -631,9 +686,7 @@ func _sync_rally_legacy_fields() -> void:
 
 func configure_by_kind(kind: String) -> void:
 	_apply_building_config(kind)
-	_queue_unit_kinds.clear()
-	_queue_build_times.clear()
-	_production_timer = 0.0
+	_clear_production_queue()
 	_rally_alert_timer = 0.0
 	_attack_target = null
 	_attack_timer = 0.0
@@ -839,6 +892,43 @@ func _format_unit_kind(unit_kind: String) -> String:
 	if unit_kind == "soldier":
 		return tr("Soldier")
 	return tr(unit_kind.capitalize())
+
+func _format_queue_entry_label(entry: Dictionary) -> String:
+	var entry_type: String = str(entry.get("entry_type", QUEUE_ENTRY_TYPE_UNIT))
+	var entry_id: String = str(entry.get("entry_id", "")).strip_edges()
+	if entry_id == "":
+		return tr("Unknown")
+	if entry_type == QUEUE_ENTRY_TYPE_RESEARCH:
+		var tech_def: Dictionary = RTS_CATALOG.get_tech_def(entry_id)
+		return str(tech_def.get("display_name", tr(entry_id.capitalize())))
+	return _format_unit_kind(entry_id)
+
+func _supports_research_tech(tech_id: String) -> bool:
+	if tech_id == "":
+		return false
+	var building_skill_ids: Array[String] = RTS_CATALOG.get_building_skill_ids(building_kind)
+	for skill_id in building_skill_ids:
+		if RTS_CATALOG.get_tech_id_from_skill(skill_id) == tech_id:
+			return true
+	return false
+
+func _enqueue_production_entry(entry_type: String, entry_id: String, build_time: float) -> bool:
+	if is_queue_full():
+		return false
+	var normalized_id: String = entry_id.strip_edges()
+	if normalized_id == "":
+		return false
+	var clamped_time: float = maxf(0.01, build_time)
+	_production_queue.append({
+		"entry_type": entry_type,
+		"entry_id": normalized_id,
+		"build_time": clamped_time
+	})
+	return true
+
+func _clear_production_queue() -> void:
+	_production_queue.clear()
+	_production_timer = 0.0
 
 func _apply_building_config(kind: String) -> void:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(kind)

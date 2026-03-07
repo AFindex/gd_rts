@@ -954,7 +954,14 @@ func _apply_command_entries(entries_variant: Variant) -> void:
 	if entries_variant is Array:
 		entries = entries_variant
 
-	if entries.is_empty():
+	var has_entries: bool = not entries.is_empty()
+	if _command_panel != null:
+		_command_panel.visible = has_entries
+	if _command_grid != null:
+		_command_grid.visible = has_entries
+	if not has_entries:
+		if _command_hint_text != null:
+			_command_hint_text.visible = false
 		_set_command_hover_default()
 
 	for i in _command_items.size():

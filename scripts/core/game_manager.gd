@@ -262,25 +262,32 @@ func _process(delta: float) -> void:
 		_hint_refresh_accum = 0.0
 		_refresh_hint_label()
 
-func _process_active_research(delta: float) -> void:
-	if _active_research.is_empty():
-		return
-	var finished: Array[String] = []
-	for tech_key in _active_research.keys():
-		var tech_id: String = str(tech_key)
-		var entry: Variant = _active_research.get(tech_id, {})
-		if not (entry is Dictionary):
-			finished.append(tech_id)
+func _process_active_research(_delta: float) -> void:
+	_active_research.clear()
+	var buildings: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
+	for building_node in buildings:
+		if building_node == null or not is_instance_valid(building_node):
 			continue
-		var task: Dictionary = entry as Dictionary
-		var remaining: float = maxf(0.0, float(task.get("remaining", 0.0)) - delta)
-		task["remaining"] = remaining
-		_active_research[tech_id] = task
-		if remaining <= 0.0:
-			finished.append(tech_id)
-	for tech_id in finished:
-		_active_research.erase(tech_id)
-		unlock_tech(tech_id)
+		if not _is_player_owned(building_node):
+			continue
+		if not building_node.has_method("get_active_research_info"):
+			continue
+		var info_value: Variant = building_node.call("get_active_research_info")
+		if not (info_value is Dictionary):
+			continue
+		var info: Dictionary = info_value as Dictionary
+		var tech_id: String = str(info.get("tech_id", "")).strip_edges()
+		if tech_id == "":
+			continue
+		if has_tech(tech_id):
+			continue
+		var total: float = maxf(0.01, float(info.get("total", 0.01)))
+		var remaining: float = clampf(float(info.get("remaining", total)), 0.0, total)
+		_active_research[tech_id] = {
+			"remaining": remaining,
+			"total": total,
+			"building_path": building_node.get_path()
+		}
 
 func _process_match_rules(delta: float) -> void:
 	if _match_outcome_rule_id != "":
@@ -2930,14 +2937,6 @@ func _build_command_entries() -> Array[Dictionary]:
 		entries.append(_command_entry(skill_id, _command_overrides_for(skill_id)))
 	if not _collect_target_construction_sites(false, true, "", true).is_empty():
 		_append_command_entry_if_missing(entries, "construction_cancel_destroy")
-	if not entries.is_empty():
-		return entries
-
-	entries.append(_command_entry("build_menu", {
-		"enabled": _can_open_build_menu(),
-		"disabled_reason": _build_menu_disabled_reason()
-	}))
-	entries.append(_command_entry("menu"))
 	return entries
 
 func _command_entry(skill_id: String, overrides: Dictionary = {}) -> Dictionary:
@@ -3298,9 +3297,10 @@ func _count_total_queued_units() -> int:
 			continue
 		if not _is_player_owned(building_node):
 			continue
-		if not building_node.has_method("get_queue_size"):
-			continue
-		count += int(building_node.call("get_queue_size"))
+		if building_node.has_method("get_queued_unit_count"):
+			count += int(building_node.call("get_queued_unit_count"))
+		elif building_node.has_method("get_queue_size"):
+			count += int(building_node.call("get_queue_size"))
 	return count
 
 func _building_supply_bonus(building_kind: String) -> int:
@@ -3529,9 +3529,20 @@ func _selection_has_skill(skill_id: String) -> bool:
 	return skill_ids.has(skill_id)
 
 func _is_tech_researching(tech_id: String) -> bool:
-	if tech_id == "":
+	var normalized: String = tech_id.strip_edges()
+	if normalized == "":
 		return false
-	return _active_research.has(tech_id)
+	var buildings: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
+	for building_node in buildings:
+		if building_node == null or not is_instance_valid(building_node):
+			continue
+		if not _is_player_owned(building_node):
+			continue
+		if not building_node.has_method("has_tech_in_queue"):
+			continue
+		if bool(building_node.call("has_tech_in_queue", normalized)):
+			return true
+	return _active_research.has(normalized)
 
 func _research_skill_block_reason(skill_id: String) -> String:
 	var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
@@ -3551,7 +3562,24 @@ func _research_skill_block_reason(skill_id: String) -> String:
 		return _t("Invalid research cost.")
 	if _minerals < research_cost:
 		return _t("Not enough minerals.")
+	if _find_selected_research_queue_building(tech_id) == null:
+		return _t("All selected research queues are full.")
 	return ""
+
+func _find_selected_research_queue_building(tech_id: String) -> Node:
+	var normalized: String = tech_id.strip_edges()
+	if normalized == "":
+		return null
+	for selected_building in _selected_buildings:
+		if selected_building == null or not is_instance_valid(selected_building):
+			continue
+		if not _is_player_owned(selected_building):
+			continue
+		if not selected_building.has_method("can_queue_research_tech"):
+			continue
+		if bool(selected_building.call("can_queue_research_tech", normalized)):
+			return selected_building
+	return null
 
 func _research_skill_cooldown_ratio(skill_id: String) -> float:
 	var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
@@ -3572,6 +3600,9 @@ func _start_research_skill(skill_id: String) -> bool:
 	var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
 	if tech_id == "":
 		return false
+	var source_building: Node = _find_selected_research_queue_building(tech_id)
+	if source_building == null:
+		return false
 	var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
 	if not try_spend_minerals(research_cost):
 		return false
@@ -3579,10 +3610,14 @@ func _start_research_skill(skill_id: String) -> bool:
 	if research_time <= 0.0:
 		unlock_tech(tech_id)
 		return true
-	_active_research[tech_id] = {
-		"remaining": research_time,
-		"total": research_time
-	}
+	if not source_building.has_method("queue_research_tech"):
+		add_minerals(research_cost)
+		return false
+	var queued: bool = bool(source_building.call("queue_research_tech", tech_id, research_time))
+	if not queued:
+		add_minerals(research_cost)
+		return false
+	_process_active_research(0.0)
 	return true
 
 func _can_start_build_skill(skill_id: String) -> bool:
@@ -5735,6 +5770,10 @@ func _register_building(building_node: Node) -> void:
 		var callback: Callable = Callable(self , "_on_building_production_finished").bind(building_node)
 		if not building_node.is_connected("production_finished", callback):
 			building_node.connect("production_finished", callback)
+	if building_node.has_signal("research_finished"):
+		var research_callback: Callable = Callable(self, "_on_building_research_finished").bind(building_node)
+		if not building_node.is_connected("research_finished", research_callback):
+			building_node.connect("research_finished", research_callback)
 	if building_node.has_signal("construction_state_changed"):
 		var construction_callback: Callable = Callable(self , "_on_building_construction_state_changed").bind(building_node)
 		if not building_node.is_connected("construction_state_changed", construction_callback):
@@ -5803,6 +5842,15 @@ func _on_nav_region_bake_finished() -> void:
 
 func _on_building_production_finished(unit_kind: String, spawn_position: Vector3, source_building: Node = null) -> void:
 	_spawn_unit(unit_kind, spawn_position, source_building)
+
+func _on_building_research_finished(tech_id: String, _source_building: Node = null) -> void:
+	var normalized: String = tech_id.strip_edges()
+	if normalized == "":
+		return
+	if unlock_tech(normalized):
+		_set_ui_notice(_tf("Research complete: %s.", [_tech_display_name(normalized)]), 1.2)
+	_process_active_research(0.0)
+	_refresh_hint_label()
 
 func _on_building_construction_state_changed(event_type: String, payload: Dictionary, source_building: Node = null) -> void:
 	if source_building == null or not is_instance_valid(source_building):
