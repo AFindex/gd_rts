@@ -11,6 +11,8 @@ const HEALTH_BAR_WORLD_HEIGHT: float = 2.02
 const HEALTH_BAR_WIDTH: float = 1.0
 const HEALTH_BAR_HEIGHT: float = 0.12
 const HEALTH_BAR_PADDING: float = 0.02
+const MINING_BALANCE_ASSIGNED_WEIGHT: float = 7.5
+const MINING_BALANCE_OVER_OPTIMAL_WEIGHT: float = 16.0
 
 @export var sprite_match_collider: bool = true
 @export var sprite_outline_enabled: bool = true
@@ -401,6 +403,15 @@ func is_collecting_for_dropoff(dropoff_node: Node) -> bool:
 	if _dropoff_target != dropoff_node:
 		return false
 	return _mode == UnitMode.GATHER_RESOURCE or _mode == UnitMode.RETURN_RESOURCE
+
+func get_active_mining_target() -> Node3D:
+	if not is_worker:
+		return null
+	if _gather_target == null or not is_instance_valid(_gather_target):
+		return null
+	if _mode != UnitMode.GATHER_RESOURCE and _mode != UnitMode.RETURN_RESOURCE:
+		return null
+	return _gather_target
 
 func set_worker_role(worker: bool) -> void:
 	is_worker = worker
@@ -1541,11 +1552,18 @@ func _try_transition_to_last_successful_mineral() -> bool:
 	if _is_mineral_depleted(remembered_target):
 		_last_successful_mineral_target = null
 		return false
+	var worker_load_map: Dictionary = _build_mineral_worker_load_map()
+	var assigned_workers: int = int(worker_load_map.get(remembered_target.get_instance_id(), 0))
+	var optimal_workers: int = _mineral_optimal_worker_count(remembered_target)
+	if assigned_workers > optimal_workers:
+		return false
 	if _gather_target != null and _gather_target != remembered_target:
 		_abort_active_mining_target()
 	_gather_target = remembered_target
 	_log_mining_event("resume_last_success_mineral", {
-		"target": _mining_debug_target_name(remembered_target)
+		"target": _mining_debug_target_name(remembered_target),
+		"assigned": assigned_workers,
+		"optimal": optimal_workers
 	})
 	_set_mining_state(MiningState.MOVING_TO_MINERAL)
 	return true
@@ -1559,6 +1577,7 @@ func _find_best_mineral(preferred_target: Node3D = null, excluded_target: Node3D
 	var best_queueable: Node3D = null
 	var best_queueable_score: float = INF
 	var resources: Array[Node] = get_tree().get_nodes_in_group("resource_node")
+	var worker_load_map: Dictionary = _build_mineral_worker_load_map()
 
 	for resource_node in resources:
 		var mineral: Node3D = resource_node as Node3D
@@ -1572,8 +1591,11 @@ func _find_best_mineral(preferred_target: Node3D = null, excluded_target: Node3D
 		if not ignore_radius and mining_search_radius > 0.0 and base_distance > mining_search_radius:
 			continue
 		var worker_distance: float = global_position.distance_to(mineral.global_position)
-		var random_bias: float = randf_range(0.0, 5.0)
-		var score: float = worker_distance + base_distance * 0.15 + random_bias
+		var assigned_workers: int = int(worker_load_map.get(mineral.get_instance_id(), 0))
+		var optimal_workers: int = _mineral_optimal_worker_count(mineral)
+		var overload_workers: int = maxi(0, assigned_workers - optimal_workers)
+		var load_penalty: float = float(assigned_workers) * MINING_BALANCE_ASSIGNED_WEIGHT + float(overload_workers) * MINING_BALANCE_OVER_OPTIMAL_WEIGHT
+		var score: float = worker_distance + base_distance * 0.15 + load_penalty
 		if preferred_target != null and mineral == preferred_target:
 			score -= 3.0
 		var occupied: bool = _is_mineral_occupied(mineral)
@@ -1601,6 +1623,33 @@ func _find_best_mineral(preferred_target: Node3D = null, excluded_target: Node3D
 	if not ignore_radius and mining_search_radius > 0.0:
 		return _find_best_mineral(preferred_target, excluded_target, true)
 	return null
+
+func _build_mineral_worker_load_map() -> Dictionary:
+	var load_map: Dictionary = {}
+	var units: Array[Node] = get_tree().get_nodes_in_group("selectable_unit")
+	for unit_node in units:
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if not unit_node.has_method("get_team_id") or int(unit_node.call("get_team_id")) != team_id:
+			continue
+		if not unit_node.has_method("get_active_mining_target"):
+			continue
+		var target_value: Variant = unit_node.call("get_active_mining_target")
+		if not (target_value is Node3D):
+			continue
+		var target_mineral: Node3D = target_value as Node3D
+		if target_mineral == null or not is_instance_valid(target_mineral):
+			continue
+		var mineral_id: int = target_mineral.get_instance_id()
+		load_map[mineral_id] = int(load_map.get(mineral_id, 0)) + 1
+	return load_map
+
+func _mineral_optimal_worker_count(mineral: Node3D) -> int:
+	if mineral == null or not is_instance_valid(mineral):
+		return 1
+	if mineral.has_method("get_optimal_worker_count"):
+		return maxi(1, int(mineral.call("get_optimal_worker_count")))
+	return 2
 
 func _queue_anchor_for_mineral(mineral: Node3D) -> Vector3:
 	var anchor_direction: Vector3 = global_position - mineral.global_position
