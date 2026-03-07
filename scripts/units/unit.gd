@@ -454,6 +454,55 @@ func clear_pending_commands() -> void:
 	_active_command = null
 	_emit_command_queue_changed()
 
+func insert_temporary_move_then_resume(target: Vector3, reason: String = "temporary_move") -> bool:
+	if _construction_lock_mode != ConstructionLockMode.NONE:
+		return false
+	var resume_commands: Array[RTSCommand] = _snapshot_non_internal_commands()
+	var temporary_move: RTSCommand = RTS_COMMAND.make_move(target, false)
+	temporary_move.payload["temporary_insert"] = true
+	temporary_move.payload["temporary_reason"] = reason
+	temporary_move.payload["temporary_target"] = target
+	_command_queue.clear()
+	_active_command = temporary_move
+	_execute_rts_command(temporary_move)
+	for resume_command in resume_commands:
+		if resume_command == null:
+			continue
+		resume_command.is_queue_command = true
+		_command_queue.append(resume_command)
+	_emit_command_queue_changed()
+	return true
+
+func _snapshot_non_internal_commands() -> Array[RTSCommand]:
+	var snapshot: Array[RTSCommand] = []
+	var active_command: RTSCommand = _active_command as RTSCommand
+	if active_command != null and not _is_internal_build_order_command(active_command):
+		snapshot.append(_clone_command(active_command))
+	for queued_value in _command_queue:
+		var queued_command: RTSCommand = queued_value as RTSCommand
+		if queued_command == null:
+			continue
+		if _is_internal_build_order_command(queued_command):
+			continue
+		snapshot.append(_clone_command(queued_command))
+	return snapshot
+
+func _clone_command(source_command: RTSCommand) -> RTSCommand:
+	var clone: RTSCommand = RTSCommand.new(source_command.command_type, source_command.target_type)
+	clone.target_position = source_command.target_position
+	clone.target_unit = source_command.target_unit
+	clone.direction = source_command.direction
+	clone.is_queue_command = source_command.is_queue_command
+	clone.is_auto_cast = source_command.is_auto_cast
+	clone.control_group_id = source_command.control_group_id
+	clone.timestamp = source_command.timestamp
+	clone.subgroup_index = source_command.subgroup_index
+	if source_command.payload is Dictionary:
+		clone.payload = (source_command.payload as Dictionary).duplicate(true)
+	else:
+		clone.payload = {}
+	return clone
+
 func get_pending_command_count() -> int:
 	var active_count: int = 1 if _active_command != null else 0
 	return active_count + _command_queue.size()

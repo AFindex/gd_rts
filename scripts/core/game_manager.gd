@@ -1340,6 +1340,7 @@ func _create_pending_construction_ghost(worker_node: Node3D, kind: String, world
 		"node_path": ghost_node.get_path(),
 		"created_at": float(Time.get_ticks_msec()) / 1000.0
 	})
+	_request_navmesh_rebake("pending_build_ghost_added")
 	return ghost_id
 
 func _create_pending_construction_ghost_node(ghost_id: int, kind: String, world_position: Vector3, rotation_y: float) -> Node3D:
@@ -1368,6 +1369,22 @@ func _create_pending_construction_ghost_node(ghost_id: int, kind: String, world_
 	label.font_size = 28
 	label.modulate = Color(0.9, 0.96, 0.92, 0.95)
 	root.add_child(label)
+
+	var nav_obstacle: NavigationObstacle3D = NavigationObstacle3D.new()
+	nav_obstacle.name = "GhostObstacle3D"
+	nav_obstacle.affect_navigation_mesh = true
+	nav_obstacle.avoidance_enabled = false
+	nav_obstacle.carve_navigation_mesh = true
+	nav_obstacle.height = 4.0
+	var half_x: float = maxf(0.05, footprint.x * 0.5)
+	var half_z: float = maxf(0.05, footprint.y * 0.5)
+	nav_obstacle.vertices = PackedVector3Array([
+		Vector3(-half_x, 0.0, -half_z),
+		Vector3(half_x, 0.0, -half_z),
+		Vector3(half_x, 0.0, half_z),
+		Vector3(-half_x, 0.0, half_z)
+	])
+	root.add_child(nav_obstacle)
 	return root
 
 func _pending_construction_ghost_index(ghost_id: int) -> int:
@@ -1394,6 +1411,7 @@ func _remove_pending_construction_ghost(ghost_id: int) -> bool:
 		if ghost_node != null and is_instance_valid(ghost_node):
 			ghost_node.queue_free()
 	_pending_construction_ghosts.remove_at(index)
+	_request_navmesh_rebake("pending_build_ghost_removed")
 	return true
 
 func _set_pending_construction_ghost_invalid(ghost_id: int, invalid: bool) -> void:
@@ -1566,6 +1584,13 @@ func _clear_rally_visual_markers() -> void:
 			node.queue_free()
 	_rally_visible_nodes.clear()
 
+func _safe_node3d_from_variant(value: Variant) -> Node3D:
+	if not (value is Object):
+		return null
+	if not is_instance_valid(value):
+		return null
+	return value as Node3D
+
 func _extract_rally_hops(rally_data: Dictionary) -> Array[Dictionary]:
 	var hops: Array[Dictionary] = []
 	var raw_hops: Variant = rally_data.get("hops", [])
@@ -1576,7 +1601,7 @@ func _extract_rally_hops(rally_data: Dictionary) -> Array[Dictionary]:
 				continue
 			var raw_hop: Dictionary = hop_value as Dictionary
 			var mode: String = str(raw_hop.get("mode", "ground"))
-			var target_node: Node3D = raw_hop.get("target_node") as Node3D
+			var target_node: Node3D = _safe_node3d_from_variant(raw_hop.get("target_node", null))
 			var hop_position: Vector3 = Vector3.ZERO
 			var position_value: Variant = raw_hop.get("position", Vector3.ZERO)
 			if position_value is Vector3:
@@ -1601,7 +1626,7 @@ func _extract_rally_hops(rally_data: Dictionary) -> Array[Dictionary]:
 
 	if hops.is_empty():
 		var fallback_mode: String = str(rally_data.get("mode", "ground"))
-		var fallback_target: Node3D = rally_data.get("target_node") as Node3D
+		var fallback_target: Node3D = _safe_node3d_from_variant(rally_data.get("target_node", null))
 		var fallback_position: Vector3 = Vector3.ZERO
 		var fallback_position_value: Variant = rally_data.get("position", Vector3.ZERO)
 		if fallback_position_value is Vector3:
@@ -4993,7 +5018,8 @@ func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
 	_placement_current_position = snapped
 	var preview_builder: Node3D = _nearest_selected_worker(Vector3(snapped.x, 0.0, snapped.z))
 	if preview_builder != null and is_instance_valid(preview_builder):
-		var ignored_units: Array[Node] = [preview_builder]
+		var builder_team: int = _team_id_from_node(preview_builder, PLAYER_TEAM_ID)
+		var ignored_units: Array[Node] = _collect_allied_units(builder_team)
 		_sync_build_grid_occupancy(ignored_units)
 	else:
 		_sync_build_grid_occupancy()
@@ -5072,6 +5098,29 @@ func _rotate_xz_vector(v: Vector2, angle: float) -> Vector2:
 	var s: float = sin(angle)
 	return Vector2(v.x * c - v.y * s, v.x * s + v.y * c)
 
+func _team_id_from_node(node: Node, fallback: int = PLAYER_TEAM_ID) -> int:
+	if node == null or not is_instance_valid(node):
+		return fallback
+	if not node.has_method("get_team_id"):
+		return fallback
+	return int(node.call("get_team_id"))
+
+func _collect_allied_units(team_id: int) -> Array[Node]:
+	var result: Array[Node] = []
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return result
+	var unit_nodes: Array[Node] = tree.get_nodes_in_group("selectable_unit")
+	for node in unit_nodes:
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.has_method("is_alive") and not bool(node.call("is_alive")):
+			continue
+		if _team_id_from_node(node, team_id) != team_id:
+			continue
+		result.append(node)
+	return result
+
 func _is_point_inside_build_footprint(point: Vector3, center: Vector3, rotation_y: float, footprint: Vector2, padding: float = 0.0) -> bool:
 	var half_x: float = maxf(0.05, footprint.x * 0.5 + maxf(0.0, padding))
 	var half_z: float = maxf(0.05, footprint.y * 0.5 + maxf(0.0, padding))
@@ -5099,6 +5148,69 @@ func _compute_build_order_escape_target(builder_position: Vector3, build_center:
 	target.z = clampf(target.z, -55.8, 55.8)
 	return target
 
+func _issue_unit_evacuation_move(unit_node: Node3D, target_position: Vector3) -> void:
+	if unit_node == null or not is_instance_valid(unit_node):
+		return
+	if unit_node.has_method("insert_temporary_move_then_resume"):
+		var inserted: bool = bool(unit_node.call("insert_temporary_move_then_resume", target_position, "pending_build_evacuate"))
+		if inserted:
+			return
+	var move_command: RTSCommand = RTS_COMMAND.make_move(target_position, false)
+	if unit_node.has_method("submit_command"):
+		unit_node.call("submit_command", move_command)
+
+func _evacuate_allied_units_from_pending_build(
+	order: Dictionary,
+	builder_node: Node3D,
+	target_position: Vector3,
+	rotation_y: float,
+	footprint_size: Vector2,
+	delta: float
+) -> Dictionary:
+	var cooldowns: Dictionary = {}
+	var cooldowns_value: Variant = order.get("evac_unit_cooldowns", {})
+	if cooldowns_value is Dictionary:
+		cooldowns = (cooldowns_value as Dictionary).duplicate(true)
+	for key in cooldowns.keys():
+		var remaining: float = float(cooldowns.get(key, 0.0)) - delta
+		if remaining <= 0.0:
+			cooldowns.erase(key)
+		else:
+			cooldowns[key] = remaining
+
+	var team_id: int = _team_id_from_node(builder_node, PLAYER_TEAM_ID)
+	var allied_units: Array[Node] = _collect_allied_units(team_id)
+	var any_inside: bool = false
+	for unit_value in allied_units:
+		var unit_node: Node3D = unit_value as Node3D
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if unit_node == builder_node:
+			continue
+		if not _is_point_inside_build_footprint(
+			unit_node.global_position,
+			target_position,
+			rotation_y,
+			footprint_size,
+			BUILD_ORDER_FOOTPRINT_INSIDE_EPSILON
+		):
+			continue
+		any_inside = true
+		var unit_key: String = str(unit_node.get_path())
+		if float(cooldowns.get(unit_key, 0.0)) > 0.0:
+			continue
+		var escape_target: Vector3 = _compute_build_order_escape_target(
+			unit_node.global_position,
+			target_position,
+			rotation_y,
+			footprint_size
+		)
+		_issue_unit_evacuation_move(unit_node, escape_target)
+		cooldowns[unit_key] = maxf(0.25, BUILD_ORDER_MOVE_REFRESH)
+	order["evac_unit_cooldowns"] = cooldowns
+	order["allied_units_inside"] = any_inside
+	return order
+
 func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int) -> void:
 	if builder == null or not is_instance_valid(builder):
 		return
@@ -5119,6 +5231,8 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"footprint_size": footprint_size,
 		"phase": phase,
 		"evacuate_target": evacuate_target,
+		"evac_unit_cooldowns": {},
+		"allied_units_inside": false,
 		"cost": build_cost,
 		"ghost_id": ghost_id,
 		"spent": false,
@@ -5174,6 +5288,16 @@ func _process_pending_build_orders(delta: float) -> void:
 			_pending_build_orders.remove_at(i)
 			continue
 
+		order = _evacuate_allied_units_from_pending_build(
+			order,
+			builder_node,
+			target_position,
+			rotation_y,
+			footprint_size,
+			delta
+		)
+		var allied_units_inside: bool = bool(order.get("allied_units_inside", false))
+
 		var phase: String = str(order.get("phase", "approach"))
 		if phase == "evacuate":
 			var still_inside: bool = _is_point_inside_build_footprint(
@@ -5218,6 +5342,10 @@ func _process_pending_build_orders(delta: float) -> void:
 		order["move_repath_timer"] = repath_timer
 
 		if builder_node.global_position.distance_to(target_position) > BUILD_ORDER_START_DISTANCE:
+			_pending_build_orders[i] = order
+			continue
+
+		if allied_units_inside:
 			_pending_build_orders[i] = order
 			continue
 
@@ -5501,7 +5629,7 @@ func _apply_rally_to_spawned_unit(unit_node: Node, source_building: Node) -> voi
 
 func _build_rally_command_from_hop(unit_node: Node, source_building: Node, hop: Dictionary, queue_command: bool) -> Variant:
 	var mode: String = str(hop.get("mode", "ground"))
-	var target_node: Node3D = hop.get("target_node") as Node3D
+	var target_node: Node3D = _safe_node3d_from_variant(hop.get("target_node", null))
 	var target_position: Vector3 = Vector3.ZERO
 	var has_target_position: bool = false
 	var position_value: Variant = hop.get("position", Vector3.ZERO)

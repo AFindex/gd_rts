@@ -508,6 +508,13 @@ func clear_rally_point() -> void:
 	_rally_target_node = null
 	_rally_mode = "ground"
 
+func _safe_node_from_variant(value: Variant) -> Node:
+	if not (value is Object):
+		return null
+	if not is_instance_valid(value):
+		return null
+	return value as Node
+
 func get_rally_point_data() -> Dictionary:
 	if _rally_hops.is_empty() and not _has_rally_point:
 		return {}
@@ -520,19 +527,14 @@ func get_rally_point_data() -> Dictionary:
 		if not (hop_position_value is Vector3):
 			continue
 		var hop_position: Vector3 = hop_position_value as Vector3
-		var hop_target_node: Node = hop.get("target_node") as Node
-		var valid_target: Node = null
-		if hop_target_node != null and is_instance_valid(hop_target_node):
-			valid_target = hop_target_node
+		var valid_target: Node = _safe_node_from_variant(hop.get("target_node", null))
 		hops.append({
 			"position": Vector3(hop_position.x, 0.0, hop_position.z),
 			"target_node": valid_target,
 			"mode": str(hop.get("mode", "ground"))
 		})
 	if hops.is_empty():
-		var fallback_target: Node = null
-		if _rally_target_node != null and is_instance_valid(_rally_target_node):
-			fallback_target = _rally_target_node
+		var fallback_target: Node = _safe_node_from_variant(_rally_target_node)
 		hops.append({
 			"position": _rally_point_position,
 			"target_node": fallback_target,
@@ -569,7 +571,7 @@ func _sync_rally_legacy_fields() -> void:
 		_rally_point_position = first_position as Vector3
 	else:
 		_rally_point_position = Vector3.ZERO
-	_rally_target_node = first_hop.get("target_node") as Node
+	_rally_target_node = _safe_node_from_variant(first_hop.get("target_node", null))
 	_rally_mode = str(first_hop.get("mode", "ground"))
 
 func configure_by_kind(kind: String) -> void:
