@@ -827,12 +827,6 @@ func _update_worker_queue_hold_after_enqueue() -> void:
 		return
 	var was_deferred: bool = _defer_queue_until_worker_cycle_checkpoint
 	if _mode == UnitMode.GATHER_RESOURCE:
-		var can_interrupt_immediately: bool = _mining_state == MiningState.MOVING_TO_MINERAL or _mining_state == MiningState.RALLY_MINING
-		if can_interrupt_immediately:
-			_defer_queue_until_worker_cycle_checkpoint = false
-			_stop_worker_cycle(false)
-			_notify_game_manager_worker_queue_transition("interrupt_immediate")
-			return
 		_defer_queue_until_worker_cycle_checkpoint = true
 		if not was_deferred:
 			_notify_game_manager_worker_queue_transition("queued_checkpoint")

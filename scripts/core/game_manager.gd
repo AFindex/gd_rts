@@ -5641,6 +5641,7 @@ func _evacuate_allied_units_from_pending_build(
 	delta: float
 ) -> Dictionary:
 	var cooldowns: Dictionary = {}
+	var builder_path: NodePath = builder_node.get_path()
 	var cooldowns_value: Variant = order.get("evac_unit_cooldowns", {})
 	if cooldowns_value is Dictionary:
 		cooldowns = (cooldowns_value as Dictionary).duplicate(true)
@@ -5659,6 +5660,8 @@ func _evacuate_allied_units_from_pending_build(
 		if unit_node == null or not is_instance_valid(unit_node):
 			continue
 		if unit_node == builder_node:
+			continue
+		if unit_node.get_path() == builder_path:
 			continue
 		if not _is_point_inside_build_footprint(
 			unit_node.global_position,
@@ -5702,6 +5705,7 @@ func _pending_build_has_hard_blockers(
 	if tree == null:
 		return false
 	var builder_team_id: int = _team_id_from_node(builder_node, PLAYER_TEAM_ID)
+	var builder_path: NodePath = builder_node.get_path()
 
 	var unit_nodes: Array[Node] = tree.get_nodes_in_group("selectable_unit")
 	for unit_value in unit_nodes:
@@ -5709,6 +5713,8 @@ func _pending_build_has_hard_blockers(
 		if unit_node == null or not is_instance_valid(unit_node):
 			continue
 		if unit_node == builder_node:
+			continue
+		if unit_node.get_path() == builder_path:
 			continue
 		if unit_node.has_method("is_alive") and not bool(unit_node.call("is_alive")):
 			continue
