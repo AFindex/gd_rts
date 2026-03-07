@@ -947,11 +947,15 @@ func _append_queue_point(points: Array[Dictionary], command: RTSCommand, queued:
 				repair_target = _safe_node3d_ref(command.target_unit)
 			if repair_target != null:
 				position = repair_target.global_position
-	points.append({
+	var point_data: Dictionary = {
 		"position": position,
 		"command_type": command.command_type,
 		"queued": queued
-	})
+	}
+	var path_origin_value: Variant = command.payload.get("path_origin", null)
+	if path_origin_value is Vector3:
+		point_data["path_origin"] = path_origin_value as Vector3
+	points.append(point_data)
 
 func _safe_node3d_ref(value: Variant) -> Node3D:
 	if not (value is Object):

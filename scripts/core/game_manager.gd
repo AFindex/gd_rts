@@ -1159,51 +1159,65 @@ func _refresh_building_health_snapshot() -> void:
 func _update_queue_visuals() -> void:
 	if _queue_visual_root == null:
 		return
-	if _selected_units.size() != 1:
+	var command_units: Array[Node] = _command_units()
+	if command_units.is_empty():
 		_last_queue_visual_signature = ""
 		_clear_queue_visual_markers()
 		return
 
-	var unit_node: Node = _selected_units[0]
-	if unit_node == null or not is_instance_valid(unit_node):
-		_last_queue_visual_signature = ""
-		_clear_queue_visual_markers()
-		return
-	if not unit_node.has_method("get_command_queue_points"):
-		_last_queue_visual_signature = ""
-		_clear_queue_visual_markers()
-		return
-
-	# Queue markers should visualize queued commands only (Shift queue),
-	# not the current active/internal command.
-	var queue_points_variant: Variant = unit_node.call("get_command_queue_points", false, QUEUE_MARKER_MAX_VISIBLE)
-	if not (queue_points_variant is Array):
-		_last_queue_visual_signature = ""
-		_clear_queue_visual_markers()
-		return
-	var queue_points: Array = queue_points_variant as Array
-	if queue_points.is_empty():
-		_last_queue_visual_signature = ""
-		_clear_queue_visual_markers()
-		return
-
+	var entries: Array[Dictionary] = []
 	var signature_parts: Array[String] = []
-	for point_value in queue_points:
-		if not (point_value is Dictionary):
+	for unit_node in command_units:
+		if unit_node == null or not is_instance_valid(unit_node):
 			continue
-		var point: Dictionary = point_value as Dictionary
-		var position_value: Variant = point.get("position", Vector3.ZERO)
-		if not (position_value is Vector3):
+		if not unit_node.has_method("get_command_queue_points"):
 			continue
-		var pos: Vector3 = position_value as Vector3
-		var command_type: int = int(point.get("command_type", 0))
-		var queued: bool = bool(point.get("queued", true))
-		signature_parts.append("%d:%s:%.2f,%.2f,%.2f" % [command_type, "1" if queued else "0", pos.x, pos.y, pos.z])
-	var signature: String = "%d|%s" % [unit_node.get_instance_id(), ";".join(signature_parts)]
+		var unit_node_3d: Node3D = unit_node as Node3D
+		if unit_node_3d == null:
+			continue
+		var queue_points_variant: Variant = unit_node.call("get_command_queue_points", true, QUEUE_MARKER_MAX_VISIBLE)
+		if not (queue_points_variant is Array):
+			continue
+		var queue_points: Array = queue_points_variant as Array
+		if queue_points.is_empty():
+			continue
+		var point_signature_parts: Array[String] = []
+		for point_value in queue_points:
+			if not (point_value is Dictionary):
+				continue
+			var point: Dictionary = point_value as Dictionary
+			var position_value: Variant = point.get("position", Vector3.ZERO)
+			if not (position_value is Vector3):
+				continue
+			var pos: Vector3 = position_value as Vector3
+			var command_type: int = int(point.get("command_type", RTSCommand.CommandType.NONE))
+			var queued: bool = bool(point.get("queued", true))
+			var path_origin_suffix: String = ""
+			var path_origin_value: Variant = point.get("path_origin", null)
+			if path_origin_value is Vector3:
+				var path_origin: Vector3 = path_origin_value as Vector3
+				path_origin_suffix = "|o:%.2f,%.2f,%.2f" % [path_origin.x, path_origin.y, path_origin.z]
+			point_signature_parts.append("%d:%s:%.2f,%.2f,%.2f%s" % [command_type, "1" if queued else "0", pos.x, pos.y, pos.z, path_origin_suffix])
+		if point_signature_parts.is_empty():
+			continue
+		var unit_position: Vector3 = unit_node_3d.global_position
+		signature_parts.append(
+			"%d:%.2f,%.2f,%.2f|%s" % [unit_node.get_instance_id(), unit_position.x, unit_position.y, unit_position.z, ";".join(point_signature_parts)]
+		)
+		entries.append({
+			"unit": unit_node,
+			"points": queue_points
+		})
+
+	if entries.is_empty():
+		_last_queue_visual_signature = ""
+		_clear_queue_visual_markers()
+		return
+	var signature: String = "%d|%s" % [entries.size(), "#".join(signature_parts)]
 	if signature == _last_queue_visual_signature:
 		return
 	_last_queue_visual_signature = signature
-	_rebuild_queue_visual_markers(unit_node, queue_points)
+	_rebuild_queue_visual_markers(entries)
 
 func _clear_queue_visual_markers() -> void:
 	for marker_node in _queue_visible_marker_nodes:
@@ -1212,34 +1226,48 @@ func _clear_queue_visual_markers() -> void:
 			node.queue_free()
 	_queue_visible_marker_nodes.clear()
 
-func _rebuild_queue_visual_markers(unit_node: Node, queue_points: Array) -> void:
+func _rebuild_queue_visual_markers(entries: Array[Dictionary]) -> void:
 	_clear_queue_visual_markers()
-	var unit_node_3d: Node3D = unit_node as Node3D
-	if unit_node_3d == null:
-		return
-	var prev_position: Vector3 = unit_node_3d.global_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0)
-	var index: int = 0
-	for point_value in queue_points:
-		if not (point_value is Dictionary):
+	for entry in entries:
+		var unit_node: Node = entry.get("unit") as Node
+		if unit_node == null or not is_instance_valid(unit_node):
 			continue
-		var point: Dictionary = point_value as Dictionary
-		var target_position: Vector3 = Vector3.ZERO
-		var position_value: Variant = point.get("position", Vector3.ZERO)
-		if position_value is Vector3:
-			target_position = position_value as Vector3
-		var marker: StaticBody3D = _create_queue_marker(unit_node, index, target_position)
-		_queue_visual_root.add_child(marker)
-		_queue_visible_marker_nodes.append(marker)
-		var link: MeshInstance3D = _create_queue_link(prev_position, target_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0))
-		if link != null:
-			_queue_visual_root.add_child(link)
-			_queue_visible_marker_nodes.append(link)
-		prev_position = target_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0)
-		index += 1
-		if index >= QUEUE_MARKER_MAX_VISIBLE:
-			break
+		var unit_node_3d: Node3D = unit_node as Node3D
+		if unit_node_3d == null:
+			continue
+		var queue_points_value: Variant = entry.get("points", [])
+		if not (queue_points_value is Array):
+			continue
+		var queue_points: Array = queue_points_value as Array
+		var prev_position: Vector3 = unit_node_3d.global_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0)
+		var index: int = 0
+		for point_value in queue_points:
+			if not (point_value is Dictionary):
+				continue
+			var point: Dictionary = point_value as Dictionary
+			var target_position: Vector3 = Vector3.ZERO
+			var position_value: Variant = point.get("position", Vector3.ZERO)
+			if position_value is Vector3:
+				target_position = position_value as Vector3
+			var command_type: int = int(point.get("command_type", RTSCommand.CommandType.MOVE))
+			if index == 0:
+				var path_origin_value: Variant = point.get("path_origin", null)
+				if path_origin_value is Vector3:
+					var path_origin: Vector3 = path_origin_value as Vector3
+					prev_position = path_origin + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0)
+			var marker: StaticBody3D = _create_queue_marker(unit_node, index, target_position, command_type)
+			_queue_visual_root.add_child(marker)
+			_queue_visible_marker_nodes.append(marker)
+			var link: MeshInstance3D = _create_queue_link(prev_position, target_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0), command_type)
+			if link != null:
+				_queue_visual_root.add_child(link)
+				_queue_visible_marker_nodes.append(link)
+			prev_position = target_position + Vector3(0.0, QUEUE_LINK_HEIGHT, 0.0)
+			index += 1
+			if index >= QUEUE_MARKER_MAX_VISIBLE:
+				break
 
-func _create_queue_marker(unit_node: Node, queue_index: int, world_position: Vector3) -> StaticBody3D:
+func _create_queue_marker(unit_node: Node, queue_index: int, world_position: Vector3, command_type: int = RTSCommand.CommandType.MOVE) -> StaticBody3D:
 	var marker: StaticBody3D = StaticBody3D.new()
 	marker.name = "QueueMarker%d" % queue_index
 	marker.add_to_group(str(QUEUE_MARKER_GROUP))
@@ -1265,7 +1293,8 @@ func _create_queue_marker(unit_node: Node, queue_index: int, world_position: Vec
 	var marker_material: StandardMaterial3D = StandardMaterial3D.new()
 	marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	marker_material.albedo_color = Color(0.95, 0.95, 0.25, 0.78)
+	var marker_color: Color = _queue_command_color(command_type)
+	marker_material.albedo_color = Color(marker_color.r, marker_color.g, marker_color.b, 0.78)
 	mesh_instance.material_override = marker_material
 	marker.add_child(mesh_instance)
 
@@ -1273,11 +1302,11 @@ func _create_queue_marker(unit_node: Node, queue_index: int, world_position: Vec
 	label.text = str(queue_index + 1)
 	label.position = Vector3(0.0, 0.56, 0.0)
 	label.font_size = 32
-	label.modulate = Color(1.0, 0.98, 0.55, 1.0)
+	label.modulate = _queue_marker_label_color(command_type)
 	marker.add_child(label)
 	return marker
 
-func _create_queue_link(from_position: Vector3, to_position: Vector3) -> MeshInstance3D:
+func _create_queue_link(from_position: Vector3, to_position: Vector3, command_type: int = RTSCommand.CommandType.MOVE) -> MeshInstance3D:
 	var delta: Vector3 = to_position - from_position
 	var length: float = delta.length()
 	if length < 0.08:
@@ -1291,10 +1320,31 @@ func _create_queue_link(from_position: Vector3, to_position: Vector3) -> MeshIns
 	var link_material: StandardMaterial3D = StandardMaterial3D.new()
 	link_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	link_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	link_material.albedo_color = Color(0.9, 0.9, 0.2, 0.4)
+	var link_color: Color = _queue_command_color(command_type)
+	link_material.albedo_color = Color(link_color.r, link_color.g, link_color.b, 0.4)
 	link.material_override = link_material
 	link.global_transform = Transform3D(_cylinder_basis_from_to(from_position, to_position), from_position + delta * 0.5)
 	return link
+
+func _queue_command_color(command_type: int) -> Color:
+	match command_type:
+		RTSCommand.CommandType.ATTACK, RTSCommand.CommandType.ATTACK_MOVE:
+			return Color(0.95, 0.28, 0.24, 1.0)
+		RTSCommand.CommandType.GATHER:
+			return Color(0.34, 0.9, 0.38, 1.0)
+		RTSCommand.CommandType.RETURN_RESOURCE:
+			return Color(0.45, 0.78, 0.98, 1.0)
+		RTSCommand.CommandType.REPAIR:
+			return Color(0.35, 0.85, 0.95, 1.0)
+		_:
+			return Color(0.95, 0.95, 0.25, 1.0)
+
+func _queue_marker_label_color(command_type: int) -> Color:
+	match command_type:
+		RTSCommand.CommandType.ATTACK, RTSCommand.CommandType.ATTACK_MOVE:
+			return Color(1.0, 0.92, 0.92, 1.0)
+		_:
+			return Color(1.0, 0.98, 0.55, 1.0)
 
 func _cylinder_basis_from_to(from_position: Vector3, to_position: Vector3) -> Basis:
 	var delta: Vector3 = to_position - from_position
@@ -1571,8 +1621,17 @@ func _update_rally_visuals() -> void:
 			var position: Vector3 = position_value as Vector3
 			var mode: String = str(hop.get("mode", "ground"))
 			hop_parts.append("%s:%.2f,%.2f,%.2f" % [mode, position.x, position.y, position.z])
+		var building_position: Vector3 = building_node.global_position
 		signature_parts.append(
-			"%d|%s|%d|%d" % [building_node.get_instance_id(), ",".join(hop_parts), 1 if alerting else 0, 1 if alert_phase else 0]
+			"%d|%.2f,%.2f,%.2f|%s|%d|%d" % [
+				building_node.get_instance_id(),
+				building_position.x,
+				building_position.y,
+				building_position.z,
+				",".join(hop_parts),
+				1 if alerting else 0,
+				1 if alert_phase else 0
+			]
 		)
 
 	var signature: String = ";".join(signature_parts)
@@ -5778,8 +5837,8 @@ func _build_rally_command_from_hop(unit_node: Node, source_building: Node, hop: 
 		"attack":
 			if target_node != null and is_instance_valid(target_node):
 				if is_worker:
-					return RTS_COMMAND.make_move(target_position, queue_command)
-				return RTS_COMMAND.make_attack(target_node, queue_command)
+					return _tag_rally_path_origin(RTS_COMMAND.make_move(target_position, queue_command), source_building, queue_command)
+				return _tag_rally_path_origin(RTS_COMMAND.make_attack(target_node, queue_command), source_building, queue_command)
 		"resource":
 			var mineral_target: Node3D = null
 			if target_node != null and is_instance_valid(target_node) and target_node.is_in_group("resource_node"):
@@ -5799,15 +5858,26 @@ func _build_rally_command_from_hop(unit_node: Node, source_building: Node, hop: 
 				if dropoff != null:
 					var gather_command: RTSCommand = RTS_COMMAND.make_gather(mineral_target, dropoff, queue_command)
 					gather_command.payload["from_rally"] = true
-					return gather_command
+					return _tag_rally_path_origin(gather_command, source_building, queue_command)
 		"follow":
 			if target_node != null and is_instance_valid(target_node):
 				var follow_offset: Vector3 = Vector3(3.8, 0.0, 0.0)
-				return RTS_COMMAND.make_move(target_node.global_position + follow_offset, queue_command)
+				return _tag_rally_path_origin(RTS_COMMAND.make_move(target_node.global_position + follow_offset, queue_command), source_building, queue_command)
 
 	if not has_target_position:
 		return null
-	return RTS_COMMAND.make_move(target_position, queue_command)
+	return _tag_rally_path_origin(RTS_COMMAND.make_move(target_position, queue_command), source_building, queue_command)
+
+func _tag_rally_path_origin(command: RTSCommand, source_building: Node, queue_command: bool) -> RTSCommand:
+	if command == null:
+		return null
+	if queue_command:
+		return command
+	var source_building_3d: Node3D = source_building as Node3D
+	if source_building_3d == null or not is_instance_valid(source_building_3d):
+		return command
+	command.payload["path_origin"] = source_building_3d.global_position
+	return command
 
 func _find_open_spawn_position(origin: Vector3) -> Vector3:
 	for ring in 4:
