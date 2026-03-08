@@ -1,6 +1,6 @@
 extends SceneTree
 
-const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const REGISTRY: Script = preload("res://scripts/core/config/rts_config_registry.gd")
 const UNIT_CONFIG_SCRIPT: Script = preload("res://scripts/core/config/rts_unit_config.gd")
 const BUILDING_CONFIG_SCRIPT: Script = preload("res://scripts/core/config/rts_building_config.gd")
 const TECH_CONFIG_SCRIPT: Script = preload("res://scripts/core/config/rts_tech_config.gd")
@@ -75,6 +75,7 @@ const SKILL_KNOWN_KEYS: Array[String] = [
 ]
 
 func _init() -> void:
+	REGISTRY.reload()
 	_ensure_dir(UNIT_DIR)
 	_ensure_dir(BUILDING_DIR)
 	_ensure_dir(TECH_DIR)
@@ -90,11 +91,12 @@ func _init() -> void:
 
 func _export_units() -> int:
 	var count: int = 0
-	for key_value in RTS_CATALOG.UNIT_DEFS.keys():
+	var unit_defs: Dictionary = REGISTRY.get_all_unit_defs()
+	for key_value in unit_defs.keys():
 		var id: String = str(key_value).strip_edges().to_lower()
 		if id == "":
 			continue
-		var raw_value: Variant = RTS_CATALOG.UNIT_DEFS.get(key_value, {})
+		var raw_value: Variant = unit_defs.get(key_value, {})
 		if not (raw_value is Dictionary):
 			continue
 		var unit_def: Dictionary = raw_value as Dictionary
@@ -125,11 +127,12 @@ func _export_units() -> int:
 
 func _export_buildings() -> int:
 	var count: int = 0
-	for key_value in RTS_CATALOG.BUILDING_DEFS.keys():
+	var building_defs: Dictionary = REGISTRY.get_all_building_defs()
+	for key_value in building_defs.keys():
 		var id: String = str(key_value).strip_edges().to_lower()
 		if id == "":
 			continue
-		var raw_value: Variant = RTS_CATALOG.BUILDING_DEFS.get(key_value, {})
+		var raw_value: Variant = building_defs.get(key_value, {})
 		if not (raw_value is Dictionary):
 			continue
 		var building_def: Dictionary = raw_value as Dictionary
@@ -176,11 +179,12 @@ func _export_buildings() -> int:
 
 func _export_techs() -> int:
 	var count: int = 0
-	for key_value in RTS_CATALOG.TECH_DEFS.keys():
+	var tech_defs: Dictionary = REGISTRY.get_all_tech_defs()
+	for key_value in tech_defs.keys():
 		var id: String = str(key_value).strip_edges().to_lower()
 		if id == "":
 			continue
-		var raw_value: Variant = RTS_CATALOG.TECH_DEFS.get(key_value, {})
+		var raw_value: Variant = tech_defs.get(key_value, {})
 		if not (raw_value is Dictionary):
 			continue
 		var tech_def: Dictionary = raw_value as Dictionary
@@ -208,11 +212,12 @@ func _export_techs() -> int:
 
 func _export_skills() -> int:
 	var count: int = 0
-	for key_value in RTS_CATALOG.SKILL_DEFS.keys():
+	var skill_defs: Dictionary = REGISTRY.get_all_skill_defs()
+	for key_value in skill_defs.keys():
 		var id: String = str(key_value).strip_edges().to_lower()
 		if id == "":
 			continue
-		var raw_value: Variant = RTS_CATALOG.SKILL_DEFS.get(key_value, {})
+		var raw_value: Variant = skill_defs.get(key_value, {})
 		if not (raw_value is Dictionary):
 			continue
 		var skill_def: Dictionary = raw_value as Dictionary

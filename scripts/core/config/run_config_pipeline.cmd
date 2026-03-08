@@ -58,7 +58,7 @@ set "COMMON_ARGS=--headless --path "%PROJECT_PATH%""
 if "%GODOT_QUIET%"=="1" set "COMMON_ARGS=!COMMON_ARGS! --quiet"
 
 if "%SKIP_EXPORT%"=="0" (
-    echo [ConfigPipeline] Export catalog ^> config
+    echo [ConfigPipeline] Normalize config assets
     call "%GODOT_EXE%" !COMMON_ARGS! --script scripts/core/config/export_catalog_to_config.gd
     if errorlevel 1 exit /b 1
 )

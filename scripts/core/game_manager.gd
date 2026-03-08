@@ -2,7 +2,7 @@ extends Node3D
 
 const UNIT_SCENE: PackedScene = preload("res://scenes/units/unit.tscn")
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
-const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RTS_CATALOG: Script = preload("res://scripts/core/config/rts_runtime_catalog.gd")
 const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
 const BUILD_PLACEMENT_GRID_SCRIPT: Script = preload("res://scripts/core/build_placement_grid.gd")
 

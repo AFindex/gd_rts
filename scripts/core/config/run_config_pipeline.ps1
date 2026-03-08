@@ -28,7 +28,7 @@ if (-not $VerboseGodot) {
 }
 
 if (-not $SkipExport) {
-    Invoke-Step -Name "Export catalog -> config" -Args ($projectArg + @("--script", "scripts/core/config/export_catalog_to_config.gd"))
+    Invoke-Step -Name "Normalize config assets" -Args ($projectArg + @("--script", "scripts/core/config/export_catalog_to_config.gd"))
 }
 
 Invoke-Step -Name "Validate config references" -Args ($projectArg + @("--script", "scripts/core/config/validate_config_catalog.gd"))

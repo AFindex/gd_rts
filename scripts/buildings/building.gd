@@ -1,6 +1,6 @@
 extends StaticBody3D
 
-const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RTS_CATALOG: Script = preload("res://scripts/core/config/rts_runtime_catalog.gd")
 const RTS_INTERACTION: Script = preload("res://scripts/core/rts_interaction.gd")
 const RALLY_MAX_HOPS: int = 3
 const RALLY_ALERT_DURATION: float = 1.2

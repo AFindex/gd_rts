@@ -1,6 +1,6 @@
 extends CharacterBody3D
 
-const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RTS_CATALOG: Script = preload("res://scripts/core/config/rts_runtime_catalog.gd")
 const RTS_COMMAND: Script = preload("res://scripts/core/rts_command.gd")
 const RTS_INTERACTION: Script = preload("res://scripts/core/rts_interaction.gd")
 const NAV_VERTICAL_POINT_TOLERANCE: float = 0.65

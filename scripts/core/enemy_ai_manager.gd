@@ -1,6 +1,6 @@
 extends Node
 
-const RTS_CATALOG: Script = preload("res://scripts/core/rts_catalog.gd")
+const RTS_CATALOG: Script = preload("res://scripts/core/config/rts_runtime_catalog.gd")
 const RTS_AI_CATALOG: Script = preload("res://scripts/core/rts_ai_catalog.gd")
 const MIN_TICK_RATE: float = 0.05
 
