@@ -22,6 +22,9 @@ const BLOCKING_CATEGORIES: Array[StringName] = [
 @export var default_building_footprint: Vector2 = Vector2(2.6, 1.8)
 @export var fallback_resource_radius: float = 1.3
 @export var fallback_unit_radius: float = 0.42
+@export var require_terrain_buildable: bool = true
+@export var allow_ramp_building: bool = false
+@export var terrain_max_height_delta: float = 0.4
 @export var line_color: Color = Color(0.26, 0.83, 1.0, 0.22)
 @export var occupied_structure_color: Color = Color(1.0, 0.25, 0.25, 0.48)
 @export var occupied_resource_color: Color = Color(0.95, 0.72, 0.18, 0.45)
@@ -39,6 +42,7 @@ var _occupancy_by_cell: Dictionary = {}
 var _cell_count_x: int = 0
 var _cell_count_z: int = 0
 var _build_mode_enabled: bool = false
+var _terrain_runtime: Node = null
 
 func _ready() -> void:
 	_recompute_grid_metrics()
@@ -66,6 +70,22 @@ func set_build_mode_enabled(enabled: bool) -> void:
 func clear_preview() -> void:
 	if _preview_mesh_instance != null:
 		_preview_mesh_instance.mesh = null
+
+func configure_bounds(new_bounds_min: Vector2, new_bounds_max: Vector2) -> void:
+	bounds_min = new_bounds_min
+	bounds_max = new_bounds_max
+	_recompute_grid_metrics()
+	if _line_mesh_instance != null:
+		_rebuild_grid_lines_mesh()
+	if _occupancy_mesh_instance != null:
+		_rebuild_occupancy_mesh()
+	clear_preview()
+
+func set_terrain_runtime(terrain_runtime: Node) -> void:
+	if terrain_runtime != null and is_instance_valid(terrain_runtime):
+		_terrain_runtime = terrain_runtime
+	else:
+		_terrain_runtime = null
 
 func is_world_inside(world_position: Vector3) -> bool:
 	return (
@@ -119,6 +139,8 @@ func can_place_building(world_position: Vector3, rotation_y: float, footprint_si
 		var entry: Dictionary = _occupancy_by_cell.get(cell, {})
 		if _entry_has_any_category(entry, BLOCKING_CATEGORIES):
 			return false
+	if not _terrain_allows_footprint(candidate_cells):
+		return false
 	return true
 
 func get_cell_occupancy(world_position: Vector3) -> Dictionary:
@@ -184,16 +206,24 @@ func _rebuild_grid_lines_mesh() -> void:
 	st.begin(Mesh.PRIMITIVE_LINES)
 	for x_idx in range(_cell_count_x + 1):
 		var x: float = bounds_min.x + float(x_idx) * cell_size
+		var start: Vector3 = Vector3(x, 0.0, bounds_min.y)
+		var finish: Vector3 = Vector3(x, 0.0, bounds_max.y)
+		start.y = _sample_terrain_height(start, 0.0) + line_height
+		finish.y = _sample_terrain_height(finish, 0.0) + line_height
 		st.set_color(line_color)
-		st.add_vertex(Vector3(x, line_height, bounds_min.y))
+		st.add_vertex(start)
 		st.set_color(line_color)
-		st.add_vertex(Vector3(x, line_height, bounds_max.y))
+		st.add_vertex(finish)
 	for z_idx in range(_cell_count_z + 1):
 		var z: float = bounds_min.y + float(z_idx) * cell_size
+		var start: Vector3 = Vector3(bounds_min.x, 0.0, z)
+		var finish: Vector3 = Vector3(bounds_max.x, 0.0, z)
+		start.y = _sample_terrain_height(start, 0.0) + line_height
+		finish.y = _sample_terrain_height(finish, 0.0) + line_height
 		st.set_color(line_color)
-		st.add_vertex(Vector3(bounds_min.x, line_height, z))
+		st.add_vertex(start)
 		st.set_color(line_color)
-		st.add_vertex(Vector3(bounds_max.x, line_height, z))
+		st.add_vertex(finish)
 	_line_mesh_instance.mesh = st.commit()
 
 func _rebuild_occupancy_mesh() -> void:
@@ -228,7 +258,8 @@ func _build_cells_mesh_with_colors(cells: Array[Vector2i], colors: Array[Color],
 		var cell: Vector2i = cells[idx]
 		var color: Color = colors[idx] if idx < colors.size() else Color(1.0, 1.0, 1.0, 0.25)
 		var center: Vector3 = _cell_to_world(cell)
-		_append_cell_quad(st, center, y, ratio, color)
+		var terrain_y: float = _sample_terrain_height(center, 0.0)
+		_append_cell_quad(st, center, terrain_y + y, ratio, color)
 	return st.commit()
 
 func _append_cell_quad(st: SurfaceTool, center: Vector3, y: float, fill_ratio: float, color: Color) -> void:
@@ -478,6 +509,55 @@ func _occupancy_color(entry: Dictionary) -> Color:
 	if unit_count > 0:
 		return occupied_unit_color
 	return Color(0.0, 0.0, 0.0, 0.0)
+
+func _terrain_allows_footprint(cells: Array[Vector2i]) -> bool:
+	if not require_terrain_buildable:
+		return true
+	if cells.is_empty():
+		return false
+	if _terrain_runtime == null or not is_instance_valid(_terrain_runtime):
+		return true
+	var has_buildable_method: bool = _terrain_runtime.has_method("is_buildable_world")
+	var has_height_method: bool = _terrain_runtime.has_method("sample_height_at_world")
+	var has_world_to_tile_method: bool = _terrain_runtime.has_method("world_to_tile")
+	var has_tile_flags_method: bool = _terrain_runtime.has_method("get_tile_flags")
+	var min_height: float = INF
+	var max_height: float = -INF
+	for cell in cells:
+		var sample_world: Vector3 = _cell_to_world(cell)
+		if has_buildable_method:
+			var buildable_value: Variant = _terrain_runtime.call("is_buildable_world", sample_world)
+			if buildable_value is bool and not bool(buildable_value):
+				return false
+		if has_tile_flags_method and has_world_to_tile_method and not allow_ramp_building:
+			var terrain_tile_value: Variant = _terrain_runtime.call("world_to_tile", sample_world)
+			if terrain_tile_value is Vector2i:
+				var terrain_tile: Vector2i = terrain_tile_value as Vector2i
+				var flags_value: Variant = _terrain_runtime.call("get_tile_flags", terrain_tile)
+				if flags_value is Dictionary:
+					var flags: Dictionary = flags_value as Dictionary
+					if bool(flags.get("is_ramp", false)):
+						return false
+		if has_height_method:
+			var height_value: Variant = _terrain_runtime.call("sample_height_at_world", sample_world, 0.0)
+			if height_value is float or height_value is int:
+				var sampled_height: float = float(height_value)
+				min_height = minf(min_height, sampled_height)
+				max_height = maxf(max_height, sampled_height)
+	if has_height_method and min_height < INF and max_height > -INF:
+		if (max_height - min_height) > maxf(0.01, terrain_max_height_delta):
+			return false
+	return true
+
+func _sample_terrain_height(world_position: Vector3, fallback: float = 0.0) -> float:
+	if _terrain_runtime == null or not is_instance_valid(_terrain_runtime):
+		return fallback
+	if not _terrain_runtime.has_method("sample_height_at_world"):
+		return fallback
+	var sampled_value: Variant = _terrain_runtime.call("sample_height_at_world", world_position, fallback)
+	if sampled_value is float or sampled_value is int:
+		return float(sampled_value)
+	return fallback
 
 func _is_cell_inside(cell: Vector2i) -> bool:
 	return cell.x >= 0 and cell.x <= _cell_count_x and cell.y >= 0 and cell.y <= _cell_count_z

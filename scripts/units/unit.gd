@@ -77,6 +77,10 @@ const MINING_BALANCE_OVER_OPTIMAL_WEIGHT: float = 16.0
 @export var congestion_ghosting_enabled: bool = true
 @export var congestion_stuck_time: float = 0.35
 @export var congestion_release_time: float = 0.5
+@export var terrain_height_offset: float = 0.0
+@export var terrain_walkable_snap_radius_tiles: int = 8
+@export var terrain_allowed_height_levels: PackedInt32Array = PackedInt32Array()
+@export var terrain_allow_ramp_tiles: bool = true
 
 @onready var _selection_ring: MeshInstance3D = $SelectionRing
 @onready var _sprite: Sprite3D = $Sprite3D
@@ -184,6 +188,7 @@ var _outline_timer: float = 0.0
 var _outline_visible: bool = false
 var _nav_debug_draw_initialized: bool = false
 var _nav_debug_draw_last_enabled: bool = false
+var _terrain_runtime: Node = null
 
 signal command_queue_changed
 
@@ -201,6 +206,7 @@ func _ready() -> void:
 	_default_collision_layer = collision_layer
 	_default_collision_mask = collision_mask
 	_setup_navigation_agent()
+	_sync_to_terrain_height(true)
 
 func _process(delta: float) -> void:
 	_update_sprite_outline(delta)
@@ -217,6 +223,7 @@ func _physics_process(delta: float) -> void:
 	_sync_navigation_precision_profile()
 	_process_priority_push_yield(delta)
 	_apply_movement(delta)
+	_sync_to_terrain_height()
 	_process_command_queue()
 
 func is_worker_unit() -> bool:
@@ -781,7 +788,7 @@ func command_attack_move(target: Vector3, preserve_queue: bool = false) -> bool:
 	_clear_repair_state()
 	_attack_target = null
 	_attack_timer = 0.0
-	_attack_move_point = Vector3(target.x, global_position.y, target.z)
+	_attack_move_point = Vector3(target.x, _sample_terrain_height(target, global_position.y), target.z)
 	_has_attack_move_point = true
 	_retarget_timer = 0.0
 	_gather_target = null
@@ -1707,7 +1714,9 @@ func _queue_anchor_for_mineral(mineral: Node3D) -> Vector3:
 		anchor_direction = Vector3.RIGHT
 	anchor_direction = anchor_direction.normalized()
 	var offset: float = maxf(_effective_gather_contact_range(mineral) + 0.1, mining_queue_distance)
-	return mineral.global_position + anchor_direction * offset
+	var anchor: Vector3 = mineral.global_position + anchor_direction * offset
+	anchor.y = _sample_terrain_height(anchor, global_position.y)
+	return anchor
 
 func _mining_gather_approach_point(mineral: Node3D) -> Vector3:
 	return _interaction_edge_approach_point(mineral, true)
@@ -1732,7 +1741,7 @@ func _interaction_edge_approach_point(target_node: Node3D, include_obstacle: boo
 	var edge_padding: float = clampf(interaction_edge_padding, 0.0, 0.25)
 	var distance_from_target: float = maxf(0.05, target_radius + edge_padding)
 	var approach_point: Vector3 = target_node.global_position + direction * distance_from_target
-	approach_point.y = global_position.y
+	approach_point.y = _sample_terrain_height(approach_point, global_position.y)
 	return approach_point
 
 func _effective_gather_contact_range(mineral: Node3D) -> float:
@@ -2305,7 +2314,8 @@ func _apply_movement(delta: float) -> void:
 	_update_congestion_state(delta, motion_distance, desired_velocity.length(), frame_start_position)
 
 func _move_to(target: Vector3) -> void:
-	_target_position = Vector3(target.x, global_position.y, target.z)
+	var resolved_target: Vector3 = _resolve_walkable_target(target)
+	_target_position = Vector3(resolved_target.x, _sample_terrain_height(resolved_target, global_position.y), resolved_target.z)
 	_has_target = true
 	_has_safe_velocity = false
 	_last_desired_velocity = Vector3.ZERO
@@ -2524,6 +2534,8 @@ func _apply_runtime_config_for_role() -> void:
 	push_priority = int(unit_def.get("push_priority", push_priority))
 	push_can_be_displaced = bool(unit_def.get("push_can_be_displaced", push_can_be_displaced))
 	push_allow_cross_team_displace = bool(unit_def.get("push_allow_cross_team_displace", push_allow_cross_team_displace))
+	terrain_allow_ramp_tiles = bool(unit_def.get("terrain_allow_ramp_tiles", terrain_allow_ramp_tiles))
+	terrain_allowed_height_levels = _read_int_array_from_variant(unit_def.get("terrain_allowed_height_levels", terrain_allowed_height_levels))
 	_apply_interaction_fallback_table(unit_def)
 	var body_radius: float = float(unit_def.get("body_radius", -1.0))
 	if body_radius > 0.0:
@@ -2532,6 +2544,20 @@ func _apply_runtime_config_for_role() -> void:
 	if _nav_agent != null:
 		_nav_agent.max_speed = move_speed
 	_update_health_bar_visual()
+
+func _read_int_array_from_variant(raw_value: Variant) -> PackedInt32Array:
+	var parsed: PackedInt32Array = PackedInt32Array()
+	if raw_value is PackedInt32Array:
+		return (raw_value as PackedInt32Array).duplicate()
+	if raw_value is Array:
+		for value in raw_value:
+			if value is int:
+				parsed.append(int(value))
+				continue
+			var text: String = str(value).strip_edges()
+			if text.is_valid_int():
+				parsed.append(text.to_int())
+	return parsed
 
 func _default_interaction_fallback_table() -> Dictionary:
 	return {
@@ -2782,6 +2808,78 @@ func _sync_nav_debug_draw() -> void:
 	_nav_agent.debug_enabled = debug_nav_draw_path
 	_nav_debug_draw_last_enabled = debug_nav_draw_path
 	_nav_debug_draw_initialized = true
+
+func _resolve_terrain_runtime() -> Node:
+	if _terrain_runtime != null and is_instance_valid(_terrain_runtime):
+		return _terrain_runtime
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return null
+	_terrain_runtime = tree.get_first_node_in_group("terrain_runtime")
+	return _terrain_runtime
+
+func _sample_terrain_height(world_position: Vector3, fallback: float = 0.0) -> float:
+	var terrain_node: Node = _resolve_terrain_runtime()
+	if terrain_node == null:
+		return fallback
+	if not terrain_node.has_method("sample_height_at_world"):
+		return fallback
+	var sampled_value: Variant = terrain_node.call("sample_height_at_world", world_position, fallback)
+	if sampled_value is float or sampled_value is int:
+		return float(sampled_value)
+	return fallback
+
+func _terrain_is_walkable(world_position: Vector3) -> bool:
+	var terrain_node: Node = _resolve_terrain_runtime()
+	if terrain_node == null:
+		return true
+	if not terrain_node.has_method("is_walkable_world"):
+		return true
+	var walkable_value: Variant = terrain_node.call("is_walkable_world", world_position)
+	if walkable_value is bool and not bool(walkable_value):
+		return false
+	if terrain_node.has_method("get_world_flags"):
+		var flags_value: Variant = terrain_node.call("get_world_flags", world_position)
+		if flags_value is Dictionary:
+			var flags: Dictionary = flags_value as Dictionary
+			if not terrain_allow_ramp_tiles and bool(flags.get("is_ramp", false)):
+				return false
+			if not terrain_allowed_height_levels.is_empty():
+				var height_level: int = int(flags.get("height_level", 0))
+				if not terrain_allowed_height_levels.has(height_level):
+					return false
+	return true
+
+func _resolve_walkable_target(target_position: Vector3) -> Vector3:
+	if _terrain_is_walkable(target_position):
+		return target_position
+	var terrain_node: Node = _resolve_terrain_runtime()
+	if terrain_node == null:
+		return target_position
+	var max_radius: int = maxi(0, terrain_walkable_snap_radius_tiles)
+	var snapped_value: Variant = target_position
+	if terrain_node.has_method("find_nearest_walkable_world_filtered"):
+		snapped_value = terrain_node.call(
+			"find_nearest_walkable_world_filtered",
+			target_position,
+			max_radius,
+			terrain_allowed_height_levels,
+			terrain_allow_ramp_tiles
+		)
+	elif terrain_node.has_method("find_nearest_walkable_world"):
+		snapped_value = terrain_node.call("find_nearest_walkable_world", target_position, max_radius)
+	else:
+		return target_position
+	if snapped_value is Vector3:
+		return snapped_value as Vector3
+	return target_position
+
+func _sync_to_terrain_height(force: bool = false) -> void:
+	if _construction_hidden and not force:
+		return
+	var target_y: float = _sample_terrain_height(global_position, global_position.y - terrain_height_offset) + terrain_height_offset
+	if force or absf(global_position.y - target_y) > 0.001:
+		global_position.y = target_y
 
 func _can_use_navigation() -> bool:
 	if _nav_agent == null:

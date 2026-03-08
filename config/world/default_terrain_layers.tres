@@ -1,0 +1,73 @@
+[gd_resource type="Resource" script_class="TerrainLayerSet" load_steps=34 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/terrain_layer_set.gd" id="1"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/albedo/terrain_temperate_grass_albedo_2k.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/albedo/terrain_temperate_dirt_albedo_2k.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/albedo/terrain_temperate_rock_albedo_2k.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/albedo/terrain_temperate_sand_albedo_2k.png" id="5"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/normal/terrain_temperate_grass_normal_2k.png" id="6"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/normal/terrain_temperate_dirt_normal_2k.png" id="7"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/normal/terrain_temperate_rock_normal_2k.png" id="8"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/normal/terrain_temperate_sand_normal_2k.png" id="9"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/orm/terrain_temperate_grass_orm_2k.png" id="10"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/orm/terrain_temperate_dirt_orm_2k.png" id="11"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/orm/terrain_temperate_rock_orm_2k.png" id="12"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/orm/terrain_temperate_sand_orm_2k.png" id="13"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/height/terrain_temperate_grass_height_2k.png" id="14"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/height/terrain_temperate_dirt_height_2k.png" id="15"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/height/terrain_temperate_rock_height_2k.png" id="16"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/height/terrain_temperate_sand_height_2k.png" id="17"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_a_albedo_2k.png" id="18"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_b_albedo_2k.png" id="19"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_dirt_a_albedo_2k.png" id="20"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_a_normal_2k.png" id="21"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_b_normal_2k.png" id="22"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_dirt_a_normal_2k.png" id="23"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_a_orm_2k.png" id="24"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_b_orm_2k.png" id="25"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_dirt_a_orm_2k.png" id="26"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_a_height_2k.png" id="27"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_rock_b_height_2k.png" id="28"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/cliff/terrain_cliff_dirt_a_height_2k.png" id="29"]
+
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/macro/terrain_macro_color_variation_4k.png" id="30"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/macro/terrain_macro_roughness_variation_4k.png" id="31"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/macro/terrain_detail_noise_a_1k.png" id="32"]
+[ext_resource type="Texture2D" path="res://assets/raw/terrain_textures/macro/terrain_detail_noise_b_1k.png" id="33"]
+
+[resource]
+script = ExtResource("1")
+layer_names = PackedStringArray("Grass", "Dirt", "Rock", "Sand")
+debug_colors = PackedColorArray(0.26, 0.45, 0.26, 1, 0.45, 0.35, 0.22, 1, 0.4, 0.4, 0.42, 1, 0.58, 0.52, 0.34, 1)
+uv_scale = 0.25
+use_texture_blending = true
+blend_sharpness = 1.25
+albedo_textures = Array[Texture2D]([ExtResource("2"), ExtResource("3"), ExtResource("4"), ExtResource("5")])
+normal_textures = Array[Texture2D]([ExtResource("6"), ExtResource("7"), ExtResource("8"), ExtResource("9")])
+orm_textures = Array[Texture2D]([ExtResource("10"), ExtResource("11"), ExtResource("12"), ExtResource("13")])
+height_textures = Array[Texture2D]([ExtResource("14"), ExtResource("15"), ExtResource("16"), ExtResource("17")])
+cliff_albedo_textures = Array[Texture2D]([ExtResource("18"), ExtResource("19"), ExtResource("20")])
+cliff_normal_textures = Array[Texture2D]([ExtResource("21"), ExtResource("22"), ExtResource("23")])
+cliff_orm_textures = Array[Texture2D]([ExtResource("24"), ExtResource("25"), ExtResource("26")])
+cliff_height_textures = Array[Texture2D]([ExtResource("27"), ExtResource("28"), ExtResource("29")])
+macro_color_texture = ExtResource("30")
+macro_roughness_texture = ExtResource("31")
+detail_noise_a_texture = ExtResource("32")
+detail_noise_b_texture = ExtResource("33")
+macro_uv_scale = 0.8
+macro_color_strength = 0.24
+macro_roughness_strength = 0.32
+detail_noise_strength = 0.15
+cliff_start = 0.38
+cliff_end = 0.78
+cliff_blend_sharpness = 1.4
+normal_strength = 1.0
+

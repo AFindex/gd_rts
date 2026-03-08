@@ -9,6 +9,7 @@ extends Camera3D
 @export var min_zoom: float = 10.0
 @export var max_zoom: float = 55.0
 @export var map_half_size: Vector2 = Vector2(58.0, 58.0)
+@export var terrain_runtime_path: NodePath = NodePath("../World/TileTerrain")
 @export var start_point_path: NodePath = NodePath("../CameraStartPoint")
 @export var intro_enabled: bool = true
 @export var intro_lock_input: bool = true
@@ -20,6 +21,7 @@ var _target_zoom: float
 var _intro_playing: bool = false
 
 func _ready() -> void:
+	_sync_map_half_size_from_terrain()
 	rotation_degrees = Vector3(-55.0, 0.0, 0.0)
 	var start_anchor: Node3D = _resolve_start_anchor()
 	var start_position: Vector3 = _resolve_start_position(start_anchor)
@@ -168,3 +170,19 @@ func _is_mouse_over_ui(viewport: Viewport) -> bool:
 		if picked != null and picked.visible and picked.mouse_filter != Control.MOUSE_FILTER_IGNORE:
 			return true
 	return false
+
+func _sync_map_half_size_from_terrain() -> void:
+	var terrain_node: Node = get_node_or_null(terrain_runtime_path)
+	if terrain_node == null and get_tree() != null:
+		terrain_node = get_tree().get_first_node_in_group("terrain_runtime")
+	if terrain_node == null:
+		return
+	if not terrain_node.has_method("get_map_half_extents"):
+		return
+	var half_size_value: Variant = terrain_node.call("get_map_half_extents")
+	if not (half_size_value is Vector2):
+		return
+	var half_size: Vector2 = (half_size_value as Vector2).abs()
+	if half_size.x <= 0.0 or half_size.y <= 0.0:
+		return
+	map_half_size = half_size

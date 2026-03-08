@@ -14,6 +14,8 @@ const DEFAULT_BUILD_FOOTPRINT: Vector2 = Vector2(2.6, 1.8)
 const PLAYER_TEAM_ID: int = 1
 const DEFAULT_TEAM_START_MINERALS: int = 220
 const NAV_SOURCE_GROUP: StringName = &"navmesh_runtime_source"
+const TERRAIN_RUNTIME_GROUP: StringName = &"terrain_runtime"
+const GROUND_COLLISION_MASK: int = 1
 const QUEUE_MARKER_GROUP: StringName = &"command_queue_marker"
 const QUEUE_MARKER_LAYER: int = 1 << 5
 const QUEUE_MARKER_MAX_VISIBLE: int = 32
@@ -77,6 +79,7 @@ var _buildings_root: Node3D
 var _selection_overlay: Control
 var _hud: Control
 var _nav_region: NavigationRegion3D
+var _terrain_runtime: Node = null
 
 var _dragging: bool = false
 var _drag_start: Vector2 = Vector2.ZERO
@@ -173,10 +176,12 @@ func _ready() -> void:
 	_selection_overlay = get_node_or_null(selection_overlay_path) as Control
 	_hud = get_node_or_null(hud_path) as Control
 	_nav_region = get_node_or_null(nav_region_path) as NavigationRegion3D
+	_sync_world_bounds_from_terrain()
 	_apply_runtime_config()
 	_connect_hud_signals()
 	_create_placement_preview()
 	_setup_build_placement_grid()
+	_sync_world_bounds_from_terrain()
 	_setup_queue_visual_root()
 	_setup_ping_visual_root()
 	_setup_construction_ghost_visual_root()
@@ -2215,7 +2220,60 @@ func _build_minimap_ping_entries() -> Array[Dictionary]:
 		})
 	return result
 
+func _resolve_terrain_runtime() -> Node:
+	if _terrain_runtime != null and is_instance_valid(_terrain_runtime):
+		return _terrain_runtime
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return null
+	_terrain_runtime = tree.get_first_node_in_group(TERRAIN_RUNTIME_GROUP)
+	return _terrain_runtime
+
+func _terrain_map_half_size() -> Vector2:
+	var terrain_node: Node = _resolve_terrain_runtime()
+	if terrain_node == null:
+		return Vector2.ZERO
+	if not terrain_node.has_method("get_map_half_extents"):
+		return Vector2.ZERO
+	var half_size_value: Variant = terrain_node.call("get_map_half_extents")
+	if not (half_size_value is Vector2):
+		return Vector2.ZERO
+	var half_size: Vector2 = (half_size_value as Vector2).abs()
+	if half_size.x <= 0.0 or half_size.y <= 0.0:
+		return Vector2.ZERO
+	return half_size
+
+func _sample_terrain_height(world_position: Vector3, fallback: float = 0.0) -> float:
+	var terrain_node: Node = _resolve_terrain_runtime()
+	if terrain_node == null:
+		return fallback
+	if not terrain_node.has_method("sample_height_at_world"):
+		return fallback
+	var sampled_value: Variant = terrain_node.call("sample_height_at_world", world_position, fallback)
+	if sampled_value is float or sampled_value is int:
+		return float(sampled_value)
+	return fallback
+
+func _sync_world_bounds_from_terrain() -> void:
+	var terrain_half_size: Vector2 = _terrain_map_half_size()
+	if terrain_half_size.x <= 0.0 or terrain_half_size.y <= 0.0:
+		return
+	if _camera != null:
+		_camera.set("map_half_size", terrain_half_size)
+	var terrain_node: Node = _resolve_terrain_runtime()
+	if _build_placement_grid != null and _build_placement_grid.has_method("configure_bounds"):
+		_build_placement_grid.call(
+			"configure_bounds",
+			Vector2(-terrain_half_size.x, -terrain_half_size.y),
+			Vector2(terrain_half_size.x, terrain_half_size.y)
+		)
+	if _build_placement_grid != null and _build_placement_grid.has_method("set_terrain_runtime"):
+		_build_placement_grid.call("set_terrain_runtime", terrain_node)
+
 func _camera_map_half_size() -> Vector2:
+	var terrain_half_size: Vector2 = _terrain_map_half_size()
+	if terrain_half_size.x > 0.0 and terrain_half_size.y > 0.0:
+		return terrain_half_size
 	if _camera != null:
 		var half_size_value: Variant = _camera.get("map_half_size")
 		if half_size_value is Vector2:
@@ -2259,6 +2317,7 @@ func _emit_ping(world_position: Vector3, ping_kind: String = "manual", show_noti
 		0.0,
 		clampf(world_position.z, -map_half_size.y, map_half_size.y)
 	)
+	clamped_position.y = _sample_terrain_height(clamped_position, world_position.y)
 	var normalized_kind: String = ping_kind.strip_edges().to_lower()
 	if normalized_kind == "":
 		normalized_kind = "manual"
@@ -5553,11 +5612,17 @@ func _setup_build_placement_grid() -> void:
 	_build_placement_grid = grid_node
 	if _build_placement_grid == null:
 		return
+	var map_half_size: Vector2 = _camera_map_half_size()
+	var terrain_node: Node = _resolve_terrain_runtime()
+	if _build_placement_grid.has_method("set"):
+		_build_placement_grid.call("set", "default_building_footprint", DEFAULT_BUILD_FOOTPRINT)
+		_build_placement_grid.call("set", "bounds_min", Vector2(-map_half_size.x, -map_half_size.y))
+		_build_placement_grid.call("set", "bounds_max", Vector2(map_half_size.x, map_half_size.y))
 	if _build_placement_grid is Node:
 		(_build_placement_grid as Node).name = "BuildPlacementGrid"
 		add_child(_build_placement_grid as Node)
-	if _build_placement_grid.has_method("set"):
-		_build_placement_grid.call("set", "default_building_footprint", DEFAULT_BUILD_FOOTPRINT)
+	if _build_placement_grid.has_method("set_terrain_runtime"):
+		_build_placement_grid.call("set_terrain_runtime", terrain_node)
 	_set_build_grid_visible(false)
 	_sync_build_grid_occupancy()
 
@@ -5635,8 +5700,12 @@ func _snap_build_grid_position(raw_position: Vector3) -> Vector3:
 		if _build_placement_grid.has_method("snap_world_position"):
 			var snapped_value: Variant = _build_placement_grid.call("snap_world_position", raw_position)
 			if snapped_value is Vector3:
-				return snapped_value as Vector3
-	return Vector3(roundf(raw_position.x * 2.0) * 0.5, 0.04, roundf(raw_position.z * 2.0) * 0.5)
+				var snapped: Vector3 = snapped_value as Vector3
+				snapped.y = _sample_terrain_height(snapped, raw_position.y) + 0.04
+				return snapped
+	var fallback: Vector3 = Vector3(roundf(raw_position.x * 2.0) * 0.5, 0.04, roundf(raw_position.z * 2.0) * 0.5)
+	fallback.y = _sample_terrain_height(fallback, raw_position.y) + 0.04
+	return fallback
 
 func _update_placement_preview() -> void:
 	var screen_pos: Vector2 = get_viewport().get_mouse_position()
@@ -5653,7 +5722,8 @@ func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
 	var raw_position: Vector3 = point as Vector3
 	var snapped: Vector3 = _snap_build_grid_position(raw_position)
 	_placement_current_position = snapped
-	var preview_builder: Node3D = _nearest_selected_worker(Vector3(snapped.x, 0.0, snapped.z))
+	var preview_builder_position: Vector3 = Vector3(snapped.x, _sample_terrain_height(snapped, snapped.y), snapped.z)
+	var preview_builder: Node3D = _nearest_selected_worker(preview_builder_position)
 	if preview_builder != null and is_instance_valid(preview_builder):
 		var builder_team: int = _team_id_from_node(preview_builder, PLAYER_TEAM_ID)
 		var ignored_units: Array[Node] = _collect_allied_units(builder_team)
@@ -5682,7 +5752,11 @@ func _confirm_building_placement(keep_mode: bool = false) -> void:
 	if not _placement_can_place:
 		return
 	var placing_costs: Dictionary = _normalize_costs(_placing_costs)
-	var target_position: Vector3 = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
+	var target_position: Vector3 = Vector3(
+		_placement_current_position.x,
+		_sample_terrain_height(_placement_current_position, _placement_current_position.y),
+		_placement_current_position.z
+	)
 	var builder_dispatch: Dictionary = _resolve_build_order_worker(target_position, keep_mode)
 	var builder: Node3D = builder_dispatch.get("unit") as Node3D
 	var queue_for_builder: bool = bool(builder_dispatch.get("queue_for_unit", keep_mode))
@@ -6281,7 +6355,8 @@ func _spawn_building_instance(kind: String, world_position: Vector3, rotation_y:
 		_buildings_root.add_child(building)
 	else:
 		add_child(building)
-	building.global_position = Vector3(world_position.x, 0.0, world_position.z)
+	var building_y: float = _sample_terrain_height(world_position, world_position.y)
+	building.global_position = Vector3(world_position.x, building_y, world_position.z)
 	building.rotation.y = rotation_y
 	if building.has_method("configure_by_kind"):
 		building.call("configure_by_kind", kind)
@@ -6542,9 +6617,12 @@ func _find_open_spawn_position(origin: Vector3) -> Vector3:
 		for step in 8:
 			var angle: float = TAU * float(step) / 8.0
 			var candidate: Vector3 = origin + Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+			candidate.y = _sample_terrain_height(candidate, origin.y)
 			if _is_spawn_position_free(candidate):
 				return candidate
-	return origin
+	var fallback: Vector3 = origin
+	fallback.y = _sample_terrain_height(fallback, origin.y)
+	return fallback
 
 func _is_spawn_position_free(candidate: Vector3) -> bool:
 	var units: Array[Node] = get_tree().get_nodes_in_group("selectable_unit")
@@ -6552,7 +6630,8 @@ func _is_spawn_position_free(candidate: Vector3) -> bool:
 		var unit: Node3D = node as Node3D
 		if unit == null:
 			continue
-		if candidate.distance_to(unit.global_position) < 1.2:
+		var unit_distance: float = Vector2(candidate.x - unit.global_position.x, candidate.z - unit.global_position.z).length()
+		if unit_distance < 1.2:
 			return false
 
 	var buildings: Array[Node] = get_tree().get_nodes_in_group("selectable_building")
@@ -6560,7 +6639,8 @@ func _is_spawn_position_free(candidate: Vector3) -> bool:
 		var building: Node3D = node as Node3D
 		if building == null:
 			continue
-		if candidate.distance_to(building.global_position) < 2.4:
+		var building_distance: float = Vector2(candidate.x - building.global_position.x, candidate.z - building.global_position.z).length()
+		if building_distance < 2.4:
 			return false
 
 	var resources: Array[Node] = get_tree().get_nodes_in_group("resource_node")
@@ -6568,7 +6648,8 @@ func _is_spawn_position_free(candidate: Vector3) -> bool:
 		var resource: Node3D = node as Node3D
 		if resource == null:
 			continue
-		if candidate.distance_to(resource.global_position) < 2.0:
+		var resource_distance: float = Vector2(candidate.x - resource.global_position.x, candidate.z - resource.global_position.z).length()
+		if resource_distance < 2.0:
 			return false
 
 	return true
@@ -6576,6 +6657,14 @@ func _is_spawn_position_free(candidate: Vector3) -> bool:
 func _ground_point_from_screen(screen_pos: Vector2) -> Variant:
 	var origin: Vector3 = _camera.project_ray_origin(screen_pos)
 	var normal: Vector3 = _camera.project_ray_normal(screen_pos)
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, origin + normal * 4000.0)
+	query.collide_with_areas = false
+	query.collision_mask = GROUND_COLLISION_MASK
+	var ground_hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if not ground_hit.is_empty():
+		var hit_position: Variant = ground_hit.get("position", null)
+		if hit_position is Vector3:
+			return hit_position as Vector3
 	var plane: Plane = Plane(Vector3.UP, 0.0)
 	var intersection: Variant = plane.intersects_ray(origin, normal)
 	if intersection == null:

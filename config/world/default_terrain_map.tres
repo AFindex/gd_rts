@@ -1,0 +1,81 @@
+[gd_resource type="Resource" script_class="TerrainMapData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/terrain_map_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+map_size = Vector2i(120, 120)
+tile_size = 1.0
+height_step = 0.6
+centered_origin = true
+default_height_level = 0
+default_walkable = true
+default_buildable = true
+default_layer_id = 0
+height_brushes = [{
+"center": Vector2i(60, 60),
+"falloff": 3,
+"height_level": 2,
+"radius": 12,
+"shape": "square"
+}, {
+"center": Vector2i(60, 60),
+"falloff": 2,
+"height_level": 3,
+"radius": 5,
+"shape": "square"
+}, {
+"center": Vector2i(92, 34),
+"falloff": 2,
+"height_level": 1,
+"radius": 8,
+"shape": "circle"
+}, {
+"center": Vector2i(26, 88),
+"falloff": 1,
+"height_level": 1,
+"radius": 6,
+"shape": "circle"
+}]
+layer_brushes = [{
+"center": Vector2i(60, 60),
+"layer_id": 2,
+"radius": 14,
+"shape": "square"
+}, {
+"center": Vector2i(92, 34),
+"layer_id": 1,
+"radius": 10,
+"shape": "circle"
+}, {
+"center": Vector2i(26, 88),
+"layer_id": 3,
+"radius": 8,
+"shape": "circle"
+}]
+buildable_overrides = {
+"60:60": false,
+"92:34": false,
+"26:88": false
+}
+walkable_overrides = {
+"58:58": false,
+"58:59": false,
+"58:60": false,
+"59:58": false,
+"59:59": false,
+"59:60": false,
+"60:58": false,
+"60:59": false,
+"60:60": false
+}
+ramp_overrides = {
+"59:49": "south",
+"60:49": "south",
+"59:69": "north",
+"60:69": "north",
+"49:59": "east",
+"49:60": "east",
+"69:59": "west",
+"69:60": "west"
+}

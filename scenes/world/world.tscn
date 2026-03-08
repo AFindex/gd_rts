@@ -1,31 +1,20 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=4 format=3]
 
-[sub_resource type="PlaneMesh" id="PlaneMesh_1"]
-size = Vector2(120, 120)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_1"]
-size = Vector3(120, 1, 120)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1"]
-albedo_color = Color(0.203922, 0.32549, 0.2, 1)
-roughness = 1.0
+[ext_resource type="Script" path="res://scripts/world/tile_terrain_runtime.gd" id="1_terrain_runtime"]
+[ext_resource type="Resource" path="res://config/world/default_terrain_map.tres" id="2_terrain_map"]
+[ext_resource type="Resource" path="res://config/world/default_terrain_layers.tres" id="3_terrain_layers"]
 
 [sub_resource type="NavigationMesh" id="NavigationMesh_1"]
 vertices = PackedVector3Array(-60, 0, -60, 60, 0, -60, 60, 0, 60, -60, 0, 60)
 polygons = [PackedInt32Array(0, 1, 2, 3)]
 
 [node name="World" type="Node3D"]
-
-[node name="Ground" type="StaticBody3D" parent="."]
-collision_layer = 1
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
-position = Vector3(0, -0.5, 0)
-shape = SubResource("BoxShape3D_1")
-
-[node name="GroundVisual" type="MeshInstance3D" parent="."]
-mesh = SubResource("PlaneMesh_1")
-material_override = SubResource("StandardMaterial3D_1")
+[node name="TileTerrain" type="Node3D" parent="."]
+script = ExtResource("1_terrain_runtime")
+map_data = ExtResource("2_terrain_map")
+layer_set = ExtResource("3_terrain_layers")
+generate_collision = true
+generate_side_walls = true
 
 [node name="NavRegion" type="NavigationRegion3D" parent="."]
 navigation_mesh = SubResource("NavigationMesh_1")
