@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_1e2ym"]
+
+[resource]
+script = ExtResource("1_1e2ym")
+id = "bio_vat"
+display_name = "Bio Vat"
+role_tag = "BIO"
+cost = 185
+construction_paradigm = "incorporated"
+build_time = 7.4
+max_health = 760.0
+can_queue_soldier = true
+soldier_build_time = 4.8
+trainable_units = {
+"heavy_gunner": 5.6,
+"rocket_trooper": 5.4
+}
+queue_limit = 6
+spawn_offset = Vector3(2.7, 0, 0)
+requires_buildings = ["base", "engineering_bay", "psionic_relay"]
+skills = Array[String](["train_heavy_gunner", "train_rocket_trooper"])

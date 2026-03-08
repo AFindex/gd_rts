@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RTSTechConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_tech_config.gd" id="1_gu4vp"]
+
+[resource]
+script = ExtResource("1_gu4vp")
+id = "heavy_plating"
+display_name = "Heavy Plating"
+description = "Unlocks heavy assault bio variants."
+cost = 190
+gas_cost = 110
+research_time = 12.0
+requires_buildings = ["engineering_bay"]
+requires_tech = Array[String](["infantry_armor_1"])

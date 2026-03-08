@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_btt02"]
+
+[resource]
+script = ExtResource("1_btt02")
+id = "warp_gate"
+display_name = "Warp Gate"
+role_tag = "WRP"
+cost = 210
+construction_paradigm = "summoning"
+build_time = 8.4
+max_health = 790.0
+can_queue_soldier = true
+soldier_build_time = 4.6
+trainable_units = {
+"scout_mech": 5.5,
+"siege_mech": 7.0
+}
+queue_limit = 6
+spawn_offset = Vector3(2.8, 0, 0)
+requires_buildings = ["base", "engineering_bay"]
+requires_tech = Array[String](["mech_chassis"])
+skills = Array[String](["train_scout_mech", "train_siege_mech"])

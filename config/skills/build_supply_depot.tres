@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_0xvy1"]
+
+[resource]
+script = ExtResource("1_0xvy1")
+id = "build_supply_depot"
+label = "Logistics Depot"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "G"
+target_mode = "placement"
+building_kind = "supply_depot"
+queue_idle_dispatch = true

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_hkpvc"]
+
+[resource]
+script = ExtResource("1_hkpvc")
+id = "build_psionic_relay"
+label = "Support Relay"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "Z"
+target_mode = "placement"
+building_kind = "psionic_relay"
+queue_idle_dispatch = true

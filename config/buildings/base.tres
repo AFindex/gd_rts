@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_tt3xv"]
+
+[resource]
+script = ExtResource("1_tt3xv")
+id = "base"
+display_name = "Command Base"
+role_tag = "HQ"
+construction_paradigm = "summoning"
+max_health = 1450.0
+is_resource_dropoff = true
+can_queue_worker = true
+worker_build_time = 2.8
+trainable_units = {
+"field_technician": 3.4,
+"hauler_drone": 3.8,
+"worker": 2.8
+}
+queue_limit = 8
+spawn_offset = Vector3(3.2, 0, 0)
+skills = Array[String](["train_worker", "train_field_technician", "train_hauler_drone", "build_menu"])
+build_skills = Array[String](["build_barracks", "build_supply_depot", "build_tower", "build_academy", "build_engineering_bay", "build_psionic_relay", "build_bio_vat", "build_warp_gate", "build_tech_lab", "build_void_core"])

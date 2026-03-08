@@ -4,6 +4,9 @@ const ICON_ROOT_SKILLS: String = "res://assets/raw/rts_icons/skills/"
 const ICON_ROOT_UI: String = "res://assets/raw/rts_icons/ui_actions/"
 const ICON_ROOT_BUILDINGS: String = "res://assets/raw/rts_icons/buildings/"
 const ICON_TMP_BUILD: String = "res://icon_build_tmp.png"
+const RTS_CONFIG_REGISTRY: Script = preload("res://scripts/core/config/rts_config_registry.gd")
+const LEGACY_FALLBACK_SETTING_PATH: String = "application/config/rts_catalog_enable_legacy_fallback"
+const LEGACY_FALLBACK_DEFAULT: bool = true
 
 const UNIT_DEFS: Dictionary = {
 	"worker": {
@@ -1153,12 +1156,22 @@ const MATCH_RULE_DEFS: Array[Dictionary] = [
 ]
 
 static func get_unit_def(unit_kind: String) -> Dictionary:
+	var registry_def: Dictionary = RTS_CONFIG_REGISTRY.get_unit_def(unit_kind)
+	if not registry_def.is_empty():
+		return _localize_dict_fields(registry_def, ["display_name"])
+	if not is_legacy_fallback_enabled():
+		return {}
 	var value: Variant = UNIT_DEFS.get(unit_kind, {})
 	if value is Dictionary:
 		return _localize_dict_fields((value as Dictionary).duplicate(true), ["display_name"])
 	return {}
 
 static func get_building_def(building_kind: String) -> Dictionary:
+	var registry_def: Dictionary = RTS_CONFIG_REGISTRY.get_building_def(building_kind)
+	if not registry_def.is_empty():
+		return _localize_dict_fields(registry_def, ["display_name"])
+	if not is_legacy_fallback_enabled():
+		return {}
 	var value: Variant = BUILDING_DEFS.get(building_kind, {})
 	if value is Dictionary:
 		return _localize_dict_fields((value as Dictionary).duplicate(true), ["display_name"])
@@ -1225,6 +1238,11 @@ static func get_building_costs(building_kind: String) -> Dictionary:
 	}
 
 static func get_tech_def(tech_id: String) -> Dictionary:
+	var registry_def: Dictionary = RTS_CONFIG_REGISTRY.get_tech_def(tech_id)
+	if not registry_def.is_empty():
+		return _localize_dict_fields(registry_def, ["display_name", "description"])
+	if not is_legacy_fallback_enabled():
+		return {}
 	var value: Variant = TECH_DEFS.get(tech_id, {})
 	if value is Dictionary:
 		return _localize_dict_fields((value as Dictionary).duplicate(true), ["display_name", "description"])
@@ -1270,10 +1288,20 @@ static func get_match_rule_defs() -> Array[Dictionary]:
 	return result
 
 static func get_skill_def(skill_id: String) -> Dictionary:
+	var registry_def: Dictionary = RTS_CONFIG_REGISTRY.get_skill_def(skill_id)
+	if not registry_def.is_empty():
+		return _localize_dict_fields(registry_def, ["label", "description"])
+	if not is_legacy_fallback_enabled():
+		return {}
 	var value: Variant = SKILL_DEFS.get(skill_id, {})
 	if value is Dictionary:
 		return _localize_dict_fields((value as Dictionary).duplicate(true), ["label", "description"])
 	return {}
+
+static func is_legacy_fallback_enabled() -> bool:
+	if ProjectSettings.has_setting(LEGACY_FALLBACK_SETTING_PATH):
+		return bool(ProjectSettings.get_setting(LEGACY_FALLBACK_SETTING_PATH))
+	return LEGACY_FALLBACK_DEFAULT
 
 static func make_command_entry(skill_id: String, overrides: Dictionary = {}) -> Dictionary:
 	var entry: Dictionary = get_skill_def(skill_id)

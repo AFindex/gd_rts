@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_iyvhv"]
+
+[resource]
+script = ExtResource("1_iyvhv")
+id = "build_engineering_bay"
+label = "Eng Bay"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "D"
+target_mode = "placement"
+building_kind = "engineering_bay"
+queue_idle_dispatch = true

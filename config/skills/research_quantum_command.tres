@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_xlbw8"]
+
+[resource]
+script = ExtResource("1_xlbw8")
+id = "research_quantum_command"
+label = "Quantum Command"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_train.png"
+hotkey = "L"
+tech_id = "quantum_command"

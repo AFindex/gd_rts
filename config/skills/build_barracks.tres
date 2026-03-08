@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_mfw2y"]
+
+[resource]
+script = ExtResource("1_mfw2y")
+id = "build_barracks"
+label = "Barracks"
+icon_path = "res://assets/raw/rts_icons/buildings/building_barracks.png"
+hotkey = "Q"
+target_mode = "placement"
+building_kind = "barracks"
+queue_idle_dispatch = true

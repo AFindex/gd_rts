@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_4d1sb"]
+
+[resource]
+script = ExtResource("1_4d1sb")
+id = "build_tech_lab"
+label = "Tech Lab"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "C"
+target_mode = "placement"
+building_kind = "tech_lab"
+queue_idle_dispatch = true

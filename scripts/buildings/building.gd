@@ -74,6 +74,7 @@ var _construction_cast_elapsed: float = 0.0
 var _construction_cast_time: float = 0.0
 var _construction_assigned_worker_path: NodePath = NodePath("")
 var _construction_total_cost: int = 0
+var _construction_total_gas_cost: int = 0
 var _construction_cancel_ratio: float = 0.75
 var _construction_pause_reason: String = ""
 var _health_bar_root: Node3D = null
@@ -371,7 +372,7 @@ func get_construction_assigned_worker_path() -> NodePath:
 func has_construction_assigned_worker() -> bool:
 	return str(_construction_assigned_worker_path) != ""
 
-func start_construction(paradigm: String, build_time: float, assigned_worker: Node = null, build_cost: int = 0, cancel_refund_ratio: float = 0.75) -> void:
+func start_construction(paradigm: String, build_time: float, assigned_worker: Node = null, build_cost: int = 0, cancel_refund_ratio: float = 0.75, build_gas_cost: int = 0) -> void:
 	_clear_production_queue()
 	_construction_active = true
 	_construction_paused = false
@@ -383,6 +384,7 @@ func start_construction(paradigm: String, build_time: float, assigned_worker: No
 	_construction_cast_elapsed = 0.0
 	_construction_cast_time = 0.0
 	_construction_total_cost = maxi(0, build_cost)
+	_construction_total_gas_cost = maxi(0, build_gas_cost)
 	_construction_cancel_ratio = clampf(cancel_refund_ratio, 0.0, 1.0)
 	if assigned_worker != null and is_instance_valid(assigned_worker):
 		_construction_assigned_worker_path = assigned_worker.get_path()
@@ -449,6 +451,7 @@ func cancel_construction_and_destroy(eject_worker: bool = false) -> Dictionary:
 		"paradigm": _construction_paradigm,
 		"worker_path": _construction_assigned_worker_path,
 		"cost": _construction_total_cost,
+		"gas_cost": _construction_total_gas_cost,
 		"refund_ratio": _construction_cancel_ratio,
 		"eject_worker": eject_worker,
 		"progress": get_construction_progress(),
@@ -594,6 +597,7 @@ func _complete_construction() -> void:
 		"stage": _construction_stage,
 		"worker_path": _construction_assigned_worker_path,
 		"cost": _construction_total_cost,
+		"gas_cost": _construction_total_gas_cost,
 		"position": global_position
 	}
 	_reset_construction_state()
@@ -610,6 +614,7 @@ func _reset_construction_state() -> void:
 	_construction_cast_time = 0.0
 	_construction_assigned_worker_path = NodePath("")
 	_construction_total_cost = 0
+	_construction_total_gas_cost = 0
 	_construction_cancel_ratio = construction_cancel_refund_ratio
 	_apply_construction_visual(false)
 

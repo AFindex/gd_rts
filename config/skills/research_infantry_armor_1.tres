@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_6r72x"]
+
+[resource]
+script = ExtResource("1_6r72x")
+id = "research_infantry_armor_1"
+label = "Armor I"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_train.png"
+hotkey = "X"
+tech_id = "infantry_armor_1"

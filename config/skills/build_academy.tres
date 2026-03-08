@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_8g7d8"]
+
+[resource]
+script = ExtResource("1_8g7d8")
+id = "build_academy"
+label = "Academy"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "E"
+target_mode = "placement"
+building_kind = "academy"
+queue_idle_dispatch = true

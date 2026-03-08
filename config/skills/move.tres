@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_uqwha"]
+
+[resource]
+script = ExtResource("1_uqwha")
+id = "move"
+label = "Move"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_move.png"
+hotkey = "RMB"
+target_mode = "ground"

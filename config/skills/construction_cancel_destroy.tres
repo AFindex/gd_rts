@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_ir4i8"]
+
+[resource]
+script = ExtResource("1_ir4i8")
+id = "construction_cancel_destroy"
+label = "Cancel+Destroy"
+icon_path = "res://assets/raw/rts_icons/ui_actions/ui_close_back.png"

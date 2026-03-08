@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_luio5"]
+
+[resource]
+script = ExtResource("1_luio5")
+id = "barracks"
+display_name = "Barracks"
+role_tag = "RAX"
+cost = 165
+build_time = 6.2
+max_health = 930.0
+can_queue_soldier = true
+soldier_build_time = 4.0
+trainable_units = {
+"assault_trooper": 4.6,
+"marksman": 5.0,
+"soldier": 4.0
+}
+queue_limit = 8
+spawn_offset = Vector3(3.6, 0, 0)
+requires_buildings = ["base"]
+skills = Array[String](["train_soldier", "train_assault_trooper", "train_marksman"])

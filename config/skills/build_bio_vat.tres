@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_joxje"]
+
+[resource]
+script = ExtResource("1_joxje")
+id = "build_bio_vat"
+label = "Bio Vat"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "X"
+target_mode = "placement"
+building_kind = "bio_vat"
+queue_idle_dispatch = true

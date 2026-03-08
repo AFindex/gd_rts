@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1_qlsew"]
+
+[resource]
+script = ExtResource("1_qlsew")
+id = "assault_trooper"
+display_name = "Assault Trooper"
+role_tag = "AST"
+cost = 95
+gas_cost = 15
+stats = {
+"attack_cooldown": 1.0,
+"attack_damage": 18.0,
+"attack_range": 1.95,
+"body_radius": 0.44,
+"max_health": 130.0,
+"move_speed": 5.8,
+"nav_agent_height": 1.12,
+"nav_agent_radius": 0.42,
+"nav_avoidance_priority": 0.84,
+"push_can_be_displaced": false,
+"push_priority": 3
+}
+requires_buildings = ["barracks"]
+requires_tech = Array[String](["infantry_weapons_1"])
+skills = Array[String](["move", "attack", "stop"])

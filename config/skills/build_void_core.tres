@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_0kgre"]
+
+[resource]
+script = ExtResource("1_0kgre")
+id = "build_void_core"
+label = "Void Core"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "V"
+target_mode = "placement"
+building_kind = "void_core"
+queue_idle_dispatch = true

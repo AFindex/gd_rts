@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_mdxet"]
+
+[resource]
+script = ExtResource("1_mdxet")
+id = "supply_depot"
+display_name = "Logistics Depot"
+role_tag = "SUP"
+cost = 105
+build_time = 4.6
+max_health = 690.0
+spawn_offset = Vector3(2.6, 0, 0)
+supply_bonus = 12
+requires_buildings = ["base"]

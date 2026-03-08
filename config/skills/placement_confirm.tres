@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_wqtuk"]
+
+[resource]
+script = ExtResource("1_wqtuk")
+id = "placement_confirm"
+label = "Confirm Build"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_build.png"
+hotkey = "LMB"

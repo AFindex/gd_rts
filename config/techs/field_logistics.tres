@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSTechConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_tech_config.gd" id="1_2ap2h"]
+
+[resource]
+script = ExtResource("1_2ap2h")
+id = "field_logistics"
+display_name = "Field Logistics"
+description = "Improves supply flow and unlocks support branches."
+cost = 140
+gas_cost = 40
+research_time = 10.0
+requires_buildings = ["academy"]

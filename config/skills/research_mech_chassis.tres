@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_b1sem"]
+
+[resource]
+script = ExtResource("1_b1sem")
+id = "research_mech_chassis"
+label = "Mech Chassis"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_train.png"
+hotkey = "M"
+tech_id = "mech_chassis"

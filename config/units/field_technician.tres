@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1_qhjwn"]
+
+[resource]
+script = ExtResource("1_qhjwn")
+id = "field_technician"
+display_name = "Field Technician"
+role_tag = "TEC"
+is_worker_role = true
+cost = 65
+stats = {
+"attack_cooldown": 0.0,
+"attack_damage": 0.0,
+"attack_range": 0.0,
+"body_radius": 0.33,
+"carry_capacity": 6,
+"dropoff_range": 2.4,
+"gather_amount": 5,
+"gather_interval": 1.4,
+"gather_range": 1.9,
+"max_health": 72.0,
+"move_speed": 4.8,
+"nav_agent_height": 1.0,
+"nav_agent_radius": 0.31,
+"nav_avoidance_priority": 0.3,
+"push_can_be_displaced": true,
+"push_priority": 1,
+"repair_amount": 16.0,
+"repair_interval": 0.46
+}
+requires_buildings = ["base", "academy"]
+requires_tech = Array[String](["field_logistics"])
+skills = Array[String](["move", "gather", "repair", "return_resource", "stop"])

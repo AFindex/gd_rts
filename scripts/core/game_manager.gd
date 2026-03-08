@@ -94,7 +94,7 @@ var _soldier_cost: int = SOLDIER_COST
 var _placing_building: bool = false
 var _placing_kind: String = ""
 var _placing_skill_id: String = ""
-var _placing_cost: int = 0
+var _placing_costs: Dictionary = {"minerals": 0, "gas": 0}
 var _placement_current_position: Vector3 = Vector3.ZERO
 var _placement_can_place: bool = false
 var _placement_preview: MeshInstance3D
@@ -2579,7 +2579,7 @@ func _build_selection_hint(selected_worker_count: int, selected_soldier_count: i
 		var placing_def: Dictionary = RTS_CATALOG.get_building_def(_placing_kind)
 		if not placing_def.is_empty():
 			placing_name = str(placing_def.get("display_name", placing_name))
-		return _tf("Placing %s (%d): %s | LMB Confirm | Shift+LMB Chain | R Rotate | RMB/ESC Cancel", [placing_name, _placing_cost, placement_state])
+		return _tf("Placing %s (%s): %s | LMB Confirm | Shift+LMB Chain | R Rotate | RMB/ESC Cancel", [placing_name, _cost_text(_placing_costs), placement_state])
 	if _build_menu_open:
 		return _build_menu_hint_text()
 	if _pending_target_skill != "":
@@ -3118,8 +3118,8 @@ func _build_command_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	if _placing_building:
 		entries.append(_command_entry("placement_confirm", {
-			"enabled": _placement_can_place and _minerals >= _placing_cost,
-			"cost_text": str(_placing_cost)
+			"enabled": _placement_can_place and _can_afford_costs(_placing_costs),
+			"cost_text": _cost_text(_placing_costs)
 		}))
 		entries.append(_command_entry("placement_rotate"))
 		entries.append(_command_entry("placement_cancel"))
@@ -3160,10 +3160,7 @@ func _build_menu_command_entry(command_id: String) -> Dictionary:
 	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(command_id)
 	if build_kind == "":
 		return _command_entry(command_id)
-	var cost: Dictionary = {
-		"minerals": _building_cost(build_kind),
-		"gas": _building_gas_cost(build_kind)
-	}
+	var cost: Dictionary = _building_costs(build_kind)
 	var enabled: bool = _can_start_build_skill(command_id)
 	var reason: String = _build_skill_block_reason(command_id)
 	return _command_entry(command_id, {
@@ -3396,7 +3393,7 @@ func _build_notifications() -> Array[String]:
 		return lines
 	if _placing_building:
 		var state: String = _t("valid") if _placement_can_place else _t("invalid")
-		lines[0] = _tf("Placement %s | Cost: %d | R Rotate | Shift+LMB Chain", [state, _placing_cost])
+		lines[0] = _tf("Placement %s | Cost: %s | R Rotate | Shift+LMB Chain", [state, _cost_text(_placing_costs)])
 	elif not _pending_build_orders.is_empty():
 		lines[0] = _tf("Worker construction active: %d order(s).", [_pending_build_orders.size()])
 	elif _build_menu_open:
@@ -3679,6 +3676,11 @@ func _building_gas_cost(building_kind: String) -> int:
 		return 0
 	return RTS_CATALOG.get_building_gas_cost(building_kind)
 
+func _building_costs(building_kind: String) -> Dictionary:
+	if building_kind == "":
+		return {"minerals": 0, "gas": 0}
+	return _normalize_costs(RTS_CATALOG.get_building_costs(building_kind))
+
 func _unit_costs(unit_kind: String) -> Dictionary:
 	return RTS_CATALOG.get_unit_costs(unit_kind)
 
@@ -3694,6 +3696,12 @@ func _cost_minerals(costs: Dictionary) -> int:
 
 func _cost_gas(costs: Dictionary) -> int:
 	return maxi(0, int(costs.get("gas", 0)))
+
+func _normalize_costs(costs: Dictionary) -> Dictionary:
+	return {
+		"minerals": _cost_minerals(costs),
+		"gas": _cost_gas(costs)
+	}
 
 func _cost_text(costs: Dictionary) -> String:
 	var minerals: int = _cost_minerals(costs)
@@ -3959,10 +3967,7 @@ func _build_skill_block_reason(skill_id: String) -> String:
 	var requirement_reason: String = _requirements_reason_for_building_kind(build_kind)
 	if requirement_reason != "":
 		return requirement_reason
-	var build_costs: Dictionary = {
-		"minerals": _building_cost(build_kind),
-		"gas": _building_gas_cost(build_kind)
-	}
+	var build_costs: Dictionary = _building_costs(build_kind)
 	if _cost_minerals(build_costs) <= 0 and _cost_gas(build_costs) <= 0:
 		return _t("Invalid build cost.")
 	if not _can_afford_costs(build_costs):
@@ -5253,7 +5258,7 @@ func _issue_exit_construction_from_selection() -> void:
 
 func _cancel_selected_construction_sites(eject_worker: bool) -> void:
 	var canceled_count: int = 0
-	var total_refund: int = 0
+	var total_refund_costs: Dictionary = {"minerals": 0, "gas": 0}
 	for site_node in _collect_target_construction_sites(true, true):
 		if site_node == null or not is_instance_valid(site_node):
 			continue
@@ -5274,20 +5279,27 @@ func _cancel_selected_construction_sites(eject_worker: bool) -> void:
 			continue
 		var worker_path: NodePath = result.get("worker_path", NodePath("")) as NodePath
 		_release_worker_from_construction(worker_path, 0.0)
-		var build_cost: int = maxi(0, int(result.get("cost", 0)))
+		var build_costs: Dictionary = _normalize_costs({
+			"minerals": maxi(0, int(result.get("cost", 0))),
+			"gas": maxi(0, int(result.get("gas_cost", 0)))
+		})
 		var refund_ratio: float = clampf(float(result.get("refund_ratio", 0.75)), 0.0, 1.0)
-		var refund_amount: int = maxi(0, int(floor(float(build_cost) * refund_ratio)))
-		if refund_amount > 0:
-			add_minerals(refund_amount)
-		total_refund += refund_amount
+		var refund_costs: Dictionary = {
+			"minerals": maxi(0, int(floor(float(_cost_minerals(build_costs)) * refund_ratio))),
+			"gas": maxi(0, int(floor(float(_cost_gas(build_costs)) * refund_ratio)))
+		}
+		if _cost_minerals(refund_costs) > 0 or _cost_gas(refund_costs) > 0:
+			_refund_costs(refund_costs)
+		total_refund_costs["minerals"] = int(total_refund_costs.get("minerals", 0)) + _cost_minerals(refund_costs)
+		total_refund_costs["gas"] = int(total_refund_costs.get("gas", 0)) + _cost_gas(refund_costs)
 		canceled_count += 1
 	_prune_invalid_selection()
 	if canceled_count <= 0:
 		_set_ui_notice(_t("No matching construction site for this command."), 1.0)
 		_play_feedback_tone("error")
 		return
-	if total_refund > 0:
-		_set_ui_notice(_tf("Construction canceled: %d site(s), +%d minerals.", [canceled_count, total_refund]), 1.2)
+	if _cost_minerals(total_refund_costs) > 0 or _cost_gas(total_refund_costs) > 0:
+		_set_ui_notice(_tf("Construction canceled: %d site(s), +%s.", [canceled_count, _cost_text(total_refund_costs)]), 1.2)
 	else:
 		_set_ui_notice(_tf("Construction canceled: %d site(s).", [canceled_count]), 1.2)
 	_play_feedback_tone("error")
@@ -5464,15 +5476,15 @@ func _nearest_resource_node(from_position: Vector3, max_distance: float = INF) -
 	return nearest
 
 func _start_building_placement(kind: String, source_skill_id: String = "") -> void:
-	var build_cost: int = _building_cost(kind)
-	if build_cost <= 0:
+	var build_costs: Dictionary = _building_costs(kind)
+	if _cost_minerals(build_costs) <= 0 and _cost_gas(build_costs) <= 0:
 		return
 	_placing_building = true
 	_pending_target_skill = ""
 	_close_build_menu()
 	_placing_kind = kind
 	_placing_skill_id = source_skill_id.strip_edges()
-	_placing_cost = build_cost
+	_placing_costs = _normalize_costs(build_costs)
 	_placement_rotation_y = 0.0
 	_placement_footprint = _build_footprint_for_kind(kind)
 	_set_placement_preview_footprint(_placement_footprint)
@@ -5486,7 +5498,7 @@ func _cancel_building_placement() -> void:
 	_placing_building = false
 	_placing_kind = ""
 	_placing_skill_id = ""
-	_placing_cost = 0
+	_placing_costs = {"minerals": 0, "gas": 0}
 	_placement_footprint = DEFAULT_BUILD_FOOTPRINT
 	_placement_can_place = false
 	if _placement_preview != null:
@@ -5650,7 +5662,7 @@ func _update_placement_preview_from_screen(screen_pos: Vector2) -> void:
 		_sync_build_grid_occupancy()
 
 	var is_valid_spot: bool = _is_build_spot_valid(snapped)
-	var can_afford: bool = _minerals >= _placing_cost
+	var can_afford: bool = _can_afford_costs(_placing_costs)
 	_placement_can_place = is_valid_spot and can_afford
 
 	_placement_preview.visible = true
@@ -5669,22 +5681,23 @@ func _try_place_building(screen_pos: Vector2, keep_mode: bool = false) -> void:
 func _confirm_building_placement(keep_mode: bool = false) -> void:
 	if not _placement_can_place:
 		return
+	var placing_costs: Dictionary = _normalize_costs(_placing_costs)
 	var target_position: Vector3 = Vector3(_placement_current_position.x, 0.0, _placement_current_position.z)
 	var builder_dispatch: Dictionary = _resolve_build_order_worker(target_position, keep_mode)
 	var builder: Node3D = builder_dispatch.get("unit") as Node3D
 	var queue_for_builder: bool = bool(builder_dispatch.get("queue_for_unit", keep_mode))
 	if builder != null:
 		var ghost_id: int = _create_pending_construction_ghost(builder, _placing_kind, target_position, _placement_rotation_y, keep_mode)
-		_schedule_worker_build_order(builder, _placing_kind, target_position, _placement_rotation_y, _placing_cost, ghost_id, queue_for_builder)
+		_schedule_worker_build_order(builder, _placing_kind, target_position, _placement_rotation_y, placing_costs, ghost_id, queue_for_builder)
 	else:
-		if not try_spend_minerals(_placing_cost):
+		if not _spend_costs(placing_costs):
 			return
 		var spawned_building: Node3D = _spawn_building_instance(_placing_kind, target_position, _placement_rotation_y)
 		if spawned_building == null:
-			add_minerals(_placing_cost)
+			_refund_costs(placing_costs)
 			return
 
-	var continue_placement: bool = keep_mode and _minerals >= _placing_cost
+	var continue_placement: bool = keep_mode and _can_afford_costs(placing_costs)
 	if continue_placement:
 		_update_placement_preview()
 		_refresh_hint_label()
@@ -5932,9 +5945,10 @@ func _has_earlier_pending_build_order_for_builder(builder_path: NodePath, curren
 			return true
 	return false
 
-func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_cost: int, ghost_id: int, queue_command: bool = false) -> void:
+func _schedule_worker_build_order(builder: Node3D, kind: String, world_position: Vector3, rotation_y: float, build_costs: Dictionary, ghost_id: int, queue_command: bool = false) -> void:
 	if builder == null or not is_instance_valid(builder):
 		return
+	var normalized_costs: Dictionary = _normalize_costs(build_costs)
 	var paradigm: String = _building_construction_paradigm(kind)
 	var build_time: float = _worker_build_time_for(kind)
 	var cancel_refund_ratio: float = _building_cancel_refund_ratio(kind)
@@ -5954,7 +5968,9 @@ func _schedule_worker_build_order(builder: Node3D, kind: String, world_position:
 		"evacuate_target": evacuate_target,
 		"evac_unit_cooldowns": {},
 		"allied_units_inside": false,
-		"cost": build_cost,
+		"costs": normalized_costs,
+		"cost": _cost_minerals(normalized_costs),
+		"gas_cost": _cost_gas(normalized_costs),
 		"ghost_id": ghost_id,
 		"spent": false,
 		"paradigm": paradigm,
@@ -5998,14 +6014,24 @@ func _process_pending_build_orders(delta: float) -> void:
 		var builder_node: Node3D = get_node_or_null(builder_path) as Node3D
 		var kind: String = str(order.get("kind", ""))
 		var ghost_id: int = int(order.get("ghost_id", -1))
-		var build_cost: int = maxi(0, int(order.get("cost", _building_cost(kind))))
+		var build_costs: Dictionary = {}
+		var build_costs_value: Variant = order.get("costs", {})
+		if build_costs_value is Dictionary:
+			build_costs = _normalize_costs(build_costs_value as Dictionary)
+		if build_costs.is_empty():
+			build_costs = _normalize_costs({
+				"minerals": maxi(0, int(order.get("cost", _building_cost(kind)))),
+				"gas": maxi(0, int(order.get("gas_cost", _building_gas_cost(kind))))
+			})
+		var build_cost_total: int = _cost_minerals(build_costs) + _cost_gas(build_costs)
 		var spent: bool = bool(order.get("spent", false))
+		order["costs"] = build_costs
 		var rotation_y: float = float(order.get("rotation_y", 0.0))
 		var footprint_value: Variant = order.get("footprint_size", _build_footprint_for_kind(kind))
 		var footprint_size: Vector2 = footprint_value as Vector2 if footprint_value is Vector2 else _build_footprint_for_kind(kind)
 		if builder_node == null or not is_instance_valid(builder_node):
-			if spent and build_cost > 0:
-				add_minerals(build_cost)
+			if spent and build_cost_total > 0:
+				_refund_costs(build_costs)
 			if ghost_id >= 0:
 				_remove_pending_construction_ghost(ghost_id)
 			_pending_build_orders.remove_at(i)
@@ -6134,8 +6160,8 @@ func _process_pending_build_orders(delta: float) -> void:
 			if ghost_id >= 0:
 				_set_pending_construction_ghost_invalid(ghost_id, true)
 			if clear_zone_elapsed >= clear_zone_timeout:
-				if spent and build_cost > 0:
-					add_minerals(build_cost)
+				if spent and build_cost_total > 0:
+					_refund_costs(build_costs)
 				if ghost_id >= 0:
 					_remove_pending_construction_ghost(ghost_id)
 				_pending_build_orders.remove_at(i)
@@ -6148,11 +6174,11 @@ func _process_pending_build_orders(delta: float) -> void:
 		if ghost_id >= 0:
 			_set_pending_construction_ghost_invalid(ghost_id, false)
 
-		if build_cost > 0 and _minerals < build_cost:
+		if build_cost_total > 0 and not _can_afford_costs(build_costs):
 			var retry_timer: float = float(order.get("retry_timer", 0.0)) - delta
 			if retry_timer <= 0.0:
 				retry_timer = CONSTRUCTION_GHOST_RETRY_INTERVAL
-				_set_ui_notice(_tf("Not enough minerals for %s.", [_building_display_name(kind)]), 1.1)
+				_set_ui_notice(_tf("Insufficient resources for %s.", [_building_display_name(kind)]), 1.1)
 				var stop_for_wait: RTSCommand = RTS_COMMAND.make_stop(false)
 				stop_for_wait.payload["internal_build_order"] = true
 				_schedule_unit_command(builder_node, stop_for_wait)
@@ -6162,8 +6188,8 @@ func _process_pending_build_orders(delta: float) -> void:
 			_pending_build_orders[i] = order
 			continue
 
-		if build_cost > 0 and not spent:
-			if not try_spend_minerals(build_cost):
+		if build_cost_total > 0 and not spent:
+			if not _spend_costs(build_costs):
 				order["retry_timer"] = CONSTRUCTION_GHOST_RETRY_INTERVAL
 				if ghost_id >= 0:
 					_set_pending_construction_ghost_invalid(ghost_id, true)
@@ -6179,8 +6205,8 @@ func _process_pending_build_orders(delta: float) -> void:
 
 		var site: Node3D = _spawn_building_instance(kind, target_position, rotation_y)
 		if site == null:
-			if spent and build_cost > 0:
-				add_minerals(build_cost)
+			if spent and build_cost_total > 0:
+				_refund_costs(build_costs)
 			_pending_build_orders.remove_at(i)
 			continue
 
@@ -6188,7 +6214,15 @@ func _process_pending_build_orders(delta: float) -> void:
 		var build_time: float = maxf(0.25, float(order.get("build_time", _worker_build_time_for(kind))))
 		var cancel_refund_ratio: float = clampf(float(order.get("cancel_refund_ratio", _building_cancel_refund_ratio(kind))), 0.0, 1.0)
 		if site.has_method("start_construction"):
-			site.call("start_construction", paradigm, build_time, builder_node, build_cost, cancel_refund_ratio)
+			site.call(
+				"start_construction",
+				paradigm,
+				build_time,
+				builder_node,
+				_cost_minerals(build_costs),
+				cancel_refund_ratio,
+				_cost_gas(build_costs)
+			)
 		_bind_worker_to_construction(builder_node, site, paradigm)
 		var stop_command: RTSCommand = RTS_COMMAND.make_stop(false)
 		stop_command.payload["internal_build_order"] = true

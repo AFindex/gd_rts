@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_7o0n1"]
+
+[resource]
+script = ExtResource("1_7o0n1")
+id = "train_worker"
+label = "Engineer"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_train.png"
+hotkey = "R"
+unit_kind = "worker"

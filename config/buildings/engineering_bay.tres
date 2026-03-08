@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_frxtu"]
+
+[resource]
+script = ExtResource("1_frxtu")
+id = "engineering_bay"
+display_name = "Engineering Bay"
+role_tag = "ENG"
+cost = 185
+build_time = 7.2
+max_health = 840.0
+queue_limit = 6
+spawn_offset = Vector3(2.8, 0, 0)
+requires_buildings = ["base", "academy", "supply_depot"]
+skills = Array[String](["research_mech_chassis", "research_heavy_plating"])

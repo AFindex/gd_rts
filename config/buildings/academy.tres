@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_0x5hc"]
+
+[resource]
+script = ExtResource("1_0x5hc")
+id = "academy"
+display_name = "Tactics Academy"
+role_tag = "ACD"
+cost = 165
+build_time = 6.8
+max_health = 810.0
+queue_limit = 6
+spawn_offset = Vector3(2.8, 0, 0)
+requires_buildings = ["base", "barracks"]
+skills = Array[String](["research_infantry_weapons_1", "research_infantry_armor_1", "research_field_logistics"])

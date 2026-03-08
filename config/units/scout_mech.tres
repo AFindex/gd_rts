@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1_pme5l"]
+
+[resource]
+script = ExtResource("1_pme5l")
+id = "scout_mech"
+display_name = "Scout Mech"
+role_tag = "SCM"
+cost = 120
+gas_cost = 90
+supply = 2
+stats = {
+"attack_cooldown": 0.75,
+"attack_damage": 24.0,
+"attack_range": 3.8,
+"body_radius": 0.46,
+"max_health": 165.0,
+"move_speed": 6.8,
+"nav_agent_height": 1.2,
+"nav_agent_radius": 0.44,
+"nav_avoidance_priority": 0.88,
+"push_can_be_displaced": false,
+"push_priority": 4
+}
+requires_buildings = ["warp_gate"]
+requires_tech = Array[String](["mech_chassis"])
+skills = Array[String](["move", "attack", "stop"])

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_3cvhp"]
+
+[resource]
+script = ExtResource("1_3cvhp")
+id = "gather"
+label = "Gather"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_gather.png"
+target_mode = "resource"
+queue_idle_dispatch = true

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1_ycxyu"]
+
+[resource]
+script = ExtResource("1_ycxyu")
+id = "void_core"
+display_name = "Void Core"
+role_tag = "CORE"
+cost = 260
+construction_paradigm = "incorporated"
+build_time = 9.0
+max_health = 940.0
+can_queue_soldier = true
+soldier_build_time = 6.8
+trainable_units = {
+"commando": 8.4
+}
+queue_limit = 6
+spawn_offset = Vector3(2.9, 0, 0)
+requires_buildings = ["base", "tech_lab", "warp_gate", "bio_vat"]
+requires_tech = Array[String](["precision_targeting", "heavy_plating"])
+skills = Array[String](["train_commando", "research_quantum_command"])

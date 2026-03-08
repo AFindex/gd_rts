@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1_utc6m"]
+
+[resource]
+script = ExtResource("1_utc6m")
+id = "siege_mech"
+display_name = "Siege Mech"
+role_tag = "SGM"
+cost = 170
+gas_cost = 130
+supply = 3
+stats = {
+"attack_cooldown": 1.55,
+"attack_damage": 48.0,
+"attack_range": 6.4,
+"body_radius": 0.56,
+"max_health": 240.0,
+"move_speed": 4.3,
+"nav_agent_height": 1.3,
+"nav_agent_radius": 0.52,
+"nav_avoidance_priority": 0.93,
+"push_can_be_displaced": false,
+"push_priority": 5
+}
+requires_buildings = ["warp_gate", "tech_lab"]
+requires_tech = Array[String](["precision_targeting"])
+skills = Array[String](["move", "attack", "stop"])

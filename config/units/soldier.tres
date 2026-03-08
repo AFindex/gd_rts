@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1_neo05"]
+
+[resource]
+script = ExtResource("1_neo05")
+id = "soldier"
+display_name = "Rifleman"
+role_tag = "RFL"
+cost = 75
+stats = {
+"attack_cooldown": 0.8,
+"attack_damage": 12.0,
+"attack_range": 2.5,
+"body_radius": 0.42,
+"max_health": 105.0,
+"move_speed": 6.0,
+"nav_agent_height": 1.12,
+"nav_agent_radius": 0.4,
+"nav_avoidance_priority": 0.82,
+"push_can_be_displaced": false,
+"push_priority": 3
+}
+requires_buildings = ["barracks"]
+skills = Array[String](["move", "attack", "stop"])

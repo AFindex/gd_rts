@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1_yryjr"]
+
+[resource]
+script = ExtResource("1_yryjr")
+id = "heavy_gunner"
+display_name = "Heavy Gunner"
+role_tag = "HVG"
+cost = 125
+gas_cost = 55
+supply = 2
+stats = {
+"attack_cooldown": 1.2,
+"attack_damage": 30.0,
+"attack_range": 3.1,
+"body_radius": 0.5,
+"max_health": 210.0,
+"move_speed": 4.6,
+"nav_agent_height": 1.24,
+"nav_agent_radius": 0.48,
+"nav_avoidance_priority": 0.9,
+"push_can_be_displaced": false,
+"push_priority": 4
+}
+requires_buildings = ["bio_vat"]
+requires_tech = Array[String](["heavy_plating"])
+skills = Array[String](["move", "attack", "stop"])

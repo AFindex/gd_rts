@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1_rr236"]
+
+[resource]
+script = ExtResource("1_rr236")
+id = "hauler_drone"
+display_name = "Hauler Drone"
+role_tag = "HUL"
+is_worker_role = true
+cost = 70
+gas_cost = 20
+stats = {
+"attack_cooldown": 0.0,
+"attack_damage": 0.0,
+"attack_range": 0.0,
+"body_radius": 0.34,
+"carry_capacity": 12,
+"dropoff_range": 2.6,
+"gather_amount": 6,
+"gather_interval": 1.7,
+"gather_range": 1.8,
+"max_health": 80.0,
+"mining_search_radius": 42.0,
+"move_speed": 5.2,
+"nav_agent_height": 1.0,
+"nav_agent_radius": 0.32,
+"nav_avoidance_priority": 0.26,
+"push_can_be_displaced": true,
+"push_priority": 1
+}
+requires_buildings = ["base", "supply_depot"]
+requires_tech = Array[String](["field_logistics"])
+skills = Array[String](["move", "gather", "return_resource", "stop"])

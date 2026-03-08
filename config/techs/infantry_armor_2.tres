@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RTSTechConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_tech_config.gd" id="1_tmjl2"]
+
+[resource]
+script = ExtResource("1_tmjl2")
+id = "infantry_armor_2"
+display_name = "Infantry Armor II"
+description = "Composite armor systems for elite squads."
+cost = 170
+gas_cost = 70
+research_time = 12.0
+requires_buildings = ["tech_lab"]
+requires_tech = Array[String](["infantry_armor_1"])

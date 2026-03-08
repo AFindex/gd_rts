@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_eujbe"]
+
+[resource]
+script = ExtResource("1_eujbe")
+id = "close_menu"
+label = "Back"
+icon_path = "res://assets/raw/rts_icons/ui_actions/ui_close_back.png"
+hotkey = "ESC"

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RTSTechConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_tech_config.gd" id="1_s36oq"]
+
+[resource]
+script = ExtResource("1_s36oq")
+id = "precision_targeting"
+display_name = "Precision Targeting"
+description = "Siege and command units gain lock-on suites."
+cost = 210
+gas_cost = 130
+research_time = 13.0
+requires_buildings = ["tech_lab"]
+requires_tech = Array[String](["infantry_weapons_2", "field_logistics"])

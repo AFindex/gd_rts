@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1_dtcne"]
+
+[resource]
+script = ExtResource("1_dtcne")
+id = "build_warp_gate"
+label = "Warp Gate"
+icon_path = "res://icon_build_tmp.png"
+hotkey = "F"
+target_mode = "placement"
+building_kind = "warp_gate"
+queue_idle_dispatch = true
