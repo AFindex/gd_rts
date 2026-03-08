@@ -4,18 +4,27 @@ signal harvest_complete(worker: Node, amount: int)
 signal slot_available(worker: Node)
 signal depleted
 
+enum ResourceType {
+	MINERALS,
+	GAS,
+}
+
 enum MineralType {
 	NEAR_PATCH,
 	FAR_PATCH,
 }
 
+@export var resource_type: int = ResourceType.MINERALS
 @export var mineral_type: int = MineralType.NEAR_PATCH
 @export var total_minerals: int = 1500
 @export var max_visual_minerals: int = 1500
 @export var near_patch_capacity: int = 1500
 @export var far_patch_capacity: int = 750
+@export var gas_capacity: int = 1400
 @export var harvest_yield: int = 5
 @export var harvest_time: float = 1.5
+@export var gas_harvest_yield: int = 4
+@export var gas_harvest_time: float = 1.8
 @export var wait_queue_limit: int = 1
 @export var optimal_worker_count: int = 2
 @export var enforce_type_capacity_on_ready: bool = true
@@ -27,6 +36,10 @@ var _wait_queue: Array[Node] = []
 
 func _ready() -> void:
 	add_to_group("resource_node")
+	if resource_type == ResourceType.GAS:
+		add_to_group("resource_node_gas")
+	else:
+		add_to_group("resource_node_minerals")
 	if enforce_type_capacity_on_ready:
 		var type_capacity: int = _capacity_for_type()
 		total_minerals = type_capacity
@@ -39,17 +52,34 @@ func _ready() -> void:
 	_refresh_visual()
 
 func get_mineral_type_name() -> String:
+	if resource_type == ResourceType.GAS:
+		return "GAS"
 	if mineral_type == MineralType.FAR_PATCH:
 		return "FAR_PATCH"
 	return "NEAR_PATCH"
+
+func get_resource_type_key() -> String:
+	if resource_type == ResourceType.GAS:
+		return "gas"
+	return "minerals"
+
+func get_resource_display_name() -> String:
+	return "Gas" if resource_type == ResourceType.GAS else "Minerals"
+
+func get_remaining_amount() -> int:
+	return maxi(0, total_minerals)
 
 func get_remaining_minerals() -> int:
 	return maxi(0, total_minerals)
 
 func get_harvest_time() -> float:
+	if resource_type == ResourceType.GAS:
+		return maxf(0.05, gas_harvest_time)
 	return maxf(0.05, harvest_time)
 
 func get_harvest_yield() -> int:
+	if resource_type == ResourceType.GAS:
+		return maxi(1, gas_harvest_yield)
 	return maxi(1, harvest_yield)
 
 func get_wait_queue_length() -> int:
@@ -165,8 +195,14 @@ func _refresh_visual() -> void:
 		return
 	var ratio: float = clampf(float(total_minerals) / float(maxi(1, max_visual_minerals)), 0.25, 1.0)
 	_sprite.scale = Vector3.ONE * ratio
+	if resource_type == ResourceType.GAS:
+		_sprite.modulate = Color(0.52, 0.94, 0.62, 1.0)
+	else:
+		_sprite.modulate = Color(0.45, 0.85, 1.0, 1.0)
 
 func _capacity_for_type() -> int:
+	if resource_type == ResourceType.GAS:
+		return maxi(1, gas_capacity)
 	if mineral_type == MineralType.FAR_PATCH:
 		return maxi(1, far_patch_capacity)
 	return maxi(1, near_patch_capacity)

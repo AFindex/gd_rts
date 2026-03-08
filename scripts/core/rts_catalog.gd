@@ -7,18 +7,20 @@ const ICON_TMP_BUILD: String = "res://icon_build_tmp.png"
 
 const UNIT_DEFS: Dictionary = {
 	"worker": {
-		"display_name": "Worker",
-		"role_tag": "W",
+		"display_name": "Engineer",
+		"role_tag": "ENG",
+		"is_worker_role": true,
 		"cost": 50,
+		"gas_cost": 0,
 		"supply": 1,
-		"max_health": 60.0,
-		"move_speed": 4.8,
+		"max_health": 65.0,
+		"move_speed": 4.9,
 		"gather_range": 1.8,
 		"dropoff_range": 2.4,
-		"carry_capacity": 5,
+		"carry_capacity": 6,
 		"gather_amount": 5,
-		"gather_interval": 1.5,
-		"mining_search_radius": 34.0,
+		"gather_interval": 1.45,
+		"mining_search_radius": 36.0,
 		"mining_nav_finish_contact_slack": 0.18,
 		"mining_nav_finish_anchor_slack": 0.9,
 		"interaction_fallbacks": {
@@ -65,41 +67,253 @@ const UNIT_DEFS: Dictionary = {
 			"build_tower",
 			"build_academy",
 			"build_engineering_bay",
-			"build_tech_lab",
-			"build_warp_gate",
 			"build_psionic_relay",
 			"build_bio_vat",
+			"build_warp_gate",
+			"build_tech_lab",
 			"build_void_core"
 		]
 	},
-	"soldier": {
-		"display_name": "Soldier",
-		"role_tag": "S",
-		"cost": 70,
+	"field_technician": {
+		"display_name": "Field Technician",
+		"role_tag": "TEC",
+		"is_worker_role": true,
+		"cost": 65,
+		"gas_cost": 0,
 		"supply": 1,
-		"max_health": 100.0,
-		"move_speed": 6.2,
+		"max_health": 72.0,
+		"move_speed": 4.8,
+		"gather_range": 1.9,
+		"dropoff_range": 2.4,
+		"carry_capacity": 6,
+		"gather_amount": 5,
+		"gather_interval": 1.4,
+		"repair_amount": 16.0,
+		"repair_interval": 0.46,
+		"body_radius": 0.33,
+		"nav_agent_radius": 0.31,
+		"nav_agent_height": 1.0,
+		"nav_avoidance_priority": 0.3,
+		"push_priority": 1,
+		"push_can_be_displaced": true,
+		"attack_damage": 0.0,
+		"attack_range": 0.0,
+		"attack_cooldown": 0.0,
+		"requires_buildings": ["base", "academy"],
+		"requires_tech": ["field_logistics"],
+		"skills": ["move", "gather", "repair", "return_resource", "stop"],
+		"build_skills": []
+	},
+	"hauler_drone": {
+		"display_name": "Hauler Drone",
+		"role_tag": "HUL",
+		"is_worker_role": true,
+		"cost": 70,
+		"gas_cost": 20,
+		"supply": 1,
+		"max_health": 80.0,
+		"move_speed": 5.2,
+		"gather_range": 1.8,
+		"dropoff_range": 2.6,
+		"carry_capacity": 12,
+		"gather_amount": 6,
+		"gather_interval": 1.7,
+		"mining_search_radius": 42.0,
+		"body_radius": 0.34,
+		"nav_agent_radius": 0.32,
+		"nav_agent_height": 1.0,
+		"nav_avoidance_priority": 0.26,
+		"push_priority": 1,
+		"push_can_be_displaced": true,
+		"attack_damage": 0.0,
+		"attack_range": 0.0,
+		"attack_cooldown": 0.0,
+		"requires_buildings": ["base", "supply_depot"],
+		"requires_tech": ["field_logistics"],
+		"skills": ["move", "gather", "return_resource", "stop"],
+		"build_skills": []
+	},
+	"soldier": {
+		"display_name": "Rifleman",
+		"role_tag": "RFL",
+		"is_worker_role": false,
+		"cost": 75,
+		"gas_cost": 0,
+		"supply": 1,
+		"max_health": 105.0,
+		"move_speed": 6.0,
+		"body_radius": 0.42,
+		"nav_agent_radius": 0.4,
+		"nav_agent_height": 1.12,
+		"nav_avoidance_priority": 0.82,
+		"push_priority": 3,
+		"push_can_be_displaced": false,
+		"attack_damage": 12.0,
+		"attack_range": 2.5,
+		"attack_cooldown": 0.8,
+		"requires_buildings": ["barracks"],
+		"requires_tech": [],
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
+	},
+	"assault_trooper": {
+		"display_name": "Assault Trooper",
+		"role_tag": "AST",
+		"is_worker_role": false,
+		"cost": 95,
+		"gas_cost": 15,
+		"supply": 1,
+		"max_health": 130.0,
+		"move_speed": 5.8,
 		"body_radius": 0.44,
 		"nav_agent_radius": 0.42,
 		"nav_agent_height": 1.12,
 		"nav_avoidance_priority": 0.84,
 		"push_priority": 3,
 		"push_can_be_displaced": false,
-		"attack_damage": 12.0,
-		"attack_range": 2.4,
-		"attack_cooldown": 0.8,
-		"interaction_fallbacks": {
-			"attack": {
-				"enable_nav_soft_contact": false,
-				"contact_slack": 0.0,
-				"enable_nav_anchor_fallback": false,
-				"anchor_slack": 0.0,
-				"enable_nav_reissue": true,
-				"reissue_interval": 0.35
-			}
-		},
-		"requires_buildings": [],
-		"requires_tech": [],
+		"attack_damage": 18.0,
+		"attack_range": 1.95,
+		"attack_cooldown": 1.0,
+		"requires_buildings": ["barracks"],
+		"requires_tech": ["infantry_weapons_1"],
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
+	},
+	"marksman": {
+		"display_name": "Marksman",
+		"role_tag": "MRK",
+		"is_worker_role": false,
+		"cost": 90,
+		"gas_cost": 35,
+		"supply": 1,
+		"max_health": 95.0,
+		"move_speed": 5.9,
+		"body_radius": 0.4,
+		"nav_agent_radius": 0.38,
+		"nav_agent_height": 1.1,
+		"nav_avoidance_priority": 0.8,
+		"push_priority": 2,
+		"push_can_be_displaced": false,
+		"attack_damage": 22.0,
+		"attack_range": 5.6,
+		"attack_cooldown": 1.35,
+		"requires_buildings": ["barracks", "academy"],
+		"requires_tech": ["infantry_weapons_1"],
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
+	},
+	"heavy_gunner": {
+		"display_name": "Heavy Gunner",
+		"role_tag": "HVG",
+		"is_worker_role": false,
+		"cost": 125,
+		"gas_cost": 55,
+		"supply": 2,
+		"max_health": 210.0,
+		"move_speed": 4.6,
+		"body_radius": 0.5,
+		"nav_agent_radius": 0.48,
+		"nav_agent_height": 1.24,
+		"nav_avoidance_priority": 0.9,
+		"push_priority": 4,
+		"push_can_be_displaced": false,
+		"attack_damage": 30.0,
+		"attack_range": 3.1,
+		"attack_cooldown": 1.2,
+		"requires_buildings": ["bio_vat"],
+		"requires_tech": ["heavy_plating"],
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
+	},
+	"rocket_trooper": {
+		"display_name": "Rocket Trooper",
+		"role_tag": "RKT",
+		"is_worker_role": false,
+		"cost": 115,
+		"gas_cost": 70,
+		"supply": 2,
+		"max_health": 145.0,
+		"move_speed": 5.1,
+		"body_radius": 0.45,
+		"nav_agent_radius": 0.43,
+		"nav_agent_height": 1.16,
+		"nav_avoidance_priority": 0.86,
+		"push_priority": 3,
+		"push_can_be_displaced": false,
+		"attack_damage": 34.0,
+		"attack_range": 4.5,
+		"attack_cooldown": 1.35,
+		"requires_buildings": ["bio_vat", "engineering_bay"],
+		"requires_tech": ["mech_chassis"],
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
+	},
+	"scout_mech": {
+		"display_name": "Scout Mech",
+		"role_tag": "SCM",
+		"is_worker_role": false,
+		"cost": 120,
+		"gas_cost": 90,
+		"supply": 2,
+		"max_health": 165.0,
+		"move_speed": 6.8,
+		"body_radius": 0.46,
+		"nav_agent_radius": 0.44,
+		"nav_agent_height": 1.2,
+		"nav_avoidance_priority": 0.88,
+		"push_priority": 4,
+		"push_can_be_displaced": false,
+		"attack_damage": 24.0,
+		"attack_range": 3.8,
+		"attack_cooldown": 0.75,
+		"requires_buildings": ["warp_gate"],
+		"requires_tech": ["mech_chassis"],
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
+	},
+	"siege_mech": {
+		"display_name": "Siege Mech",
+		"role_tag": "SGM",
+		"is_worker_role": false,
+		"cost": 170,
+		"gas_cost": 130,
+		"supply": 3,
+		"max_health": 240.0,
+		"move_speed": 4.3,
+		"body_radius": 0.56,
+		"nav_agent_radius": 0.52,
+		"nav_agent_height": 1.3,
+		"nav_avoidance_priority": 0.93,
+		"push_priority": 5,
+		"push_can_be_displaced": false,
+		"attack_damage": 48.0,
+		"attack_range": 6.4,
+		"attack_cooldown": 1.55,
+		"requires_buildings": ["warp_gate", "tech_lab"],
+		"requires_tech": ["precision_targeting"],
+		"skills": ["move", "attack", "stop"],
+		"build_skills": []
+	},
+	"commando": {
+		"display_name": "Command Operative",
+		"role_tag": "CMD",
+		"is_worker_role": false,
+		"cost": 210,
+		"gas_cost": 160,
+		"supply": 3,
+		"max_health": 260.0,
+		"move_speed": 6.3,
+		"body_radius": 0.48,
+		"nav_agent_radius": 0.45,
+		"nav_agent_height": 1.18,
+		"nav_avoidance_priority": 0.95,
+		"push_priority": 5,
+		"push_can_be_displaced": false,
+		"attack_damage": 42.0,
+		"attack_range": 4.6,
+		"attack_cooldown": 0.78,
+		"requires_buildings": ["void_core"],
+		"requires_tech": ["quantum_command"],
 		"skills": ["move", "attack", "stop"],
 		"build_skills": []
 	}
@@ -107,12 +321,12 @@ const UNIT_DEFS: Dictionary = {
 
 const BUILDING_DEFS: Dictionary = {
 	"base": {
-		"display_name": "Main Base",
-		"role_tag": "Base",
+		"display_name": "Command Base",
+		"role_tag": "HQ",
 		"construction_paradigm": "summoning",
 		"build_time": 0.0,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 1400.0,
+		"max_health": 1450.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -121,32 +335,38 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": false,
 		"worker_build_time": 2.8,
 		"soldier_build_time": 0.0,
-		"queue_limit": 6,
+		"trainable_units": {
+			"worker": 2.8,
+			"field_technician": 3.4,
+			"hauler_drone": 3.8
+		},
+		"queue_limit": 8,
 		"spawn_offset": Vector3(3.2, 0.0, 0.0),
 		"requires_buildings": [],
 		"requires_tech": [],
-		"skills": ["train_worker", "build_menu"],
+		"skills": ["train_worker", "train_field_technician", "train_hauler_drone", "build_menu"],
 		"build_skills": [
 			"build_barracks",
 			"build_supply_depot",
 			"build_tower",
 			"build_academy",
 			"build_engineering_bay",
-			"build_tech_lab",
-			"build_warp_gate",
 			"build_psionic_relay",
 			"build_bio_vat",
+			"build_warp_gate",
+			"build_tech_lab",
 			"build_void_core"
 		]
 	},
 	"barracks": {
 		"display_name": "Barracks",
-		"role_tag": "Barracks",
-		"cost": 160,
+		"role_tag": "RAX",
+		"cost": 165,
+		"gas_cost": 0,
 		"construction_paradigm": "garrisoned",
-		"build_time": 6.0,
+		"build_time": 6.2,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 900.0,
+		"max_health": 930.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -155,21 +375,27 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": true,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 4.0,
+		"trainable_units": {
+			"soldier": 4.0,
+			"assault_trooper": 4.6,
+			"marksman": 5.0
+		},
 		"queue_limit": 8,
 		"spawn_offset": Vector3(3.6, 0.0, 0.0),
 		"requires_buildings": ["base"],
 		"requires_tech": [],
-		"skills": ["train_soldier"],
+		"skills": ["train_soldier", "train_assault_trooper", "train_marksman"],
 		"build_skills": []
 	},
 	"supply_depot": {
-		"display_name": "Supply Depot",
-		"role_tag": "Supply",
-		"cost": 100,
+		"display_name": "Logistics Depot",
+		"role_tag": "SUP",
+		"cost": 105,
+		"gas_cost": 0,
 		"construction_paradigm": "garrisoned",
-		"build_time": 4.5,
+		"build_time": 4.6,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 680.0,
+		"max_health": 690.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -178,45 +404,49 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": false,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 0.0,
+		"trainable_units": {},
 		"queue_limit": 0,
 		"spawn_offset": Vector3(2.6, 0.0, 0.0),
-		"supply_bonus": 16,
+		"supply_bonus": 12,
 		"requires_buildings": ["base"],
 		"requires_tech": [],
 		"skills": [],
 		"build_skills": []
 	},
 	"tower": {
-		"display_name": "Tower",
-		"role_tag": "Tower",
-		"cost": 120,
+		"display_name": "Defense Tower",
+		"role_tag": "TWR",
+		"cost": 125,
+		"gas_cost": 0,
 		"construction_paradigm": "garrisoned",
-		"build_time": 5.0,
+		"build_time": 5.2,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 700.0,
-		"attack_range": 9.0,
-		"attack_damage": 14.0,
+		"max_health": 720.0,
+		"attack_range": 9.2,
+		"attack_damage": 15.0,
 		"attack_cooldown": 0.9,
 		"is_resource_dropoff": false,
 		"can_queue_worker": false,
 		"can_queue_soldier": false,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 0.0,
+		"trainable_units": {},
 		"queue_limit": 0,
 		"spawn_offset": Vector3(2.8, 0.0, 0.0),
-		"requires_buildings": ["base", "barracks"],
+		"requires_buildings": ["base", "supply_depot"],
 		"requires_tech": [],
 		"skills": [],
 		"build_skills": []
 	},
 	"academy": {
-		"display_name": "Academy",
-		"role_tag": "Academy",
-		"cost": 150,
+		"display_name": "Tactics Academy",
+		"role_tag": "ACD",
+		"cost": 165,
+		"gas_cost": 0,
 		"construction_paradigm": "garrisoned",
-		"build_time": 6.5,
+		"build_time": 6.8,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 780.0,
+		"max_health": 810.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -225,21 +455,23 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": false,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 0.0,
-		"queue_limit": 5,
+		"trainable_units": {},
+		"queue_limit": 6,
 		"spawn_offset": Vector3(2.8, 0.0, 0.0),
-		"requires_buildings": ["base"],
+		"requires_buildings": ["base", "barracks"],
 		"requires_tech": [],
-		"skills": ["research_infantry_weapons_1", "research_infantry_armor_1"],
+		"skills": ["research_infantry_weapons_1", "research_infantry_armor_1", "research_field_logistics"],
 		"build_skills": []
 	},
 	"engineering_bay": {
 		"display_name": "Engineering Bay",
-		"role_tag": "EngBay",
-		"cost": 180,
+		"role_tag": "ENG",
+		"cost": 185,
+		"gas_cost": 0,
 		"construction_paradigm": "garrisoned",
-		"build_time": 7.0,
+		"build_time": 7.2,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 820.0,
+		"max_health": 840.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -248,21 +480,23 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": false,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 0.0,
-		"queue_limit": 5,
+		"trainable_units": {},
+		"queue_limit": 6,
 		"spawn_offset": Vector3(2.8, 0.0, 0.0),
-		"requires_buildings": ["base", "academy"],
+		"requires_buildings": ["base", "academy", "supply_depot"],
 		"requires_tech": [],
-		"skills": ["research_field_logistics"],
+		"skills": ["research_mech_chassis", "research_heavy_plating"],
 		"build_skills": []
 	},
-	"tech_lab": {
-		"display_name": "Tech Lab",
-		"role_tag": "TechLab",
-		"cost": 210,
-		"construction_paradigm": "incorporated",
-		"build_time": 7.5,
+	"psionic_relay": {
+		"display_name": "Support Relay",
+		"role_tag": "SUPR",
+		"cost": 150,
+		"gas_cost": 0,
+		"construction_paradigm": "summoning",
+		"build_time": 6.0,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 860.0,
+		"max_health": 650.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -271,19 +505,21 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": false,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 0.0,
-		"queue_limit": 5,
-		"spawn_offset": Vector3(2.8, 0.0, 0.0),
-		"requires_buildings": ["base", "engineering_bay"],
+		"trainable_units": {},
+		"queue_limit": 4,
+		"spawn_offset": Vector3(2.6, 0.0, 0.0),
+		"requires_buildings": ["base", "academy"],
 		"requires_tech": ["field_logistics"],
-		"skills": ["research_advanced_targeting"],
+		"skills": ["research_support_protocols"],
 		"build_skills": []
 	},
-	"warp_gate": {
-		"display_name": "Warp Gate",
-		"role_tag": "Warp",
-		"cost": 190,
-		"construction_paradigm": "summoning",
-		"build_time": 8.2,
+	"bio_vat": {
+		"display_name": "Bio Vat",
+		"role_tag": "BIO",
+		"cost": 185,
+		"gas_cost": 0,
+		"construction_paradigm": "incorporated",
+		"build_time": 7.4,
 		"cancel_refund_ratio": 0.75,
 		"max_health": 760.0,
 		"attack_range": 0.0,
@@ -293,45 +529,27 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_worker": false,
 		"can_queue_soldier": true,
 		"worker_build_time": 0.0,
-		"soldier_build_time": 4.4,
+		"soldier_build_time": 4.8,
+		"trainable_units": {
+			"heavy_gunner": 5.6,
+			"rocket_trooper": 5.4
+		},
 		"queue_limit": 6,
-		"spawn_offset": Vector3(2.8, 0.0, 0.0),
-		"requires_buildings": ["base"],
+		"spawn_offset": Vector3(2.7, 0.0, 0.0),
+		"requires_buildings": ["base", "engineering_bay", "psionic_relay"],
 		"requires_tech": [],
-		"skills": ["train_soldier"],
+		"skills": ["train_heavy_gunner", "train_rocket_trooper"],
 		"build_skills": []
 	},
-	"psionic_relay": {
-		"display_name": "Psionic Relay",
-		"role_tag": "Relay",
-		"cost": 140,
+	"warp_gate": {
+		"display_name": "Warp Gate",
+		"role_tag": "WRP",
+		"cost": 210,
+		"gas_cost": 0,
 		"construction_paradigm": "summoning",
-		"build_time": 5.8,
+		"build_time": 8.4,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 620.0,
-		"attack_range": 0.0,
-		"attack_damage": 0.0,
-		"attack_cooldown": 1.0,
-		"is_resource_dropoff": false,
-		"can_queue_worker": false,
-		"can_queue_soldier": false,
-		"worker_build_time": 0.0,
-		"soldier_build_time": 0.0,
-		"queue_limit": 0,
-		"spawn_offset": Vector3(2.6, 0.0, 0.0),
-		"requires_buildings": ["base"],
-		"requires_tech": [],
-		"skills": [],
-		"build_skills": []
-	},
-	"bio_vat": {
-		"display_name": "Bio Vat",
-		"role_tag": "Vat",
-		"cost": 175,
-		"construction_paradigm": "incorporated",
-		"build_time": 7.0,
-		"cancel_refund_ratio": 0.75,
-		"max_health": 740.0,
+		"max_health": 790.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -340,21 +558,51 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_soldier": true,
 		"worker_build_time": 0.0,
 		"soldier_build_time": 4.6,
+		"trainable_units": {
+			"scout_mech": 5.5,
+			"siege_mech": 7.0
+		},
 		"queue_limit": 6,
-		"spawn_offset": Vector3(2.7, 0.0, 0.0),
-		"requires_buildings": ["base"],
-		"requires_tech": [],
-		"skills": ["train_soldier"],
+		"spawn_offset": Vector3(2.8, 0.0, 0.0),
+		"requires_buildings": ["base", "engineering_bay"],
+		"requires_tech": ["mech_chassis"],
+		"skills": ["train_scout_mech", "train_siege_mech"],
+		"build_skills": []
+	},
+	"tech_lab": {
+		"display_name": "Tech Lab",
+		"role_tag": "LAB",
+		"cost": 230,
+		"gas_cost": 0,
+		"construction_paradigm": "incorporated",
+		"build_time": 7.8,
+		"cancel_refund_ratio": 0.75,
+		"max_health": 890.0,
+		"attack_range": 0.0,
+		"attack_damage": 0.0,
+		"attack_cooldown": 1.0,
+		"is_resource_dropoff": false,
+		"can_queue_worker": false,
+		"can_queue_soldier": false,
+		"worker_build_time": 0.0,
+		"soldier_build_time": 0.0,
+		"trainable_units": {},
+		"queue_limit": 6,
+		"spawn_offset": Vector3(2.8, 0.0, 0.0),
+		"requires_buildings": ["base", "engineering_bay"],
+		"requires_tech": ["field_logistics"],
+		"skills": ["research_infantry_weapons_2", "research_infantry_armor_2", "research_precision_targeting"],
 		"build_skills": []
 	},
 	"void_core": {
 		"display_name": "Void Core",
-		"role_tag": "Core",
-		"cost": 230,
+		"role_tag": "CORE",
+		"cost": 260,
+		"gas_cost": 0,
 		"construction_paradigm": "incorporated",
-		"build_time": 8.8,
+		"build_time": 9.0,
 		"cancel_refund_ratio": 0.75,
-		"max_health": 880.0,
+		"max_health": 940.0,
 		"attack_range": 0.0,
 		"attack_damage": 0.0,
 		"attack_cooldown": 1.0,
@@ -362,12 +610,15 @@ const BUILDING_DEFS: Dictionary = {
 		"can_queue_worker": false,
 		"can_queue_soldier": true,
 		"worker_build_time": 0.0,
-		"soldier_build_time": 4.2,
+		"soldier_build_time": 6.8,
+		"trainable_units": {
+			"commando": 8.4
+		},
 		"queue_limit": 6,
 		"spawn_offset": Vector3(2.9, 0.0, 0.0),
-		"requires_buildings": ["base"],
-		"requires_tech": [],
-		"skills": ["train_soldier"],
+		"requires_buildings": ["base", "tech_lab", "warp_gate", "bio_vat"],
+		"requires_tech": ["precision_targeting", "heavy_plating"],
+		"skills": ["train_commando", "research_quantum_command"],
 		"build_skills": []
 	}
 }
@@ -375,35 +626,93 @@ const BUILDING_DEFS: Dictionary = {
 const TECH_DEFS: Dictionary = {
 	"infantry_weapons_1": {
 		"display_name": "Infantry Weapons I",
-		"description": "Improves infantry firepower.",
-		"cost": 140,
-		"research_time": 9.0,
+		"description": "Unlocks stronger rifle and assault payloads.",
+		"cost": 120,
+		"gas_cost": 0,
+		"research_time": 8.0,
 		"requires_buildings": ["academy"],
 		"requires_tech": []
 	},
 	"infantry_armor_1": {
 		"display_name": "Infantry Armor I",
-		"description": "Improves infantry survivability.",
-		"cost": 130,
+		"description": "Reinforced vests for frontline infantry.",
+		"cost": 110,
+		"gas_cost": 0,
 		"research_time": 8.0,
 		"requires_buildings": ["academy"],
 		"requires_tech": []
 	},
 	"field_logistics": {
 		"display_name": "Field Logistics",
-		"description": "Optimizes frontline throughput.",
-		"cost": 160,
+		"description": "Improves supply flow and unlocks support branches.",
+		"cost": 140,
+		"gas_cost": 40,
 		"research_time": 10.0,
-		"requires_buildings": ["engineering_bay"],
+		"requires_buildings": ["academy"],
 		"requires_tech": []
 	},
-	"advanced_targeting": {
-		"display_name": "Advanced Targeting",
-		"description": "Enables better target acquisition.",
-		"cost": 200,
+	"mech_chassis": {
+		"display_name": "Mech Chassis",
+		"description": "Enables mech frame production.",
+		"cost": 160,
+		"gas_cost": 90,
+		"research_time": 11.0,
+		"requires_buildings": ["engineering_bay"],
+		"requires_tech": ["field_logistics"]
+	},
+	"heavy_plating": {
+		"display_name": "Heavy Plating",
+		"description": "Unlocks heavy assault bio variants.",
+		"cost": 190,
+		"gas_cost": 110,
+		"research_time": 12.0,
+		"requires_buildings": ["engineering_bay"],
+		"requires_tech": ["infantry_armor_1"]
+	},
+	"support_protocols": {
+		"display_name": "Support Protocols",
+		"description": "Advanced relay doctrine for sustained engagements.",
+		"cost": 130,
+		"gas_cost": 75,
+		"research_time": 10.5,
+		"requires_buildings": ["psionic_relay"],
+		"requires_tech": ["field_logistics"]
+	},
+	"infantry_weapons_2": {
+		"display_name": "Infantry Weapons II",
+		"description": "High-caliber tactical package.",
+		"cost": 180,
+		"gas_cost": 70,
 		"research_time": 12.0,
 		"requires_buildings": ["tech_lab"],
-		"requires_tech": ["infantry_weapons_1", "field_logistics"]
+		"requires_tech": ["infantry_weapons_1"]
+	},
+	"infantry_armor_2": {
+		"display_name": "Infantry Armor II",
+		"description": "Composite armor systems for elite squads.",
+		"cost": 170,
+		"gas_cost": 70,
+		"research_time": 12.0,
+		"requires_buildings": ["tech_lab"],
+		"requires_tech": ["infantry_armor_1"]
+	},
+	"precision_targeting": {
+		"display_name": "Precision Targeting",
+		"description": "Siege and command units gain lock-on suites.",
+		"cost": 210,
+		"gas_cost": 130,
+		"research_time": 13.0,
+		"requires_buildings": ["tech_lab"],
+		"requires_tech": ["infantry_weapons_2", "field_logistics"]
+	},
+	"quantum_command": {
+		"display_name": "Quantum Command",
+		"description": "Final doctrine unlock for command operatives.",
+		"cost": 260,
+		"gas_cost": 180,
+		"research_time": 15.0,
+		"requires_buildings": ["void_core"],
+		"requires_tech": ["precision_targeting", "heavy_plating"]
 	}
 }
 
@@ -507,7 +816,7 @@ const SKILL_DEFS: Dictionary = {
 	},
 	"build_supply_depot": {
 		"id": "build_supply_depot",
-		"label": "Supply Depot",
+		"label": "Logistics Depot",
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "G",
 		"target_mode": "placement",
@@ -516,7 +825,7 @@ const SKILL_DEFS: Dictionary = {
 	},
 	"build_tower": {
 		"id": "build_tower",
-		"label": "Tower",
+		"label": "Defense Tower",
 		"icon_path": ICON_ROOT_BUILDINGS + "building_tower.png",
 		"hotkey": "W",
 		"target_mode": "placement",
@@ -561,7 +870,7 @@ const SKILL_DEFS: Dictionary = {
 	},
 	"build_psionic_relay": {
 		"id": "build_psionic_relay",
-		"label": "Psi Relay",
+		"label": "Support Relay",
 		"icon_path": ICON_TMP_BUILD,
 		"hotkey": "Z",
 		"target_mode": "placement",
@@ -644,17 +953,91 @@ const SKILL_DEFS: Dictionary = {
 	},
 	"train_worker": {
 		"id": "train_worker",
-		"label": "Train Worker",
+		"label": "Engineer",
 		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
 		"hotkey": "R",
-		"target_mode": "none"
+		"target_mode": "none",
+		"unit_kind": "worker"
+	},
+	"train_field_technician": {
+		"id": "train_field_technician",
+		"label": "Field Technician",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "Y",
+		"target_mode": "none",
+		"unit_kind": "field_technician"
+	},
+	"train_hauler_drone": {
+		"id": "train_hauler_drone",
+		"label": "Hauler Drone",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "U",
+		"target_mode": "none",
+		"unit_kind": "hauler_drone"
 	},
 	"train_soldier": {
 		"id": "train_soldier",
-		"label": "Train Soldier",
+		"label": "Rifleman",
 		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
 		"hotkey": "T",
-		"target_mode": "none"
+		"target_mode": "none",
+		"unit_kind": "soldier"
+	},
+	"train_assault_trooper": {
+		"id": "train_assault_trooper",
+		"label": "Assault Trooper",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "F",
+		"target_mode": "none",
+		"unit_kind": "assault_trooper"
+	},
+	"train_marksman": {
+		"id": "train_marksman",
+		"label": "Marksman",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "G",
+		"target_mode": "none",
+		"unit_kind": "marksman"
+	},
+	"train_heavy_gunner": {
+		"id": "train_heavy_gunner",
+		"label": "Heavy Gunner",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "H",
+		"target_mode": "none",
+		"unit_kind": "heavy_gunner"
+	},
+	"train_rocket_trooper": {
+		"id": "train_rocket_trooper",
+		"label": "Rocket Trooper",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "J",
+		"target_mode": "none",
+		"unit_kind": "rocket_trooper"
+	},
+	"train_scout_mech": {
+		"id": "train_scout_mech",
+		"label": "Scout Mech",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "Q",
+		"target_mode": "none",
+		"unit_kind": "scout_mech"
+	},
+	"train_siege_mech": {
+		"id": "train_siege_mech",
+		"label": "Siege Mech",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "W",
+		"target_mode": "none",
+		"unit_kind": "siege_mech"
+	},
+	"train_commando": {
+		"id": "train_commando",
+		"label": "Commando",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "C",
+		"target_mode": "none",
+		"unit_kind": "commando"
 	},
 	"research_infantry_weapons_1": {
 		"id": "research_infantry_weapons_1",
@@ -674,19 +1057,67 @@ const SKILL_DEFS: Dictionary = {
 	},
 	"research_field_logistics": {
 		"id": "research_field_logistics",
-		"label": "Logistics",
+		"label": "Field Logistics",
 		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
 		"hotkey": "V",
 		"target_mode": "none",
 		"tech_id": "field_logistics"
 	},
-	"research_advanced_targeting": {
-		"id": "research_advanced_targeting",
-		"label": "Targeting",
+	"research_mech_chassis": {
+		"id": "research_mech_chassis",
+		"label": "Mech Chassis",
 		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
-		"hotkey": "G",
+		"hotkey": "M",
 		"target_mode": "none",
-		"tech_id": "advanced_targeting"
+		"tech_id": "mech_chassis"
+	},
+	"research_heavy_plating": {
+		"id": "research_heavy_plating",
+		"label": "Heavy Plating",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "N",
+		"target_mode": "none",
+		"tech_id": "heavy_plating"
+	},
+	"research_support_protocols": {
+		"id": "research_support_protocols",
+		"label": "Support Protocols",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "B",
+		"target_mode": "none",
+		"tech_id": "support_protocols"
+	},
+	"research_infantry_weapons_2": {
+		"id": "research_infantry_weapons_2",
+		"label": "Weapons II",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "E",
+		"target_mode": "none",
+		"tech_id": "infantry_weapons_2"
+	},
+	"research_infantry_armor_2": {
+		"id": "research_infantry_armor_2",
+		"label": "Armor II",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "R",
+		"target_mode": "none",
+		"tech_id": "infantry_armor_2"
+	},
+	"research_precision_targeting": {
+		"id": "research_precision_targeting",
+		"label": "Precision Targeting",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "P",
+		"target_mode": "none",
+		"tech_id": "precision_targeting"
+	},
+	"research_quantum_command": {
+		"id": "research_quantum_command",
+		"label": "Quantum Command",
+		"icon_path": ICON_ROOT_SKILLS + "cmd_train.png",
+		"hotkey": "L",
+		"target_mode": "none",
+		"tech_id": "quantum_command"
 	},
 	"menu": {
 		"id": "menu",
@@ -765,6 +1196,34 @@ static func get_building_requires_tech(building_kind: String) -> Array[String]:
 	var building_def: Dictionary = get_building_def(building_kind)
 	return _normalize_tech_ids(building_def.get("requires_tech", []))
 
+static func get_unit_cost(unit_kind: String) -> int:
+	var unit_def: Dictionary = get_unit_def(unit_kind)
+	return maxi(0, int(unit_def.get("cost", 0)))
+
+static func get_unit_gas_cost(unit_kind: String) -> int:
+	var unit_def: Dictionary = get_unit_def(unit_kind)
+	return maxi(0, int(unit_def.get("gas_cost", 0)))
+
+static func get_unit_costs(unit_kind: String) -> Dictionary:
+	return {
+		"minerals": get_unit_cost(unit_kind),
+		"gas": get_unit_gas_cost(unit_kind)
+	}
+
+static func get_building_cost(building_kind: String) -> int:
+	var building_def: Dictionary = get_building_def(building_kind)
+	return maxi(0, int(building_def.get("cost", 0)))
+
+static func get_building_gas_cost(building_kind: String) -> int:
+	var building_def: Dictionary = get_building_def(building_kind)
+	return maxi(0, int(building_def.get("gas_cost", 0)))
+
+static func get_building_costs(building_kind: String) -> Dictionary:
+	return {
+		"minerals": get_building_cost(building_kind),
+		"gas": get_building_gas_cost(building_kind)
+	}
+
 static func get_tech_def(tech_id: String) -> Dictionary:
 	var value: Variant = TECH_DEFS.get(tech_id, {})
 	if value is Dictionary:
@@ -773,7 +1232,17 @@ static func get_tech_def(tech_id: String) -> Dictionary:
 
 static func get_tech_cost(tech_id: String) -> int:
 	var tech_def: Dictionary = get_tech_def(tech_id)
-	return int(tech_def.get("cost", 0))
+	return maxi(0, int(tech_def.get("cost", 0)))
+
+static func get_tech_gas_cost(tech_id: String) -> int:
+	var tech_def: Dictionary = get_tech_def(tech_id)
+	return maxi(0, int(tech_def.get("gas_cost", 0)))
+
+static func get_tech_costs(tech_id: String) -> Dictionary:
+	return {
+		"minerals": get_tech_cost(tech_id),
+		"gas": get_tech_gas_cost(tech_id)
+	}
 
 static func get_tech_research_time(tech_id: String) -> float:
 	var tech_def: Dictionary = get_tech_def(tech_id)
@@ -831,6 +1300,10 @@ static func get_build_kind_from_skill(skill_id: String) -> String:
 static func get_tech_id_from_skill(skill_id: String) -> String:
 	var skill_def: Dictionary = get_skill_def(skill_id)
 	return str(skill_def.get("tech_id", ""))
+
+static func get_unit_kind_from_skill(skill_id: String) -> String:
+	var skill_def: Dictionary = get_skill_def(skill_id)
+	return str(skill_def.get("unit_kind", ""))
 
 static func _normalize_skill_ids(raw_value: Variant) -> Array[String]:
 	var skill_ids: Array[String] = []

@@ -21,6 +21,7 @@ const MINING_BALANCE_OVER_OPTIMAL_WEIGHT: float = 16.0
 @export var sprite_outline_check_interval: float = 0.12
 
 @export var move_speed: float = 6.0
+@export var unit_kind: String = ""
 @export var is_worker: bool = false
 @export var team_id: int = 1
 @export var max_health: float = 100.0
@@ -129,6 +130,7 @@ var _mining_timeout_watch_state: int = MiningState.IDLE
 var _mining_timeout_watch_elapsed: float = 0.0
 var _mining_timeout_log_cooldown: float = 0.0
 var _carried_amount: int = 0
+var _carried_resource_type: String = "minerals"
 var _attack_target: Node = null
 var _attack_timer: float = 0.0
 var _attack_move_point: Vector3 = Vector3.ZERO
@@ -188,6 +190,7 @@ signal command_queue_changed
 func _ready() -> void:
 	add_to_group("selectable_unit")
 	_selection_ring.visible = false
+	_normalize_unit_kind_profile()
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
@@ -230,7 +233,24 @@ func get_unit_role_tag() -> String:
 	return str(unit_def.get("role_tag", "W" if is_worker else "S"))
 
 func get_unit_kind() -> String:
+	var normalized: String = unit_kind.strip_edges().to_lower()
+	if normalized != "":
+		return normalized
 	return "worker" if is_worker else "soldier"
+
+func set_unit_kind(kind: String) -> void:
+	var normalized: String = kind.strip_edges().to_lower()
+	if normalized == "":
+		normalized = "worker" if is_worker else "soldier"
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(normalized)
+	if unit_def.is_empty():
+		normalized = "worker" if is_worker else "soldier"
+		unit_def = RTS_CATALOG.get_unit_def(normalized)
+	unit_kind = normalized
+	if unit_def.has("is_worker_role"):
+		is_worker = bool(unit_def.get("is_worker_role", is_worker))
+	else:
+		is_worker = normalized == "worker"
 
 func get_push_priority() -> int:
 	return push_priority
@@ -416,11 +436,15 @@ func get_active_mining_target() -> Node3D:
 
 func set_worker_role(worker: bool) -> void:
 	is_worker = worker
+	unit_kind = "worker" if worker else "soldier"
 	_apply_runtime_config_for_role()
 	_health = max_health
 	_apply_role_visual()
 	_sync_sprite_to_collider()
 	_update_health_bar_visual()
+
+func _normalize_unit_kind_profile() -> void:
+	set_unit_kind(unit_kind)
 
 func submit_command(command: RefCounted) -> bool:
 	if command == null:
@@ -1403,6 +1427,11 @@ func _process_harvesting_state(delta: float) -> void:
 		elif not _transition_to_next_mineral():
 			_stop_worker_cycle(false)
 		return
+	var target_resource_type: String = _resource_type_for_node(_gather_target)
+	if _carried_amount > 0 and _carried_resource_type != target_resource_type:
+		_abort_active_mining_target()
+		_set_mining_state(MiningState.MOVING_TO_BASE)
+		return
 
 	_has_target = false
 	velocity = Vector3.ZERO
@@ -1431,6 +1460,7 @@ func _process_harvesting_state(delta: float) -> void:
 	else:
 		_carried_amount += harvested
 	if harvested > 0:
+		_carried_resource_type = target_resource_type
 		_remember_last_successful_mineral(_gather_target)
 		_mining_harvest_stall_timer = 0.0
 		_log_mining_event("harvest_success", {
@@ -1521,8 +1551,9 @@ func _process_delivering_state(delta: float) -> void:
 
 	if _carried_amount > 0:
 		_log_mining_event("deposit", {"deposit_amount": _carried_amount})
-		_deposit_to_game_manager(_carried_amount)
+		_deposit_to_game_manager(_carried_amount, _carried_resource_type)
 		_carried_amount = 0
+		_carried_resource_type = "minerals"
 
 	if _defer_queue_until_worker_cycle_checkpoint:
 		_defer_queue_until_worker_cycle_checkpoint = false
@@ -2141,6 +2172,7 @@ func _stop_worker_cycle(reset_carry: bool) -> void:
 	_reset_navigation_motion()
 	if reset_carry:
 		_carried_amount = 0
+		_carried_resource_type = "minerals"
 
 func _harvest_resource(resource_node: Node3D, amount: int) -> int:
 	if amount <= 0:
@@ -2150,11 +2182,27 @@ func _harvest_resource(resource_node: Node3D, amount: int) -> int:
 	var harvested_value: Variant = resource_node.call("harvest", amount, self )
 	return maxi(0, int(harvested_value))
 
-func _deposit_to_game_manager(amount: int) -> void:
+func _resource_type_for_node(resource_node: Node3D) -> String:
+	if resource_node == null or not is_instance_valid(resource_node):
+		return "minerals"
+	if resource_node.has_method("get_resource_type_key"):
+		var resource_type: String = str(resource_node.call("get_resource_type_key")).strip_edges().to_lower()
+		if resource_type == "gas":
+			return "gas"
+	return "minerals"
+
+func _deposit_to_game_manager(amount: int, resource_type: String = "minerals") -> void:
 	if amount <= 0:
 		return
+	var normalized_type: String = resource_type.strip_edges().to_lower()
+	if normalized_type != "gas":
+		normalized_type = "minerals"
 	var game_manager: Node = get_tree().get_first_node_in_group("game_manager")
-	if game_manager != null and game_manager.has_method("add_minerals_for_team"):
+	if game_manager != null and game_manager.has_method("add_resource_for_team"):
+		game_manager.call("add_resource_for_team", team_id, normalized_type, amount)
+	elif normalized_type == "gas" and game_manager != null and game_manager.has_method("add_gas_for_team"):
+		game_manager.call("add_gas_for_team", team_id, amount)
+	elif game_manager != null and game_manager.has_method("add_minerals_for_team"):
 		game_manager.call("add_minerals_for_team", team_id, amount)
 	elif game_manager != null and game_manager.has_method("add_minerals"):
 		game_manager.call("add_minerals", amount)

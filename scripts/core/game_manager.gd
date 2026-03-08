@@ -85,7 +85,9 @@ var _selected_buildings: Array[Node] = []
 var _hovered_unit: Node = null
 
 var _minerals: int = 220
+var _gas: int = 0
 var _team_minerals: Dictionary = {}
+var _team_gas: Dictionary = {}
 var _worker_cost: int = WORKER_COST
 var _soldier_cost: int = SOLDIER_COST
 
@@ -1994,6 +1996,22 @@ func try_spend_minerals(cost: int) -> bool:
 func get_minerals() -> int:
 	return get_minerals_for_team(PLAYER_TEAM_ID)
 
+func add_gas(amount: int) -> void:
+	add_gas_for_team(PLAYER_TEAM_ID, amount)
+
+func try_spend_gas(cost: int) -> bool:
+	return try_spend_gas_for_team(PLAYER_TEAM_ID, cost)
+
+func get_gas() -> int:
+	return get_gas_for_team(PLAYER_TEAM_ID)
+
+func add_resource_for_team(team_id: int, resource_type: String, amount: int) -> void:
+	var normalized: String = resource_type.strip_edges().to_lower()
+	if normalized == "gas":
+		add_gas_for_team(team_id, amount)
+	else:
+		add_minerals_for_team(team_id, amount)
+
 func add_minerals_for_team(team_id: int, amount: int) -> void:
 	if amount <= 0:
 		return
@@ -2002,6 +2020,16 @@ func add_minerals_for_team(team_id: int, amount: int) -> void:
 	_team_minerals[team_id] = current + amount
 	if team_id == PLAYER_TEAM_ID:
 		_minerals = int(_team_minerals.get(PLAYER_TEAM_ID, _minerals))
+		_refresh_resource_label()
+
+func add_gas_for_team(team_id: int, amount: int) -> void:
+	if amount <= 0:
+		return
+	_ensure_team_gas_entry(team_id)
+	var current: int = int(_team_gas.get(team_id, 0))
+	_team_gas[team_id] = current + amount
+	if team_id == PLAYER_TEAM_ID:
+		_gas = int(_team_gas.get(PLAYER_TEAM_ID, _gas))
 		_refresh_resource_label()
 
 func try_spend_minerals_for_team(team_id: int, cost: int) -> bool:
@@ -2017,13 +2045,32 @@ func try_spend_minerals_for_team(team_id: int, cost: int) -> bool:
 		_refresh_resource_label()
 	return true
 
+func try_spend_gas_for_team(team_id: int, cost: int) -> bool:
+	if cost <= 0:
+		return true
+	_ensure_team_gas_entry(team_id)
+	var current: int = int(_team_gas.get(team_id, 0))
+	if current < cost:
+		return false
+	_team_gas[team_id] = current - cost
+	if team_id == PLAYER_TEAM_ID:
+		_gas = int(_team_gas.get(PLAYER_TEAM_ID, _gas))
+		_refresh_resource_label()
+	return true
+
 func get_minerals_for_team(team_id: int) -> int:
 	_ensure_team_mineral_entry(team_id)
 	return int(_team_minerals.get(team_id, 0))
 
+func get_gas_for_team(team_id: int) -> int:
+	_ensure_team_gas_entry(team_id)
+	return int(_team_gas.get(team_id, 0))
+
 func _init_team_minerals() -> void:
 	_team_minerals.clear()
+	_team_gas.clear()
 	_team_minerals[PLAYER_TEAM_ID] = _minerals
+	_team_gas[PLAYER_TEAM_ID] = _gas
 
 	var discovered_teams: Dictionary = {}
 	discovered_teams[PLAYER_TEAM_ID] = true
@@ -2045,9 +2092,12 @@ func _init_team_minerals() -> void:
 		discovered_teams[int(node.call("get_team_id"))] = true
 
 	for team_key in discovered_teams.keys():
-		_ensure_team_mineral_entry(int(team_key))
+		var team_id: int = int(team_key)
+		_ensure_team_mineral_entry(team_id)
+		_ensure_team_gas_entry(team_id)
 
 	_minerals = int(_team_minerals.get(PLAYER_TEAM_ID, _minerals))
+	_gas = int(_team_gas.get(PLAYER_TEAM_ID, _gas))
 
 func _ensure_team_mineral_entry(team_id: int) -> void:
 	if team_id <= 0:
@@ -2056,6 +2106,13 @@ func _ensure_team_mineral_entry(team_id: int) -> void:
 		return
 	var initial_value: int = _minerals if team_id == PLAYER_TEAM_ID else DEFAULT_TEAM_START_MINERALS
 	_team_minerals[team_id] = initial_value
+
+func _ensure_team_gas_entry(team_id: int) -> void:
+	if team_id <= 0:
+		return
+	if _team_gas.has(team_id):
+		return
+	_team_gas[team_id] = _gas if team_id == PLAYER_TEAM_ID else 0
 
 func _refresh_resource_label() -> void:
 	_push_hud_update()
@@ -2441,10 +2498,10 @@ func _build_hud_snapshot() -> Dictionary:
 	var queued_units: int = _count_total_queued_units()
 	var supply_used: int = total_units + queued_units
 	var supply_cap: int = _current_supply_cap()
-	var top_legacy_text: String = _tf("M: %d   G: 0   Supply: %d/%d", [_minerals, supply_used, supply_cap])
+	var top_legacy_text: String = _tf("M: %d   G: %d   Supply: %d/%d", [_minerals, _gas, supply_used, supply_cap])
 	var snapshot: Dictionary = {
 		"minerals": _minerals,
-		"gas": 0,
+		"gas": _gas,
 		"supply_used": supply_used,
 		"supply_cap": supply_cap,
 		"top_legacy_text": top_legacy_text,
@@ -3103,12 +3160,15 @@ func _build_menu_command_entry(command_id: String) -> Dictionary:
 	var build_kind: String = RTS_CATALOG.get_build_kind_from_skill(command_id)
 	if build_kind == "":
 		return _command_entry(command_id)
-	var cost: int = _building_cost(build_kind)
+	var cost: Dictionary = {
+		"minerals": _building_cost(build_kind),
+		"gas": _building_gas_cost(build_kind)
+	}
 	var enabled: bool = _can_start_build_skill(command_id)
 	var reason: String = _build_skill_block_reason(command_id)
 	return _command_entry(command_id, {
 		"enabled": enabled,
-		"cost_text": str(cost),
+		"cost_text": _cost_text(cost),
 		"detail_text": _build_skill_detail_text(command_id),
 		"disabled_reason": reason
 	})
@@ -3244,7 +3304,7 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 		"return_resource":
 			var has_worker_cargo: bool = _selection_has_worker_cargo()
 			overrides["enabled"] = has_worker_cargo
-			overrides["disabled_reason"] = "" if has_worker_cargo else _t("Selected workers are not carrying minerals.")
+			overrides["disabled_reason"] = "" if has_worker_cargo else _t("Selected workers are not carrying resources.")
 		"attack":
 			var attack_enabled: bool = _selection_has_combat_unit()
 			overrides["enabled"] = attack_enabled
@@ -3252,13 +3312,13 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 		"train_worker":
 			var train_worker_enabled: bool = _can_train_worker_from_selection()
 			overrides["enabled"] = train_worker_enabled
-			overrides["cost_text"] = str(_worker_cost)
+			overrides["cost_text"] = _cost_text(_unit_costs("worker"))
 			overrides["cooldown_ratio"] = _selected_queue_cooldown_ratio("worker")
 			overrides["disabled_reason"] = "" if train_worker_enabled else _train_worker_block_reason()
 		"train_soldier":
 			var train_soldier_enabled: bool = _can_train_soldier_from_selection()
 			overrides["enabled"] = train_soldier_enabled
-			overrides["cost_text"] = str(_soldier_cost)
+			overrides["cost_text"] = _cost_text(_unit_costs("soldier"))
 			overrides["cooldown_ratio"] = _selected_queue_cooldown_ratio("soldier")
 			overrides["disabled_reason"] = "" if train_soldier_enabled else _train_soldier_block_reason()
 		"construction_exit":
@@ -3291,12 +3351,26 @@ func _command_overrides_for(skill_id: String) -> Dictionary:
 			overrides["enabled"] = can_select_worker
 			overrides["disabled_reason"] = "" if can_select_worker else _t("Assigned worker is unavailable.")
 	if overrides.is_empty():
+		var train_unit_kind: String = RTS_CATALOG.get_unit_kind_from_skill(skill_id)
+		if train_unit_kind != "":
+			var train_costs: Dictionary = _unit_costs(train_unit_kind)
+			var train_reason: String = _train_block_reason(
+				train_unit_kind,
+				_unit_display_name(train_unit_kind),
+				_cost_minerals(train_costs),
+				_cost_gas(train_costs)
+			)
+			overrides["enabled"] = train_reason == ""
+			overrides["cost_text"] = _cost_text(train_costs)
+			overrides["cooldown_ratio"] = _selected_queue_cooldown_ratio(train_unit_kind)
+			overrides["disabled_reason"] = train_reason
+			return overrides
 		var tech_id: String = RTS_CATALOG.get_tech_id_from_skill(skill_id)
 		if tech_id != "":
-			var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
+			var research_costs: Dictionary = _tech_costs(tech_id)
 			var reason: String = _research_skill_block_reason(skill_id)
 			overrides["enabled"] = reason == ""
-			overrides["cost_text"] = str(research_cost) if research_cost > 0 else ""
+			overrides["cost_text"] = _cost_text(research_costs)
 			overrides["cooldown_ratio"] = _research_skill_cooldown_ratio(skill_id)
 			overrides["disabled_reason"] = reason
 	return overrides
@@ -3445,8 +3519,17 @@ func _count_total_units() -> int:
 	var count: int = 0
 	var units: Array[Node] = get_tree().get_nodes_in_group("selectable_unit")
 	for unit_node in units:
-		if unit_node != null and is_instance_valid(unit_node) and _is_player_owned(unit_node):
-			count += 1
+		if unit_node == null or not is_instance_valid(unit_node):
+			continue
+		if not _is_player_owned(unit_node):
+			continue
+		if unit_node.has_method("is_alive") and not bool(unit_node.call("is_alive")):
+			continue
+		var unit_kind: String = ""
+		if unit_node.has_method("get_unit_kind"):
+			unit_kind = str(unit_node.call("get_unit_kind")).strip_edges().to_lower()
+		var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+		count += maxi(1, int(unit_def.get("supply", 1)))
 	return count
 
 func _count_total_queued_units() -> int:
@@ -3457,7 +3540,9 @@ func _count_total_queued_units() -> int:
 			continue
 		if not _is_player_owned(building_node):
 			continue
-		if building_node.has_method("get_queued_unit_count"):
+		if building_node.has_method("get_queued_unit_supply_cost"):
+			count += int(building_node.call("get_queued_unit_supply_cost"))
+		elif building_node.has_method("get_queued_unit_count"):
 			count += int(building_node.call("get_queued_unit_count"))
 		elif building_node.has_method("get_queue_size"):
 			count += int(building_node.call("get_queue_size"))
@@ -3587,8 +3672,68 @@ func _building_selection_has_skill(skill_id: String) -> bool:
 func _building_cost(building_kind: String) -> int:
 	if building_kind == "":
 		return 0
-	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
-	return int(building_def.get("cost", 0))
+	return RTS_CATALOG.get_building_cost(building_kind)
+
+func _building_gas_cost(building_kind: String) -> int:
+	if building_kind == "":
+		return 0
+	return RTS_CATALOG.get_building_gas_cost(building_kind)
+
+func _unit_costs(unit_kind: String) -> Dictionary:
+	return RTS_CATALOG.get_unit_costs(unit_kind)
+
+func _unit_supply_cost(unit_kind: String) -> int:
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+	return maxi(1, int(unit_def.get("supply", 1)))
+
+func _tech_costs(tech_id: String) -> Dictionary:
+	return RTS_CATALOG.get_tech_costs(tech_id)
+
+func _cost_minerals(costs: Dictionary) -> int:
+	return maxi(0, int(costs.get("minerals", 0)))
+
+func _cost_gas(costs: Dictionary) -> int:
+	return maxi(0, int(costs.get("gas", 0)))
+
+func _cost_text(costs: Dictionary) -> String:
+	var minerals: int = _cost_minerals(costs)
+	var gas: int = _cost_gas(costs)
+	if gas <= 0:
+		return str(minerals)
+	return _tf("%dM/%dG", [minerals, gas])
+
+func _can_afford_costs(costs: Dictionary) -> bool:
+	return _minerals >= _cost_minerals(costs) and _gas >= _cost_gas(costs)
+
+func _resource_shortage_reason(costs: Dictionary) -> String:
+	var minerals_needed: int = _cost_minerals(costs)
+	var gas_needed: int = _cost_gas(costs)
+	var need_minerals: bool = _minerals < minerals_needed
+	var need_gas: bool = _gas < gas_needed
+	if need_minerals and need_gas:
+		return _t("Not enough minerals and gas.")
+	if need_gas:
+		return _t("Not enough gas.")
+	return _t("Not enough minerals.")
+
+func _spend_costs(costs: Dictionary) -> bool:
+	var minerals: int = _cost_minerals(costs)
+	var gas: int = _cost_gas(costs)
+	if minerals > 0 and not try_spend_minerals(minerals):
+		return false
+	if gas > 0 and not try_spend_gas(gas):
+		if minerals > 0:
+			add_minerals(minerals)
+		return false
+	return true
+
+func _refund_costs(costs: Dictionary) -> void:
+	var minerals: int = _cost_minerals(costs)
+	var gas: int = _cost_gas(costs)
+	if minerals > 0:
+		add_minerals(minerals)
+	if gas > 0:
+		add_gas(gas)
 
 func has_tech(tech_id: String) -> bool:
 	if tech_id == "":
@@ -3673,6 +3818,10 @@ func _building_display_name(building_kind: String) -> String:
 	var building_def: Dictionary = RTS_CATALOG.get_building_def(building_kind)
 	return str(building_def.get("display_name", _t(building_kind.capitalize())))
 
+func _unit_display_name(unit_kind: String) -> String:
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+	return str(unit_def.get("display_name", _t(unit_kind.capitalize())))
+
 func _construction_icon_path_for_building_kind(building_kind: String) -> String:
 	var normalized_kind: String = building_kind.strip_edges().to_lower()
 	if normalized_kind == "":
@@ -3733,11 +3882,13 @@ func _research_skill_block_reason(skill_id: String) -> String:
 	var requirement_reason: String = _requirements_reason_for_tech(tech_id)
 	if requirement_reason != "":
 		return requirement_reason
-	var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
-	if research_cost <= 0:
+	var research_costs: Dictionary = _tech_costs(tech_id)
+	var research_minerals: int = _cost_minerals(research_costs)
+	var research_gas: int = _cost_gas(research_costs)
+	if research_minerals <= 0 and research_gas <= 0:
 		return _t("Invalid research cost.")
-	if _minerals < research_cost:
-		return _t("Not enough minerals.")
+	if not _can_afford_costs(research_costs):
+		return _resource_shortage_reason(research_costs)
 	if _find_selected_research_queue_building(tech_id) == null:
 		return _t("All selected research queues are full.")
 	return ""
@@ -3779,19 +3930,19 @@ func _start_research_skill(skill_id: String) -> bool:
 	var source_building: Node = _find_selected_research_queue_building(tech_id)
 	if source_building == null:
 		return false
-	var research_cost: int = RTS_CATALOG.get_tech_cost(tech_id)
-	if not try_spend_minerals(research_cost):
+	var research_costs: Dictionary = _tech_costs(tech_id)
+	if not _spend_costs(research_costs):
 		return false
 	var research_time: float = RTS_CATALOG.get_tech_research_time(tech_id)
 	if research_time <= 0.0:
 		unlock_tech(tech_id)
 		return true
 	if not source_building.has_method("queue_research_tech"):
-		add_minerals(research_cost)
+		_refund_costs(research_costs)
 		return false
 	var queued: bool = bool(source_building.call("queue_research_tech", tech_id, research_time))
 	if not queued:
-		add_minerals(research_cost)
+		_refund_costs(research_costs)
 		return false
 	_process_active_research(0.0)
 	return true
@@ -3808,24 +3959,31 @@ func _build_skill_block_reason(skill_id: String) -> String:
 	var requirement_reason: String = _requirements_reason_for_building_kind(build_kind)
 	if requirement_reason != "":
 		return requirement_reason
-	var build_cost: int = _building_cost(build_kind)
-	if build_cost <= 0:
+	var build_costs: Dictionary = {
+		"minerals": _building_cost(build_kind),
+		"gas": _building_gas_cost(build_kind)
+	}
+	if _cost_minerals(build_costs) <= 0 and _cost_gas(build_costs) <= 0:
 		return _t("Invalid build cost.")
-	if _minerals < build_cost:
-		return _t("Not enough minerals.")
+	if not _can_afford_costs(build_costs):
+		return _resource_shortage_reason(build_costs)
 	return ""
 
 func _can_train_worker_from_selection() -> bool:
-	return _train_block_reason("worker", _t("Worker"), _worker_cost) == ""
+	var costs: Dictionary = _unit_costs("worker")
+	return _train_block_reason("worker", _unit_display_name("worker"), _cost_minerals(costs), _cost_gas(costs)) == ""
 
 func _can_train_soldier_from_selection() -> bool:
-	return _train_block_reason("soldier", _t("Soldier"), _soldier_cost) == ""
+	var costs: Dictionary = _unit_costs("soldier")
+	return _train_block_reason("soldier", _unit_display_name("soldier"), _cost_minerals(costs), _cost_gas(costs)) == ""
 
 func _train_worker_block_reason() -> String:
-	return _train_block_reason("worker", _t("Worker"), _worker_cost)
+	var costs: Dictionary = _unit_costs("worker")
+	return _train_block_reason("worker", _unit_display_name("worker"), _cost_minerals(costs), _cost_gas(costs))
 
 func _train_soldier_block_reason() -> String:
-	return _train_block_reason("soldier", _t("Soldier"), _soldier_cost)
+	var costs: Dictionary = _unit_costs("soldier")
+	return _train_block_reason("soldier", _unit_display_name("soldier"), _cost_minerals(costs), _cost_gas(costs))
 
 func _selected_queue_cooldown_ratio(unit_kind: String) -> float:
 	if _selected_buildings.size() != 1 or not _selected_units.is_empty():
@@ -3843,7 +4001,7 @@ func _selected_queue_cooldown_ratio(unit_kind: String) -> float:
 	var progress: float = clampf(float(selected_building.call("get_production_progress")), 0.0, 1.0)
 	return clampf(1.0 - progress, 0.0, 1.0)
 
-func _train_block_reason(unit_kind: String, label: String, cost: int) -> String:
+func _train_block_reason(unit_kind: String, label: String, mineral_cost: int, gas_cost: int = 0) -> String:
 	if not _has_trainer_for_kind(unit_kind):
 		return _tf("No selected building can train %s.", [label])
 	var requirement_reason: String = _requirements_reason_for_unit_kind(unit_kind)
@@ -3851,9 +4009,13 @@ func _train_block_reason(unit_kind: String, label: String, cost: int) -> String:
 		return requirement_reason
 	if _all_trainers_queue_full(unit_kind):
 		return _t("All production queues are full.")
-	if _minerals < cost:
-		return _t("Not enough minerals.")
-	if not _has_supply_for(1):
+	var costs: Dictionary = {
+		"minerals": maxi(0, mineral_cost),
+		"gas": maxi(0, gas_cost)
+	}
+	if not _can_afford_costs(costs):
+		return _resource_shortage_reason(costs)
+	if not _has_supply_for(_unit_supply_cost(unit_kind)):
 		return _t("Supply is capped.")
 	if not _has_available_trainer_for_kind(unit_kind):
 		return _tf("No available trainer for %s.", [label])
@@ -3899,6 +4061,8 @@ func _all_trainers_queue_full(unit_kind: String) -> bool:
 	return has_trainer
 
 func _building_can_train_kind_raw(building_node: Node, unit_kind: String) -> bool:
+	if building_node.has_method("can_train_unit"):
+		return bool(building_node.call("can_train_unit", unit_kind))
 	match unit_kind:
 		"worker":
 			return bool(building_node.get("can_queue_worker"))
@@ -3908,6 +4072,8 @@ func _building_can_train_kind_raw(building_node: Node, unit_kind: String) -> boo
 			return false
 
 func _building_can_queue_kind_now(building_node: Node, unit_kind: String) -> bool:
+	if building_node.has_method("can_queue_unit"):
+		return bool(building_node.call("can_queue_unit", unit_kind))
 	match unit_kind:
 		"worker":
 			if building_node.has_method("can_queue_worker_unit"):
@@ -4209,9 +4375,9 @@ func _execute_command(command_id: String) -> void:
 		"placement_rotate":
 			_rotate_building_placement()
 		"train_worker":
-			_queue_worker_from_selection()
+			_queue_train_skill("train_worker")
 		"train_soldier":
-			_queue_soldier_from_selection()
+			_queue_train_skill("train_soldier")
 		"move", "gather", "attack", "repair":
 			_begin_target_skill(command_id)
 		"return_resource":
@@ -4229,6 +4395,11 @@ func _execute_command(command_id: String) -> void:
 		"menu":
 			pass
 		_:
+			var train_unit_kind: String = RTS_CATALOG.get_unit_kind_from_skill(command_id)
+			if train_unit_kind != "":
+				_queue_train_skill(command_id)
+				_refresh_hint_label()
+				return
 			var research_tech_id: String = RTS_CATALOG.get_tech_id_from_skill(command_id)
 			if research_tech_id != "":
 				_start_research_skill(command_id)
@@ -4636,61 +4807,46 @@ func _select_by_rect(start_pos: Vector2, end_pos: Vector2, additive: bool) -> vo
 	])
 	_gmhud_log_selection("select_by_rect#%d snapshot" % selection_seq, true)
 
-func _queue_worker_from_selection() -> void:
-	if _train_worker_block_reason() != "":
+func _queue_train_skill(skill_id: String) -> void:
+	var unit_kind: String = RTS_CATALOG.get_unit_kind_from_skill(skill_id)
+	if unit_kind == "":
 		return
+	var costs: Dictionary = _unit_costs(unit_kind)
+	var reason: String = _train_block_reason(
+		unit_kind,
+		_unit_display_name(unit_kind),
+		_cost_minerals(costs),
+		_cost_gas(costs)
+	)
+	if reason != "":
+		return
+	_queue_unit_from_selection(unit_kind, costs)
+
+func _queue_unit_from_selection(unit_kind: String, costs: Dictionary) -> void:
 	var queued_count: int = 0
+	var supply_cost: int = _unit_supply_cost(unit_kind)
 	for node in _selected_buildings:
 		if node == null or not is_instance_valid(node):
 			continue
 		if not _is_player_owned(node):
 			continue
-		var can_queue: bool = false
-		if node.has_method("can_queue_worker_unit"):
-			var can_queue_value: Variant = node.call("can_queue_worker_unit")
-			can_queue = bool(can_queue_value)
-		if not can_queue:
+		if not _building_can_queue_kind_now(node, unit_kind):
 			continue
-		if not _has_supply_for(1):
+		if not _has_supply_for(supply_cost):
 			break
-		if not try_spend_minerals(_worker_cost):
+		if not _spend_costs(costs):
 			break
-		if node.has_method("queue_worker"):
-			var queued_value: Variant = node.call("queue_worker")
-			if bool(queued_value):
-				queued_count += 1
-			else:
-				add_minerals(_worker_cost)
-
-	if queued_count > 0:
-		_refresh_hint_label()
-
-func _queue_soldier_from_selection() -> void:
-	if _train_soldier_block_reason() != "":
-		return
-	var queued_count: int = 0
-	for node in _selected_buildings:
-		if node == null or not is_instance_valid(node):
-			continue
-		if not _is_player_owned(node):
-			continue
-		var can_queue: bool = false
-		if node.has_method("can_queue_soldier_unit"):
-			var can_queue_value: Variant = node.call("can_queue_soldier_unit")
-			can_queue = bool(can_queue_value)
-		if not can_queue:
-			continue
-		if not _has_supply_for(1):
-			break
-		if not try_spend_minerals(_soldier_cost):
-			break
-		if node.has_method("queue_soldier"):
-			var queued_value: Variant = node.call("queue_soldier")
-			if bool(queued_value):
-				queued_count += 1
-			else:
-				add_minerals(_soldier_cost)
-
+		var queued: bool = false
+		if node.has_method("queue_unit"):
+			queued = bool(node.call("queue_unit", unit_kind))
+		elif unit_kind == "worker" and node.has_method("queue_worker"):
+			queued = bool(node.call("queue_worker"))
+		elif unit_kind == "soldier" and node.has_method("queue_soldier"):
+			queued = bool(node.call("queue_soldier"))
+		if queued:
+			queued_count += 1
+		else:
+			_refund_costs(costs)
 	if queued_count > 0:
 		_refresh_hint_label()
 
@@ -6247,10 +6403,13 @@ func _spawn_unit(unit_kind: String, spawn_position: Vector3, source_building: No
 	if unit == null:
 		return
 
-	var is_worker: bool = unit_kind == "worker"
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+	var is_worker: bool = bool(unit_def.get("is_worker_role", unit_kind == "worker"))
 	if source_building != null and source_building.has_method("get_team_id"):
 		unit.set("team_id", int(source_building.call("get_team_id")))
-	if unit.has_method("set_worker_role"):
+	if unit.has_method("set_unit_kind"):
+		unit.call("set_unit_kind", unit_kind)
+	elif unit.has_method("set_worker_role"):
 		unit.call("set_worker_role", is_worker)
 	else:
 		unit.set("is_worker", is_worker)

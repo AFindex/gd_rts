@@ -118,6 +118,16 @@ transform = Transform3D(0.5844055, 0, 0.8114618, 0, 1, 0, -0.8114618, 0, 0.58440
 total_minerals = 15000
 max_visual_minerals = 15000
 
+[node name="GasFieldA" parent="Resources" unique_id=1602287742 instance=ExtResource("7_resource_node")]
+transform = Transform3D(0.99420667, 0, 0.10748555, 0, 1, 0, -0.10748555, 0, 0.99420667, -21.695728, 1.9073486e-06, -41.90108)
+resource_type = 1
+total_minerals = 10000
+max_visual_minerals = 10000
+gas_capacity = 10000
+harvest_yield = 4
+harvest_time = 1.8
+optimal_worker_count = 3
+
 [node name="EnemyMineralFieldA" parent="Resources" unique_id=2123374041 instance=ExtResource("7_resource_node")]
 transform = Transform3D(-0.99077153, 0, 0.1355427, 0, 1, 0, -0.1355427, 0, -0.99077153, 45.796173, 0, 40.019485)
 total_minerals = 15000
@@ -128,8 +138,18 @@ transform = Transform3D(-0.99077153, 0, 0.1355427, 0, 1, 0, -0.1355427, 0, -0.99
 total_minerals = 15000
 max_visual_minerals = 15000
 
+[node name="EnemyGasFieldA" parent="Resources" unique_id=2128801593 instance=ExtResource("7_resource_node")]
+transform = Transform3D(-0.6126774, 0, -0.79033303, 0, 1, 0, 0.79033303, 0, -0.6126774, 32.57031, 0, 43.601746)
+resource_type = 1
+total_minerals = 10000
+max_visual_minerals = 10000
+gas_capacity = 10000
+harvest_yield = 4
+harvest_time = 1.8
+optimal_worker_count = 3
+
 [node name="EnemyMineralFieldC" parent="Resources" unique_id=1935438304 instance=ExtResource("7_resource_node")]
-transform = Transform3D(-0.99077153, 0, 0.1355427, 0, 1, 0, -0.1355427, 0, -0.99077153, 45.396416, 0, 36.832138)
+transform = Transform3D(-0.99077153, 0, 0.1355427, 0, 1, 0, -0.1355427, 0, -0.99077153, 48.89184, -1.9073486e-06, 37.633858)
 total_minerals = 15000
 max_visual_minerals = 15000
 
@@ -172,6 +192,36 @@ max_visual_minerals = 15000
 transform = Transform3D(0.9776623, 0, -0.21018168, 0, 1, 0, 0.21018168, 0, 0.9776623, -22.076021, 0, -47.113277)
 total_minerals = 15000
 max_visual_minerals = 15000
+
+[node name="GasFieldA2" parent="Resources" unique_id=1170337014 instance=ExtResource("7_resource_node")]
+transform = Transform3D(0.99420667, 0, 0.10748555, 0, 1, 0, -0.10748555, 0, 0.99420667, -21.519829, 0, -38.360596)
+resource_type = 1
+total_minerals = 10000
+max_visual_minerals = 10000
+gas_capacity = 10000
+harvest_yield = 4
+harvest_time = 1.8
+optimal_worker_count = 3
+
+[node name="GasFieldA3" parent="Resources" unique_id=241718268 instance=ExtResource("7_resource_node")]
+transform = Transform3D(-0.9015428, 0, -0.43268988, 0, 1, 0, 0.43268988, 0, -0.9015428, 30.581684, 0, 40.217476)
+resource_type = 1
+total_minerals = 10000
+max_visual_minerals = 10000
+gas_capacity = 10000
+harvest_yield = 4
+harvest_time = 1.8
+optimal_worker_count = 3
+
+[node name="GasFieldA4" parent="Resources" unique_id=1671923712 instance=ExtResource("7_resource_node")]
+transform = Transform3D(-0.9015428, 0, -0.43268988, 0, 1, 0, 0.43268988, 0, -0.9015428, 48.338203, 0, 34.129787)
+resource_type = 1
+total_minerals = 10000
+max_visual_minerals = 10000
+gas_capacity = 10000
+harvest_yield = 4
+harvest_time = 1.8
+optimal_worker_count = 3
 
 [node name="CameraStartPoint" type="Marker3D" parent="." unique_id=1203345807]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30.899948, 1.5735817, -43.733707)

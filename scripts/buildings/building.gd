@@ -53,6 +53,7 @@ signal construction_state_changed(event_type: String, payload: Dictionary)
 
 var _production_queue: Array[Dictionary] = []
 var _production_timer: float = 0.0
+var _trainable_units: Dictionary = {}
 var _health: float = 1200.0
 var _attack_target: Node = null
 var _attack_timer: float = 0.0
@@ -179,28 +180,51 @@ func repair(amount: float, _source: Node = null) -> bool:
 	return true
 
 func can_queue_worker_unit() -> bool:
-	if _construction_active:
-		return false
-	if not can_queue_worker:
-		return false
-	return not is_queue_full()
+	return can_queue_unit("worker")
 
 func can_queue_soldier_unit() -> bool:
+	return can_queue_unit("soldier")
+
+func can_train_unit(unit_kind: String) -> bool:
+	var normalized: String = unit_kind.strip_edges().to_lower()
+	if normalized == "":
+		return false
+	return _trainable_units.has(normalized)
+
+func can_queue_unit(unit_kind: String) -> bool:
 	if _construction_active:
 		return false
-	if not can_queue_soldier:
+	if not can_train_unit(unit_kind):
 		return false
 	return not is_queue_full()
 
-func queue_worker() -> bool:
-	if not can_queue_worker_unit():
+func get_trainable_unit_kinds() -> Array[String]:
+	var kinds: Array[String] = []
+	for key_value in _trainable_units.keys():
+		var unit_kind: String = str(key_value).strip_edges().to_lower()
+		if unit_kind == "":
+			continue
+		kinds.append(unit_kind)
+	return kinds
+
+func get_train_build_time(unit_kind: String) -> float:
+	var normalized: String = unit_kind.strip_edges().to_lower()
+	if normalized == "":
+		return 0.0
+	return maxf(0.01, float(_trainable_units.get(normalized, 0.0)))
+
+func queue_unit(unit_kind: String) -> bool:
+	if not can_queue_unit(unit_kind):
 		return false
-	return _enqueue_production_entry(QUEUE_ENTRY_TYPE_UNIT, "worker", worker_build_time)
+	var normalized: String = unit_kind.strip_edges().to_lower()
+	var build_time: float = get_train_build_time(normalized)
+	return _enqueue_production_entry(QUEUE_ENTRY_TYPE_UNIT, normalized, build_time)
+
+func queue_worker() -> bool:
+	return queue_unit("worker")
 
 func queue_soldier() -> bool:
-	if not can_queue_soldier_unit():
-		return false
-	return _enqueue_production_entry(QUEUE_ENTRY_TYPE_UNIT, "soldier", soldier_build_time)
+	return queue_unit("soldier")
 
 func can_queue_research_tech(tech_id: String) -> bool:
 	if _construction_active:
@@ -254,6 +278,18 @@ func get_queued_unit_count() -> int:
 		if str(entry.get("entry_type", "")) == QUEUE_ENTRY_TYPE_UNIT:
 			count += 1
 	return count
+
+func get_queued_unit_supply_cost() -> int:
+	var total_supply: int = 0
+	for entry in _production_queue:
+		if str(entry.get("entry_type", "")) != QUEUE_ENTRY_TYPE_UNIT:
+			continue
+		var unit_kind: String = str(entry.get("entry_id", "")).strip_edges().to_lower()
+		if unit_kind == "":
+			continue
+		var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
+		total_supply += maxi(1, int(unit_def.get("supply", 1)))
+	return total_supply
 
 func get_queue_size() -> int:
 	return _production_queue.size()
@@ -590,7 +626,7 @@ func _apply_construction_visual(under_construction: bool) -> void:
 func supports_rally_point() -> bool:
 	if _construction_active:
 		return false
-	return can_queue_worker or can_queue_soldier
+	return not _trainable_units.is_empty()
 
 func set_rally_point(target_position: Vector3, target_node: Node = null, mode: String = "ground", append_hop: bool = false) -> bool:
 	if not supports_rally_point():
@@ -887,11 +923,11 @@ func _is_sprite_occluded() -> bool:
 	return collider != null and collider != self
 
 func _format_unit_kind(unit_kind: String) -> String:
-	if unit_kind == "worker":
-		return tr("Worker")
-	if unit_kind == "soldier":
-		return tr("Soldier")
-	return tr(unit_kind.capitalize())
+	var normalized: String = unit_kind.strip_edges().to_lower()
+	if normalized == "":
+		return tr("Unit")
+	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(normalized)
+	return str(unit_def.get("display_name", tr(normalized.capitalize())))
 
 func _format_queue_entry_label(entry: Dictionary) -> String:
 	var entry_type: String = str(entry.get("entry_type", QUEUE_ENTRY_TYPE_UNIT))
@@ -944,6 +980,28 @@ func _apply_building_config(kind: String) -> void:
 	can_queue_soldier = bool(building_def.get("can_queue_soldier", can_queue_soldier))
 	worker_build_time = float(building_def.get("worker_build_time", worker_build_time))
 	soldier_build_time = float(building_def.get("soldier_build_time", soldier_build_time))
+	_trainable_units.clear()
+	var trainable_units_value: Variant = building_def.get("trainable_units", {})
+	if trainable_units_value is Dictionary:
+		var trainable_units: Dictionary = trainable_units_value as Dictionary
+		for key_value in trainable_units.keys():
+			var unit_kind: String = str(key_value).strip_edges().to_lower()
+			if unit_kind == "":
+				continue
+			var build_time_value: Variant = trainable_units.get(key_value, 0.0)
+			var build_time: float = maxf(0.01, float(build_time_value))
+			_trainable_units[unit_kind] = build_time
+	if _trainable_units.is_empty():
+		if can_queue_worker and worker_build_time > 0.0:
+			_trainable_units["worker"] = maxf(0.01, worker_build_time)
+		if can_queue_soldier and soldier_build_time > 0.0:
+			_trainable_units["soldier"] = maxf(0.01, soldier_build_time)
+	can_queue_worker = _trainable_units.has("worker")
+	can_queue_soldier = _trainable_units.has("soldier")
+	if can_queue_worker:
+		worker_build_time = maxf(0.01, float(_trainable_units.get("worker", worker_build_time)))
+	if can_queue_soldier:
+		soldier_build_time = maxf(0.01, float(_trainable_units.get("soldier", soldier_build_time)))
 	construction_paradigm = _normalize_construction_paradigm(str(building_def.get("construction_paradigm", construction_paradigm)))
 	construction_build_time = maxf(0.0, float(building_def.get("build_time", construction_build_time)))
 	construction_cancel_refund_ratio = clampf(float(building_def.get("cancel_refund_ratio", construction_cancel_refund_ratio)), 0.0, 1.0)

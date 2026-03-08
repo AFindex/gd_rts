@@ -591,8 +591,7 @@ func _is_valid_hostile_target(node: Node) -> bool:
 	return true
 
 func _unit_cost(unit_kind: String) -> int:
-	var unit_def: Dictionary = RTS_CATALOG.get_unit_def(unit_kind)
-	return maxi(0, int(unit_def.get("cost", 0)))
+	return RTS_CATALOG.get_unit_cost(unit_kind)
 
 func _try_spend_enemy_minerals(cost: int) -> bool:
 	if cost <= 0:
