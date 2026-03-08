@@ -1,133 +1,153 @@
-# RTS Enemy AI 配置说明
+# RTS Enemy AI 配置说明（多策略版）
 
 ## 1) 目标
 
-当前敌方 AI 已改为「配置驱动」：
+当前敌方 AI 已升级为 **双层配置驱动**：
 
-- **数据层**：`res://scripts/core/rts_ai_catalog.gd`
-- **执行层**：`res://scripts/core/enemy_ai_manager.gd`
+- 数据层：`res://scripts/core/rts_ai_catalog.gd`
+- 执行层：`res://scripts/core/enemy_ai_manager.gd`
 
-`enemy_ai_manager.gd` 不再写死训练/进攻节奏，而是读取 profile 决策。
+执行层不再只做固定波次，而是：
+
+1. 先读 `profile` 的基础配置（生产 / 经济 / 战术）。  
+2. 再按实时上下文（时间、兵力、资源、前线压力）切换 `strategy mode`。  
+3. 把 mode 的 `overrides` 合并为当前生效配置。  
 
 ---
 
-## 2) 现在敌方如何使用
+## 2) 当前能力概览
 
-场景节点 `Main/EnemyAI` 已接入新系统：
+### 2.1 战略层（新）
 
-- `script = res://scripts/core/enemy_ai_manager.gd`
-- `ai_profile_id = "enemy_default"`
+- 支持 `strategy.modes[]` 多策略集合。
+- 支持 `priority` 优先级竞争。
+- 支持 `hold_seconds` 持续锁定，避免策略抖动。
+- 支持条件窗口（`when`）：
+  - `min_/max_match_time`
+  - `min_/max_team_workers`
+  - `min_/max_team_combat_units`
+  - `min_/max_enemy_workers`
+  - `min_/max_enemy_combat_units`
+  - `min_/max_enemy_pressure`
+  - `min_/max_team_minerals`
+  - `min_/max_team_gas`
+  - `min_/max_wave_threshold`
 
-并且为了兼容旧参数，默认开启：
+### 2.2 战术层（新）
 
-- `use_legacy_property_overrides = true`
+`combat.engagement_mode` 支持：
 
-这意味着你在场景里旧的这些字段仍会生效并覆盖 profile 对应值：
+- `wave`：原有集结-出征-撤退波次逻辑。
+- `defend`：优先清理基地半径内入侵，默认守势。
+- `harass`：抽取小队优先骚扰 worker。
+- `all_in`：达到阈值后全军持续压制。
+
+### 2.3 生产层（增强）
+
+- 支持通用兵种训练：优先调用 `queue_unit(unit_kind)`。
+- 支持矿/气双资源扣费与失败回滚。
+- 支持 `orders[]` 内条件窗口（同 `min_/max_*` 规则）。
+
+### 2.4 经济层（增强）
+
+- `preferred_resource_type = minerals / gas / auto`
+- `auto_prefer_gas_below`：自动模式下低气优先采气。
+- `allow_resource_fallback`：无目标资源类型时是否回退采其他资源。
+
+---
+
+## 3) Profile 结构（核心字段）
+
+```gdscript
+{
+  "tick_rates": {
+    "production": 3.0,
+    "tactical": 0.85,
+    "economy": 1.0,
+    "strategy": 1.0
+  },
+  "production": { ... },
+  "economy": { ... },
+  "combat": { ... },
+  "strategy": {
+    "enabled": true,
+    "min_hold_seconds": 8.0,
+    "default_mode_id": "balanced_frontline",
+    "modes": [
+      {
+        "id": "hold_under_pressure",
+        "priority": 120,
+        "hold_seconds": 9.0,
+        "when": { "min_enemy_pressure": 3 },
+        "overrides": {
+          "production": { ... },
+          "combat": { ... }
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 4) 已内置 profile
+
+- `enemy_default`：自适应平衡（开局运营 / 压力防守 / 中期推进 / 后期 all-in）。
+- `enemy_rush`：快攻导向（高频骚扰 + 早期强压）。
+- `enemy_turtle`：防守反击导向（守势积兵 + 后期突破）。
+
+---
+
+## 5) 与旧参数兼容
+
+`EnemyAI` 节点仍保留 legacy 参数：
 
 - `train_interval`
 - `wave_interval`
 - `min_units_for_wave`
 - `train_per_cycle`
 
-如果想完全由 profile 控制，把 `use_legacy_property_overrides` 关掉。
+当 `use_legacy_property_overrides = true` 时，这些值会覆盖 profile 的部分字段。  
+若要完全由 profile/strategy 接管，请关闭它。
 
 ---
 
-## 3) Profile 在哪里配
+## 6) 快速新增一个策略模式
 
-编辑文件：`res://scripts/core/rts_ai_catalog.gd`
-
-核心结构如下：
+在某个 profile 的 `strategy.modes` 中追加：
 
 ```gdscript
-const BASE_PROFILE: Dictionary = {
-  "tick_rates": {
-    "production": 3.2,
-    "tactical": 0.9
+{
+  "id": "midgame_harass",
+  "priority": 85,
+  "hold_seconds": 8.0,
+  "when": {
+    "min_match_time": 160,
+    "min_team_combat_units": 5,
+    "max_enemy_pressure": 2
   },
-  "production": {
-    "max_queue_per_building": 2,
-    "orders": [
-      {
-        "unit_kind": "soldier",
-        "per_cycle": 1,
-        "max_team_units": -1,
-        "building_roles": ["barracks", "warp", "vat", "core"]
-      }
-    ]
-  },
-  "combat": {
-    "wave_cooldown": 10.0,
-    "base_wave_size": 3,
-    "growth_step": 1,
-    "growth_interval": 75.0,
-    "max_wave_size": 12,
-    "retreat_ratio": 0.35,
-    "rally_distance": 10.0,
-    "attack_order_mode": "attack_move",
-    "regroup_order_mode": "move",
-    "attack_order_refresh": 1.2,
-    "regroup_order_refresh": 1.2,
-    "target_priority_building_kinds": ["base", "barracks", "tower", "*"],
-    "fallback_to_units": true,
-    "ignore_worker_targets": false
+  "overrides": {
+    "combat": {
+      "engagement_mode": "harass",
+      "target_mode": "workers_first",
+      "harass_squad_size": 5
+    },
+    "production": {
+      "orders": [
+        {"unit_kind": "soldier", "per_cycle": 2, "max_team_units": -1, "building_roles": ["barracks", "warp", "vat", "core"]}
+      ]
+    }
   }
 }
 ```
 
 ---
 
-## 4) 字段含义（简版）
+## 7) 调试建议
 
-- `tick_rates.production`: 生产决策频率（秒）
-- `tick_rates.tactical`: 战术决策频率（秒）
-- `production.max_queue_per_building`: 单建筑最多允许多少排队项
-- `production.orders[]`: 训练规则列表（按顺序执行）
-- `orders[].unit_kind`: `soldier` / `worker`
-- `orders[].per_cycle`: 每次生产 tick 想训练多少个
-- `orders[].max_team_units`: 该兵种全队上限，`-1` 表示不限制
-- `orders[].building_roles`: 允许执行该训练的建筑角色过滤
-- `economy.enabled`: 是否启用工人经济调度
-- `economy.worker_order_refresh`: 给工人重发采集命令的最小间隔（秒）
-- `economy.max_resource_search_distance`: 工人寻找矿点的最大半径
-- `combat.wave_cooldown`: 两次开团之间的最短间隔（秒）
-- `combat.base_wave_size`: 最小开团人数
-- `combat.growth_step`: 随时间增长的波次规模增量
-- `combat.growth_interval`: 每经过多少秒增长一次
-- `combat.max_wave_size`: 波次规模上限
-- `combat.retreat_ratio`: 当前兵力低于“出征兵力 * 比例”则撤回集结
-- `combat.rally_distance`: 集结点距离己方锚点的前推距离
-- `combat.attack_order_mode`: `attack_move` 或 `attack`
-- `combat.regroup_order_mode`: `move` 或 `attack_move`
-- `combat.attack_order_refresh`: 同一单位重发攻击指令的最小间隔（秒）
-- `combat.regroup_order_refresh`: 同一单位重发集结指令的最小间隔（秒）
-- `combat.target_priority_building_kinds`: 建筑目标优先级（支持 `*`）
-- `combat.fallback_to_units`: 没建筑目标时是否打单位
-- `combat.ignore_worker_targets`: 打单位时是否忽略 worker
-
----
-
-## 5) 快速新增一个 AI 风格
-
-在 `PROFILE_OVERRIDES` 里新增条目，例如：
-
-```gdscript
-"enemy_midgame_push": {
-  "tick_rates": { "production": 2.8, "tactical": 0.7 },
-  "production": {
-    "orders": [
-      { "unit_kind": "soldier", "per_cycle": 2, "max_team_units": -1, "building_roles": ["barracks", "warp", "vat", "core"] }
-    ]
-  },
-  "combat": {
-    "wave_cooldown": 8.0,
-    "base_wave_size": 4,
-    "growth_step": 1,
-    "growth_interval": 60.0
-  }
-}
-```
-
-然后在 `Main/EnemyAI` 把 `ai_profile_id` 改成：
-
-`"enemy_midgame_push"`
+- 打开 `EnemyAI.debug_ai_log`。
+- 观察策略切换日志：
+  - `strategy -> <id>`
+  - `engagement_mode -> <mode>`
+- 若出现频繁切换，优先调大 `min_hold_seconds / hold_seconds`，并收紧 `when` 条件窗口。
