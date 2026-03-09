@@ -1,0 +1,6 @@
+﻿"id","display_name","tier","category","construction_paradigm","requires_buildings","requires_tech","status"
+"drone_bay","Drone Bay","T3","production","summoning","base|refinery|psionic_relay","support_protocols","planned"
+"shield_array","Shield Array","T3","utility","incorporated","base|tech_lab","infantry_armor_2","planned"
+"artillery_foundry","Artillery Foundry","T3","production","garrisoned","base|armory","precision_targeting","planned"
+"air_control_hub","Air Control Hub","T4","production","summoning","base|drone_bay","drone_link","planned"
+"command_uplink","Command Uplink","T4","research","incorporated","base|void_core","support_protocols|quantum_command","planned"

@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "worker"
+display_name = "Engineer"
+role_tag = "WOR"
+is_worker_role = true
+cost = 0
+gas_cost = 0
+supply = 1
+stats = {
+	"attack_cooldown": 0.0,
+	"attack_damage": 0.0,
+	"attack_range": 0.0,
+	"carry_capacity": 6,
+	"gather_amount": 5,
+	"gather_interval": 1.5,
+	"max_health": 72.0,
+	"move_speed": 5.0
+}
+requires_buildings = ["base"]
+requires_tech = Array[String]([])
+skills = Array[String](["move", "gather", "repair", "return_resource", "build_menu", "stop"])
+build_skills = Array[String](["build_refinery", "build_forward_outpost", "build_armory", "build_sensor_spire", "build_med_bay", "build_drone_bay", "build_shield_array", "build_artillery_foundry", "build_air_control_hub", "build_command_uplink", "build_orbital_array"])

@@ -1,0 +1,37 @@
+id,display_name,tier,branch,research_buildings,requires_tech,status
+infantry_weapons_1,Infantry Weapons I,T1,infantry,academy,,existing
+infantry_weapons_2,Infantry Weapons II,T2,infantry,tech_lab,infantry_weapons_1,existing
+infantry_weapons_3,Infantry Weapons III,T3,infantry,tech_lab,infantry_weapons_2,planned
+infantry_armor_1,Infantry Armor I,T1,infantry,academy,,existing
+infantry_armor_2,Infantry Armor II,T2,infantry,tech_lab,infantry_armor_1,existing
+infantry_armor_3,Infantry Armor III,T3,infantry,tech_lab,infantry_armor_2,planned
+squad_tactics,Squad Tactics,T2,infantry,academy,infantry_weapons_1,planned
+stim_injection,Stim Injection,T2,infantry,academy,squad_tactics,planned
+adaptive_camouflage,Adaptive Camouflage,T3,infantry,sensor_spire,squad_tactics,planned
+composite_ballistics,Composite Ballistics,T3,infantry,armory,infantry_weapons_2,planned
+field_logistics,Field Logistics,T1,logistics,academy,,existing
+support_protocols,Support Protocols,T2,logistics,psionic_relay,field_logistics,existing
+logistics_network,Logistics Network,T3,logistics,command_uplink,support_protocols,planned
+auto_refining,Auto Refining,T2,logistics,refinery,field_logistics,planned
+combat_medicine,Combat Medicine,T2,logistics,med_bay,field_logistics,planned
+emergency_repair,Emergency Repair,T3,logistics,med_bay,combat_medicine,planned
+heavy_plating,Heavy Plating,T2,heavy,engineering_bay,infantry_armor_1,existing
+mech_chassis,Mech Chassis,T2,heavy,engineering_bay,field_logistics,existing
+mech_weapons_1,Mech Weapons I,T2,heavy,engineering_bay,mech_chassis,planned
+mech_weapons_2,Mech Weapons II,T3,heavy,tech_lab,mech_weapons_1,planned
+mech_weapons_3,Mech Weapons III,T4,heavy,command_uplink,mech_weapons_2,planned
+mech_plating_1,Mech Plating I,T2,heavy,engineering_bay,mech_chassis,planned
+mech_plating_2,Mech Plating II,T3,heavy,tech_lab,mech_plating_1,planned
+mech_plating_3,Mech Plating III,T4,heavy,command_uplink,mech_plating_2,planned
+servo_actuators,Servo Actuators,T3,heavy,engineering_bay,mech_chassis,planned
+missile_guidance,Missile Guidance,T3,heavy,armory,mech_weapons_1,planned
+siege_calibration,Siege Calibration,T4,heavy,artillery_foundry,precision_targeting,planned
+drone_link,Drone Link,T3,support,drone_bay,support_protocols,planned
+air_control,Air Control,T4,support,air_control_hub,drone_link,planned
+reactive_shields,Reactive Shields,T3,support,shield_array,infantry_armor_2,planned
+structure_overclock,Structure Overclock,T3,support,shield_array,support_protocols,planned
+precision_targeting,Precision Targeting,T3,command,tech_lab,infantry_weapons_2|field_logistics,existing
+quantum_command,Quantum Command,T4,command,void_core,precision_targeting|heavy_plating,existing
+command_matrix,Command Matrix,T4,command,command_uplink,quantum_command,planned
+orbital_targeting,Orbital Targeting,T4,command,orbital_array,command_matrix,planned
+phase_manipulation,Phase Manipulation,T4,command,void_core,command_matrix|orbital_targeting,planned

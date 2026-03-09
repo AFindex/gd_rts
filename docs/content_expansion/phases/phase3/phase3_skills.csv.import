@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://bococb3vi766o"
+
+[deps]
+
+files=["res://docs/content_expansion/phases/phase3/phase3_skills.label.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.skill.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.source.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.target.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.unlock.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.status.translation"]
+
+source_file="res://docs/content_expansion/phases/phase3/phase3_skills.csv"
+dest_files=["res://docs/content_expansion/phases/phase3/phase3_skills.label.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.skill.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.source.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.target.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.unlock.translation", "res://docs/content_expansion/phases/phase3/phase3_skills.status.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

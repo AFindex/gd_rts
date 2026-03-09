@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RTSTechConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_tech_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "auto_refining"
+display_name = "Auto Refining"
+description = "Placeholder tech generated from expansion CSV."
+cost = 100
+gas_cost = 50
+research_time = 10.0
+requires_buildings = ["refinery"]
+requires_tech = Array[String](["field_logistics"])
+extra = {"placeholder_tier": "T2", "placeholder_branch": "logistics", "placeholder_status": "planned"}

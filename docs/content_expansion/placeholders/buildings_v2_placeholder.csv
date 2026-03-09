@@ -1,0 +1,23 @@
+id,display_name,tier,category,construction_paradigm,requires_buildings,requires_tech,status
+base,Command Base,T0,hub,summoning,,,existing
+supply_depot,Logistics Depot,T0,economy,garrisoned,base,,existing
+refinery,Field Refinery,T0,economy,garrisoned,base,,planned
+barracks,Barracks,T1,production,garrisoned,base,,existing
+tower,Defense Tower,T1,defense,garrisoned,base|supply_depot,,existing
+academy,Tactics Academy,T1,research,garrisoned,base|barracks,,existing
+forward_outpost,Forward Outpost,T1,utility,summoning,base|barracks,,planned
+engineering_bay,Engineering Bay,T2,research,garrisoned,base|academy|supply_depot,,existing
+psionic_relay,Support Relay,T2,research,summoning,base|academy,field_logistics,existing
+armory,Armory,T2,research,garrisoned,base|engineering_bay,,planned
+sensor_spire,Sensor Spire,T2,utility,summoning,base|academy,,planned
+med_bay,Med Bay,T2,utility,garrisoned,base|academy,field_logistics,planned
+bio_vat,Bio Vat,T3,production,incorporated,base|engineering_bay|psionic_relay,,existing
+warp_gate,Warp Gate,T3,production,summoning,base|engineering_bay,mech_chassis,existing
+tech_lab,Tech Lab,T3,research,incorporated,base|engineering_bay,field_logistics,existing
+drone_bay,Drone Bay,T3,production,summoning,base|refinery|psionic_relay,support_protocols,planned
+shield_array,Shield Array,T3,utility,incorporated,base|tech_lab,infantry_armor_2,planned
+artillery_foundry,Artillery Foundry,T3,production,garrisoned,base|armory,precision_targeting,planned
+void_core,Void Core,T4,production,incorporated,base|tech_lab|warp_gate|bio_vat,precision_targeting|heavy_plating,existing
+air_control_hub,Air Control Hub,T4,production,summoning,base|drone_bay,drone_link,planned
+command_uplink,Command Uplink,T4,research,incorporated,base|void_core,support_protocols|quantum_command,planned
+orbital_array,Orbital Array,T4,ultimate,summoning,base|command_uplink,quantum_command,planned

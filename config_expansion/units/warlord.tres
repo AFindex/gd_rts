@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RTSUnitConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_unit_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "warlord"
+display_name = "Warlord"
+role_tag = "WAR"
+is_worker_role = false
+cost = 0
+gas_cost = 0
+supply = 1
+stats = {
+	"attack_cooldown": 1.0,
+	"attack_damage": 16.0,
+	"attack_range": 2.6,
+	"max_health": 130.0,
+	"move_speed": 5.8
+}
+requires_buildings = ["command_uplink"]
+requires_tech = Array[String](["command_matrix"])
+skills = Array[String](["move", "attack", "stop"])
+build_skills = Array[String]([])

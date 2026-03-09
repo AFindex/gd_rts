@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "train_salvage_truck"
+label = "Salvage Truck"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_train.png"
+hotkey = ""
+target_mode = "none"
+unit_kind = "salvage_truck"
+description = "Placeholder skill generated from expansion CSV."
+extra = {"placeholder_skill_type": "train", "placeholder_sources": "forward_outpost", "placeholder_status": "planned"}

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://d3338b62r5h6k"
+
+[deps]
+
+files=["res://docs/content_expansion/phases/phase1/phase1_buildings.display.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.tier.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.category.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.construction.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.requires.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.requires.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.status.translation"]
+
+source_file="res://docs/content_expansion/phases/phase1/phase1_buildings.csv"
+dest_files=["res://docs/content_expansion/phases/phase1/phase1_buildings.display.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.tier.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.category.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.construction.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.requires.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.requires.translation", "res://docs/content_expansion/phases/phase1/phase1_buildings.status.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

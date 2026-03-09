@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://ccm1gdwylta1c"
+
+[deps]
+
+files=["res://docs/content_expansion/phases/phase1/phase1_techs.display.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.tier.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.branch.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.research.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.requires.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.status.translation"]
+
+source_file="res://docs/content_expansion/phases/phase1/phase1_techs.csv"
+dest_files=["res://docs/content_expansion/phases/phase1/phase1_techs.display.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.tier.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.branch.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.research.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.requires.translation", "res://docs/content_expansion/phases/phase1/phase1_techs.status.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

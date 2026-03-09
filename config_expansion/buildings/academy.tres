@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "academy"
+display_name = "Tactics Academy"
+role_tag = "ACA"
+cost = 100
+gas_cost = 0
+construction_paradigm = "garrisoned"
+build_time = 6.0
+cancel_refund_ratio = 0.75
+max_health = 800.0
+attack_range = 0
+attack_damage = 0
+attack_cooldown = 1
+is_resource_dropoff = false
+can_queue_worker = false
+can_queue_soldier = false
+worker_build_time = 3.0
+soldier_build_time = 5.0
+trainable_units = {}
+queue_limit = 6
+spawn_offset = Vector3(2.8, 0, 0)
+supply_bonus = 0
+requires_buildings = ["base", "barracks"]
+requires_tech = Array[String]([])
+skills = Array[String](["research_squad_tactics", "research_stim_injection"])
+build_skills = Array[String]([])
+extra = {"placeholder_tier": "T1", "placeholder_category": "research", "placeholder_status": "existing"}

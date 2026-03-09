@@ -13,16 +13,18 @@ func _init() -> void:
 	_building_defs = REGISTRY.get_all_building_defs()
 	_tech_defs = REGISTRY.get_all_tech_defs()
 	_skill_defs = REGISTRY.get_all_skill_defs()
+	var active_mode: String = REGISTRY.get_active_catalog_mode()
+	var active_dirs: Dictionary = REGISTRY.get_active_config_dirs()
 
 	var errors: Array[String] = []
-	_validate_non_empty(errors)
+	_validate_non_empty(errors, active_dirs)
 	_validate_unit_refs(errors)
 	_validate_building_refs(errors)
 	_validate_tech_refs(errors)
 	_validate_skill_refs(errors)
 
 	if errors.is_empty():
-		print("[ConfigValidate] OK | units=", _unit_defs.size(), " buildings=", _building_defs.size(), " techs=", _tech_defs.size(), " skills=", _skill_defs.size())
+		print("[ConfigValidate] OK | mode=", active_mode, " dirs=", active_dirs, " units=", _unit_defs.size(), " buildings=", _building_defs.size(), " techs=", _tech_defs.size(), " skills=", _skill_defs.size())
 		quit(0)
 		return
 
@@ -31,15 +33,15 @@ func _init() -> void:
 	printerr("[ConfigValidate] FAILED | errors=", errors.size())
 	quit(1)
 
-func _validate_non_empty(errors: Array[String]) -> void:
+func _validate_non_empty(errors: Array[String], active_dirs: Dictionary) -> void:
 	if _unit_defs.is_empty():
-		errors.append("No unit configs loaded from res://config/units")
+		errors.append("No unit configs loaded from %s" % [str(active_dirs.get("units", []))])
 	if _building_defs.is_empty():
-		errors.append("No building configs loaded from res://config/buildings")
+		errors.append("No building configs loaded from %s" % [str(active_dirs.get("buildings", []))])
 	if _tech_defs.is_empty():
-		errors.append("No tech configs loaded from res://config/techs")
+		errors.append("No tech configs loaded from %s" % [str(active_dirs.get("techs", []))])
 	if _skill_defs.is_empty():
-		errors.append("No skill configs loaded from res://config/skills")
+		errors.append("No skill configs loaded from %s" % [str(active_dirs.get("skills", []))])
 
 func _validate_unit_refs(errors: Array[String]) -> void:
 	for unit_id_value in _unit_defs.keys():

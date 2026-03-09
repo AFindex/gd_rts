@@ -1,0 +1,6 @@
+﻿"id","display_name","tier","category","construction_paradigm","requires_buildings","requires_tech","status"
+"refinery","Field Refinery","T0","economy","garrisoned","base","","planned"
+"forward_outpost","Forward Outpost","T1","utility","summoning","base|barracks","","planned"
+"armory","Armory","T2","research","garrisoned","base|engineering_bay","","planned"
+"sensor_spire","Sensor Spire","T2","utility","summoning","base|academy","","planned"
+"med_bay","Med Bay","T2","utility","garrisoned","base|academy","field_logistics","planned"

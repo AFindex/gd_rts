@@ -1,0 +1,8 @@
+﻿"id","display_name","tier","category","construction_paradigm","requires_buildings","requires_tech","status"
+"base","Command Base","T0","hub","summoning","","","existing"
+"supply_depot","Logistics Depot","T0","economy","garrisoned","base","","existing"
+"barracks","Barracks","T1","production","garrisoned","base","","existing"
+"tower","Defense Tower","T1","defense","garrisoned","base|supply_depot","","existing"
+"academy","Tactics Academy","T1","research","garrisoned","base|barracks","","existing"
+"engineering_bay","Engineering Bay","T2","research","garrisoned","base|academy|supply_depot","","existing"
+"tech_lab","Tech Lab","T3","research","incorporated","base|engineering_bay","field_logistics","existing"

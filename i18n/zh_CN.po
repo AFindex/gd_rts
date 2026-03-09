@@ -714,3 +714,353 @@ msgstr "工人已切换到排队命令。"
 msgid "Yes"
 msgstr "是"
 
+# Expansion planned content (2026-03-10)
+
+msgid "AA Mech"
+msgstr "防空机甲"
+
+msgid "Adaptive Camouflage"
+msgstr "自适应迷彩"
+
+msgid "Air Control"
+msgstr "空域管制"
+
+msgid "Air Control Hub"
+msgstr "空域控制枢纽"
+
+msgid "Armory"
+msgstr "军械库"
+
+msgid "Artillery Foundry"
+msgstr "火炮工坊"
+
+msgid "Artillery Mech"
+msgstr "火炮机甲"
+
+msgid "Assault Mech"
+msgstr "突击机甲"
+
+msgid "Auto Refining"
+msgstr "自动精炼"
+
+msgid "Breacher"
+msgstr "破阵兵"
+
+msgid "Build Air Control Hub"
+msgstr "建造空域控制枢纽"
+
+msgid "Build Armory"
+msgstr "建造军械库"
+
+msgid "Build Artillery Foundry"
+msgstr "建造火炮工坊"
+
+msgid "Build Command Uplink"
+msgstr "建造指挥上行站"
+
+msgid "Build Drone Bay"
+msgstr "建造无人机机库"
+
+msgid "Build Forward Outpost"
+msgstr "建造前沿哨站"
+
+msgid "Build Med Bay"
+msgstr "建造医疗舱"
+
+msgid "Build Orbital Array"
+msgstr "建造轨道阵列"
+
+msgid "Build Refinery"
+msgstr "建造战地精炼厂"
+
+msgid "Build Sensor Spire"
+msgstr "建造传感尖塔"
+
+msgid "Build Shield Array"
+msgstr "建造护盾阵列"
+
+msgid "Call Drop Pod"
+msgstr "呼叫空投舱"
+
+msgid "Combat Medic"
+msgstr "战地医疗兵"
+
+msgid "Combat Medicine"
+msgstr "战地医疗"
+
+msgid "Command Matrix"
+msgstr "指挥矩阵"
+
+msgid "Command Uplink"
+msgstr "指挥上行站"
+
+msgid "Composite Ballistics"
+msgstr "复合弹道"
+
+msgid "Disruptor Walker"
+msgstr "扰频行者"
+
+msgid "Drone Bay"
+msgstr "无人机机库"
+
+msgid "Drone Link"
+msgstr "无人机链路"
+
+msgid "Emergency Repair"
+msgstr "紧急维修"
+
+msgid "Fabrication Drone"
+msgstr "制造无人机"
+
+msgid "Field Refinery"
+msgstr "战地精炼厂"
+
+msgid "Flame Lancer"
+msgstr "烈焰枪兵"
+
+msgid "Focus Shot"
+msgstr "聚焦射击"
+
+msgid "Fortify Mode"
+msgstr "固守模式"
+
+msgid "Forward Outpost"
+msgstr "前沿哨站"
+
+msgid "Gas Siphon Drone"
+msgstr "瓦斯虹吸无人机"
+
+msgid "Grenade Barrage"
+msgstr "榴弹齐射"
+
+msgid "Grenadier"
+msgstr "榴弹兵"
+
+msgid "Guardian"
+msgstr "守护者"
+
+msgid "Guardian Tank"
+msgstr "守护坦克"
+
+msgid "Infantry Armor III"
+msgstr "步兵护甲 III"
+
+msgid "Infantry Weapons III"
+msgstr "步兵武器 III"
+
+msgid "Infiltrator"
+msgstr "渗透者"
+
+msgid "Logistics Network"
+msgstr "后勤网络"
+
+msgid "Logistics Officer"
+msgstr "后勤军官"
+
+msgid "Mech Plating I"
+msgstr "机甲装甲 I"
+
+msgid "Mech Plating II"
+msgstr "机甲装甲 II"
+
+msgid "Mech Plating III"
+msgstr "机甲装甲 III"
+
+msgid "Mech Weapons I"
+msgstr "机甲武器 I"
+
+msgid "Mech Weapons II"
+msgstr "机甲武器 II"
+
+msgid "Mech Weapons III"
+msgstr "机甲武器 III"
+
+msgid "Med Bay"
+msgstr "医疗舱"
+
+msgid "Missile Guidance"
+msgstr "导弹制导"
+
+msgid "Orbital Array"
+msgstr "轨道阵列"
+
+msgid "Orbital Strike"
+msgstr "轨道打击"
+
+msgid "Orbital Targeting"
+msgstr "轨道瞄准"
+
+msgid "Phase Manipulation"
+msgstr "相位操控"
+
+msgid "Psionic Adept"
+msgstr "灵能专家"
+
+msgid "Reactive Shields"
+msgstr "反应护盾"
+
+msgid "Recon Sniper"
+msgstr "侦察狙击手"
+
+msgid "Repair Mech"
+msgstr "维修机甲"
+
+msgid "Salvage Truck"
+msgstr "回收卡车"
+
+msgid "Sensor Spire"
+msgstr "传感尖塔"
+
+msgid "Servo Actuators"
+msgstr "伺服驱动器"
+
+msgid "Shield Array"
+msgstr "护盾阵列"
+
+msgid "Shield Bearer"
+msgstr "持盾兵"
+
+msgid "Siege Calibration"
+msgstr "攻城校准"
+
+msgid "Siege Mode"
+msgstr "攻城模式"
+
+msgid "Squad Tactics"
+msgstr "小队战术"
+
+msgid "Stim Injection"
+msgstr "兴奋剂注射"
+
+msgid "Stim Pack"
+msgstr "兴奋剂"
+
+msgid "Structure Overclock"
+msgstr "建筑超频"
+
+msgid "Support Mech"
+msgstr "支援机甲"
+
+msgid "Suppressor"
+msgstr "压制者"
+
+msgid "Vanguard"
+msgstr "先锋"
+
+msgid "Warlord"
+msgstr "军阀"
+
+msgid "Advanced relay doctrine for sustained engagements."
+msgstr "用于持续作战的高级中继教义。"
+
+msgid "Armor II"
+msgstr "护甲 II"
+
+msgid "Assault Trooper"
+msgstr "突击兵"
+
+msgid "Command Base"
+msgstr "指挥基地"
+
+msgid "Command Operative"
+msgstr "指挥特勤"
+
+msgid "Commando"
+msgstr "突击队员"
+
+msgid "Composite armor systems for elite squads."
+msgstr "精英小队复合装甲系统。"
+
+msgid "Defense Tower"
+msgstr "防御塔"
+
+msgid "Enables mech frame production."
+msgstr "解锁机甲底盘生产。"
+
+msgid "Engineer"
+msgstr "工程兵"
+
+msgid "Field Technician"
+msgstr "战地技师"
+
+msgid "Final doctrine unlock for command operatives."
+msgstr "解锁指挥特勤的终阶教义。"
+
+msgid "Hauler Drone"
+msgstr "运输无人机"
+
+msgid "Heavy Gunner"
+msgstr "重枪兵"
+
+msgid "Heavy Plating"
+msgstr "重型装甲"
+
+msgid "High-caliber tactical package."
+msgstr "高口径战术套件。"
+
+msgid "Improves supply flow and unlocks support branches."
+msgstr "提升补给流转并解锁支援分支。"
+
+msgid "Infantry Armor II"
+msgstr "步兵护甲 II"
+
+msgid "Infantry Weapons II"
+msgstr "步兵武器 II"
+
+msgid "Logistics Depot"
+msgstr "后勤仓"
+
+msgid "Marksman"
+msgstr "神射手"
+
+msgid "Mech Chassis"
+msgstr "机甲底盘"
+
+msgid "Placeholder skill generated from expansion CSV."
+msgstr "由扩容 CSV 生成的占位技能。"
+
+msgid "Placeholder tech generated from expansion CSV."
+msgstr "由扩容 CSV 生成的占位科技。"
+
+msgid "Precision Targeting"
+msgstr "精准瞄准"
+
+msgid "Quantum Command"
+msgstr "量子指挥"
+
+msgid "Reinforced vests for frontline infantry."
+msgstr "为前线步兵提供强化防护背心。"
+
+msgid "Rifleman"
+msgstr "步枪兵"
+
+msgid "Rocket Trooper"
+msgstr "火箭兵"
+
+msgid "Scout Mech"
+msgstr "侦察机甲"
+
+msgid "Siege Mech"
+msgstr "攻城机甲"
+
+msgid "Siege and command units gain lock-on suites."
+msgstr "攻城与指挥单位获得锁定套件。"
+
+msgid "Support Protocols"
+msgstr "支援协议"
+
+msgid "Support Relay"
+msgstr "支援中继"
+
+msgid "Tactics Academy"
+msgstr "战术学院"
+
+msgid "Unlocks heavy assault bio variants."
+msgstr "解锁重型突击生化变体。"
+
+msgid "Unlocks stronger rifle and assault payloads."
+msgstr "解锁更强的步枪与突击火力。"
+
+msgid "Weapons II"
+msgstr "武器 II"
+

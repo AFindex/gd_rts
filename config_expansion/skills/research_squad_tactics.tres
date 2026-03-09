@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "research_squad_tactics"
+label = "Squad Tactics"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_train.png"
+hotkey = ""
+target_mode = "none"
+tech_id = "squad_tactics"
+description = "Placeholder skill generated from expansion CSV."
+extra = {"placeholder_skill_type": "research", "placeholder_sources": "academy", "placeholder_status": "planned"}

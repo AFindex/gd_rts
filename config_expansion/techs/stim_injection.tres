@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RTSTechConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_tech_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "stim_injection"
+display_name = "Stim Injection"
+description = "Placeholder tech generated from expansion CSV."
+cost = 100
+gas_cost = 50
+research_time = 10.0
+requires_buildings = ["academy"]
+requires_tech = Array[String](["squad_tactics"])
+extra = {"placeholder_tier": "T2", "placeholder_branch": "infantry", "placeholder_status": "planned"}

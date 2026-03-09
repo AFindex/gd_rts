@@ -1,0 +1,6 @@
+﻿"id","display_name","tier","category","construction_paradigm","requires_buildings","requires_tech","status"
+"psionic_relay","Support Relay","T2","research","summoning","base|academy","field_logistics","existing"
+"bio_vat","Bio Vat","T3","production","incorporated","base|engineering_bay|psionic_relay","","existing"
+"warp_gate","Warp Gate","T3","production","summoning","base|engineering_bay","mech_chassis","existing"
+"void_core","Void Core","T4","production","incorporated","base|tech_lab|warp_gate|bio_vat","precision_targeting|heavy_plating","existing"
+"orbital_array","Orbital Array","T4","ultimate","summoning","base|command_uplink","quantum_command","planned"

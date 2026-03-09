@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://drishjcnp2t1m"
+
+[deps]
+
+files=["res://docs/content_expansion/placeholders/skills_v2_placeholder.label.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.skill.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.source.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.target.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.unlock.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.status.translation"]
+
+source_file="res://docs/content_expansion/placeholders/skills_v2_placeholder.csv"
+dest_files=["res://docs/content_expansion/placeholders/skills_v2_placeholder.label.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.skill.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.source.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.target.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.unlock.translation", "res://docs/content_expansion/placeholders/skills_v2_placeholder.status.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

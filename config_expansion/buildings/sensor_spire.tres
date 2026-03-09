@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "sensor_spire"
+display_name = "Sensor Spire"
+role_tag = "SEN"
+cost = 100
+gas_cost = 0
+construction_paradigm = "summoning"
+build_time = 6.0
+cancel_refund_ratio = 0.75
+max_health = 800.0
+attack_range = 0
+attack_damage = 0
+attack_cooldown = 1
+is_resource_dropoff = false
+can_queue_worker = false
+can_queue_soldier = true
+worker_build_time = 3.0
+soldier_build_time = 5.0
+trainable_units = {
+	"recon_sniper": 5.0
+}
+queue_limit = 6
+spawn_offset = Vector3(2.8, 0, 0)
+supply_bonus = 0
+requires_buildings = ["base", "academy"]
+requires_tech = Array[String]([])
+skills = Array[String](["train_recon_sniper", "research_adaptive_camouflage"])
+build_skills = Array[String]([])
+extra = {"placeholder_tier": "T2", "placeholder_category": "utility", "placeholder_status": "planned"}

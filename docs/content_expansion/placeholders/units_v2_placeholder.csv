@@ -1,0 +1,35 @@
+id,display_name,tier,class_group,producer_buildings,requires_buildings,requires_tech,status
+worker,Engineer,T0,economy,base,base,,existing
+field_technician,Field Technician,T1,economy,base,base|academy,field_logistics,existing
+hauler_drone,Hauler Drone,T1,economy,base,base|supply_depot,field_logistics,existing
+salvage_truck,Salvage Truck,T2,economy,forward_outpost,forward_outpost,field_logistics,planned
+gas_siphon_drone,Gas Siphon Drone,T2,economy,refinery,refinery,auto_refining,planned
+combat_medic,Combat Medic,T2,economy,med_bay,med_bay,combat_medicine,planned
+logistics_officer,Logistics Officer,T4,economy,command_uplink,command_uplink,logistics_network,planned
+fabrication_drone,Fabrication Drone,T3,economy,drone_bay,drone_bay,drone_link,planned
+soldier,Rifleman,T1,infantry,barracks,barracks,,existing
+assault_trooper,Assault Trooper,T2,infantry,barracks,barracks,infantry_weapons_1,existing
+marksman,Marksman,T2,infantry,barracks,barracks|academy,infantry_weapons_1,existing
+breacher,Breacher,T2,infantry,barracks,barracks|armory,squad_tactics,planned
+grenadier,Grenadier,T2,infantry,barracks,barracks|academy,squad_tactics,planned
+flamelancer,Flame Lancer,T3,infantry,bio_vat,bio_vat,heavy_plating,planned
+suppressor,Suppressor,T3,infantry,armory,armory,composite_ballistics,planned
+recon_sniper,Recon Sniper,T3,infantry,sensor_spire,sensor_spire,adaptive_camouflage,planned
+shieldbearer,Shield Bearer,T3,infantry,shield_array,shield_array,reactive_shields,planned
+infiltrator,Infiltrator,T3,infantry,psionic_relay,psionic_relay,adaptive_camouflage,planned
+vanguard,Vanguard,T4,infantry,command_uplink,command_uplink,command_matrix,planned
+guardian,Guardian,T4,infantry,command_uplink,command_uplink,command_matrix,planned
+heavy_gunner,Heavy Gunner,T3,heavy,bio_vat,bio_vat,heavy_plating,existing
+rocket_trooper,Rocket Trooper,T3,heavy,bio_vat,bio_vat|engineering_bay,mech_chassis,existing
+scout_mech,Scout Mech,T3,heavy,warp_gate,warp_gate,mech_chassis,existing
+siege_mech,Siege Mech,T4,heavy,warp_gate,warp_gate|tech_lab,precision_targeting,existing
+assault_mech,Assault Mech,T3,heavy,warp_gate,warp_gate,servo_actuators,planned
+aa_mech,AA Mech,T4,heavy,air_control_hub,air_control_hub,air_control,planned
+support_mech,Support Mech,T3,heavy,warp_gate,warp_gate,support_protocols,planned
+artillery_mech,Artillery Mech,T4,heavy,artillery_foundry,artillery_foundry,siege_calibration,planned
+guardian_tank,Guardian Tank,T4,heavy,armory,armory,mech_plating_3,planned
+disruptor_walker,Disruptor Walker,T4,heavy,void_core,void_core,phase_manipulation,planned
+repair_mech,Repair Mech,T4,heavy,drone_bay,drone_bay,emergency_repair,planned
+commando,Command Operative,T4,special,void_core,void_core,quantum_command,existing
+psionic_adept,Psionic Adept,T4,special,psionic_relay,psionic_relay,phase_manipulation,planned
+warlord,Warlord,T4,special,command_uplink,command_uplink,command_matrix,planned

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://yuhsuwr8wlng"
+
+[deps]
+
+files=["res://docs/content_expansion/placeholders/units_v2_placeholder.display.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.tier.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.class.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.producer.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.requires.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.requires.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.status.translation"]
+
+source_file="res://docs/content_expansion/placeholders/units_v2_placeholder.csv"
+dest_files=["res://docs/content_expansion/placeholders/units_v2_placeholder.display.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.tier.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.class.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.producer.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.requires.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.requires.translation", "res://docs/content_expansion/placeholders/units_v2_placeholder.status.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

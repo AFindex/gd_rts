@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://dmn8dyayv5mjj"
+
+[deps]
+
+files=["res://docs/content_expansion/phases/phase3/phase3_units.display.translation", "res://docs/content_expansion/phases/phase3/phase3_units.tier.translation", "res://docs/content_expansion/phases/phase3/phase3_units.class.translation", "res://docs/content_expansion/phases/phase3/phase3_units.producer.translation", "res://docs/content_expansion/phases/phase3/phase3_units.requires.translation", "res://docs/content_expansion/phases/phase3/phase3_units.requires.translation", "res://docs/content_expansion/phases/phase3/phase3_units.status.translation"]
+
+source_file="res://docs/content_expansion/phases/phase3/phase3_units.csv"
+dest_files=["res://docs/content_expansion/phases/phase3/phase3_units.display.translation", "res://docs/content_expansion/phases/phase3/phase3_units.tier.translation", "res://docs/content_expansion/phases/phase3/phase3_units.class.translation", "res://docs/content_expansion/phases/phase3/phase3_units.producer.translation", "res://docs/content_expansion/phases/phase3/phase3_units.requires.translation", "res://docs/content_expansion/phases/phase3/phase3_units.requires.translation", "res://docs/content_expansion/phases/phase3/phase3_units.status.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

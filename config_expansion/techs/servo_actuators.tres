@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RTSTechConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_tech_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "servo_actuators"
+display_name = "Servo Actuators"
+description = "Placeholder tech generated from expansion CSV."
+cost = 100
+gas_cost = 50
+research_time = 10.0
+requires_buildings = ["engineering_bay"]
+requires_tech = Array[String](["mech_chassis"])
+extra = {"placeholder_tier": "T3", "placeholder_branch": "heavy", "placeholder_status": "planned"}

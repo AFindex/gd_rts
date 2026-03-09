@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="RTSBuildingConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_building_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "drone_bay"
+display_name = "Drone Bay"
+role_tag = "DRO"
+cost = 100
+gas_cost = 0
+construction_paradigm = "summoning"
+build_time = 6.0
+cancel_refund_ratio = 0.75
+max_health = 800.0
+attack_range = 0
+attack_damage = 0
+attack_cooldown = 1
+is_resource_dropoff = false
+can_queue_worker = false
+can_queue_soldier = true
+worker_build_time = 3.0
+soldier_build_time = 5.0
+trainable_units = {
+	"fabrication_drone": 5.0,
+	"repair_mech": 5.0
+}
+queue_limit = 6
+spawn_offset = Vector3(2.8, 0, 0)
+supply_bonus = 0
+requires_buildings = ["base", "refinery", "psionic_relay"]
+requires_tech = Array[String](["support_protocols"])
+skills = Array[String](["train_fabrication_drone", "train_repair_mech", "research_drone_link"])
+build_skills = Array[String]([])
+extra = {"placeholder_tier": "T3", "placeholder_category": "production", "placeholder_status": "planned"}

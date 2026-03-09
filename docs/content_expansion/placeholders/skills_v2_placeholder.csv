@@ -1,0 +1,85 @@
+id,label,skill_type,source_ids,target_mode,unlock_tech,status
+move,Move,command,all_units,ground,,existing
+attack,Attack,command,combat_units,unit_or_building,,existing
+gather,Gather,command,worker_units,resource,,existing
+repair,Repair,command,worker_units,friendly_building,,existing
+return_resource,Return,command,worker_units,none,,existing
+stop,Stop,command,all_units,none,,existing
+train_worker,Engineer,train,base,none,,existing
+train_field_technician,Field Technician,train,base,none,field_logistics,existing
+train_hauler_drone,Hauler Drone,train,base,none,field_logistics,existing
+train_salvage_truck,Salvage Truck,train,forward_outpost,none,field_logistics,planned
+train_gas_siphon_drone,Gas Siphon Drone,train,refinery,none,auto_refining,planned
+train_combat_medic,Combat Medic,train,med_bay,none,combat_medicine,planned
+train_logistics_officer,Logistics Officer,train,command_uplink,none,logistics_network,planned
+train_fabrication_drone,Fabrication Drone,train,drone_bay,none,drone_link,planned
+train_soldier,Rifleman,train,barracks,none,,existing
+train_assault_trooper,Assault Trooper,train,barracks,none,infantry_weapons_1,existing
+train_marksman,Marksman,train,barracks,none,infantry_weapons_1,existing
+train_breacher,Breacher,train,barracks,none,squad_tactics,planned
+train_grenadier,Grenadier,train,barracks,none,squad_tactics,planned
+train_flamelancer,Flame Lancer,train,bio_vat,none,heavy_plating,planned
+train_suppressor,Suppressor,train,armory,none,composite_ballistics,planned
+train_recon_sniper,Recon Sniper,train,sensor_spire,none,adaptive_camouflage,planned
+train_shieldbearer,Shield Bearer,train,shield_array,none,reactive_shields,planned
+train_infiltrator,Infiltrator,train,psionic_relay,none,adaptive_camouflage,planned
+train_vanguard,Vanguard,train,command_uplink,none,command_matrix,planned
+train_guardian,Guardian,train,command_uplink,none,command_matrix,planned
+train_heavy_gunner,Heavy Gunner,train,bio_vat,none,heavy_plating,existing
+train_rocket_trooper,Rocket Trooper,train,bio_vat,none,mech_chassis,existing
+train_scout_mech,Scout Mech,train,warp_gate,none,mech_chassis,existing
+train_siege_mech,Siege Mech,train,warp_gate,none,precision_targeting,existing
+train_assault_mech,Assault Mech,train,warp_gate,none,servo_actuators,planned
+train_aa_mech,AA Mech,train,air_control_hub,none,air_control,planned
+train_support_mech,Support Mech,train,warp_gate,none,support_protocols,planned
+train_artillery_mech,Artillery Mech,train,artillery_foundry,none,siege_calibration,planned
+train_guardian_tank,Guardian Tank,train,armory,none,mech_plating_3,planned
+train_disruptor_walker,Disruptor Walker,train,void_core,none,phase_manipulation,planned
+train_repair_mech,Repair Mech,train,drone_bay,none,emergency_repair,planned
+train_commando,Command Operative,train,void_core,none,quantum_command,existing
+train_psionic_adept,Psionic Adept,train,psionic_relay,none,phase_manipulation,planned
+train_warlord,Warlord,train,command_uplink,none,command_matrix,planned
+build_refinery,Build Refinery,build,worker|base,placement,,planned
+build_forward_outpost,Build Forward Outpost,build,worker|base,placement,,planned
+build_armory,Build Armory,build,worker|base,placement,,planned
+build_sensor_spire,Build Sensor Spire,build,worker|base,placement,,planned
+build_med_bay,Build Med Bay,build,worker|base,placement,field_logistics,planned
+build_drone_bay,Build Drone Bay,build,worker|base,placement,support_protocols,planned
+build_shield_array,Build Shield Array,build,worker|base,placement,infantry_armor_2,planned
+build_artillery_foundry,Build Artillery Foundry,build,worker|base,placement,precision_targeting,planned
+build_air_control_hub,Build Air Control Hub,build,worker|base,placement,drone_link,planned
+build_command_uplink,Build Command Uplink,build,worker|base,placement,quantum_command,planned
+build_orbital_array,Build Orbital Array,build,worker|base,placement,quantum_command,planned
+research_infantry_weapons_3,Infantry Weapons III,research,tech_lab,none,infantry_weapons_3,planned
+research_infantry_armor_3,Infantry Armor III,research,tech_lab,none,infantry_armor_3,planned
+research_squad_tactics,Squad Tactics,research,academy,none,squad_tactics,planned
+research_stim_injection,Stim Injection,research,academy,none,stim_injection,planned
+research_adaptive_camouflage,Adaptive Camouflage,research,sensor_spire,none,adaptive_camouflage,planned
+research_composite_ballistics,Composite Ballistics,research,armory,none,composite_ballistics,planned
+research_logistics_network,Logistics Network,research,command_uplink,none,logistics_network,planned
+research_auto_refining,Auto Refining,research,refinery,none,auto_refining,planned
+research_combat_medicine,Combat Medicine,research,med_bay,none,combat_medicine,planned
+research_emergency_repair,Emergency Repair,research,med_bay,none,emergency_repair,planned
+research_mech_weapons_1,Mech Weapons I,research,engineering_bay,none,mech_weapons_1,planned
+research_mech_weapons_2,Mech Weapons II,research,tech_lab,none,mech_weapons_2,planned
+research_mech_weapons_3,Mech Weapons III,research,command_uplink,none,mech_weapons_3,planned
+research_mech_plating_1,Mech Plating I,research,engineering_bay,none,mech_plating_1,planned
+research_mech_plating_2,Mech Plating II,research,tech_lab,none,mech_plating_2,planned
+research_mech_plating_3,Mech Plating III,research,command_uplink,none,mech_plating_3,planned
+research_servo_actuators,Servo Actuators,research,engineering_bay,none,servo_actuators,planned
+research_missile_guidance,Missile Guidance,research,armory,none,missile_guidance,planned
+research_siege_calibration,Siege Calibration,research,artillery_foundry,none,siege_calibration,planned
+research_drone_link,Drone Link,research,drone_bay,none,drone_link,planned
+research_air_control,Air Control,research,air_control_hub,none,air_control,planned
+research_reactive_shields,Reactive Shields,research,shield_array,none,reactive_shields,planned
+research_structure_overclock,Structure Overclock,research,shield_array,none,structure_overclock,planned
+research_command_matrix,Command Matrix,research,command_uplink,none,command_matrix,planned
+research_orbital_targeting,Orbital Targeting,research,orbital_array,none,orbital_targeting,planned
+research_phase_manipulation,Phase Manipulation,research,void_core,none,phase_manipulation,planned
+stim_pack,Stim Pack,active,assault_trooper,none,stim_injection,planned
+focus_shot,Focus Shot,active,marksman|recon_sniper,unit_or_building,,planned
+grenade_barrage,Grenade Barrage,active,grenadier,ground,squad_tactics,planned
+fortify_mode,Fortify Mode,active,shieldbearer|guardian_tank,none,reactive_shields,planned
+siege_mode,Siege Mode,active,siege_mech,none,precision_targeting,planned
+call_drop_pod,Call Drop Pod,active,orbital_array|command_uplink,ground,orbital_targeting,planned
+orbital_strike,Orbital Strike,active,orbital_array,ground,orbital_targeting,planned

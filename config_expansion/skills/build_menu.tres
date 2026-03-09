@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RTSSkillConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/config/rts_skill_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "build_menu"
+label = "Build"
+icon_path = "res://assets/raw/rts_icons/skills/cmd_build.png"
+hotkey = "B"
+target_mode = "none"
+description = "Open build menu."
